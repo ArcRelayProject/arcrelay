@@ -39,7 +39,7 @@
     "@types/node": "24.10.12",
     "@types/qrcode": "^1.5.5",
     "svelte-check": "4.3.4",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vite": "7.3.6"
   }
 }
