@@ -49,10 +49,11 @@ if (process.platform === 'win32') {
     ]);
     cpSync(path.join(productRoot, 'ArcRelayShare.appex'), outputExtension, { recursive: true });
 
-    const signingIdentity = process.env.ARCRELAY_MACOS_SIGNING_IDENTITY
-      ?? process.env.APPLE_SIGNING_IDENTITY
-      ?? process.env.MACOS_SIGNING_IDENTITY
-      ?? '-';
+    const signingIdentity = [
+      process.env.ARCRELAY_MACOS_SIGNING_IDENTITY,
+      process.env.APPLE_SIGNING_IDENTITY,
+      process.env.MACOS_SIGNING_IDENTITY,
+    ].find((identity) => identity?.trim()) ?? '-';
     const signingArguments = [
       '--force',
       '--sign', signingIdentity,
