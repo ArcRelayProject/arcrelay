@@ -27,7 +27,7 @@
     "active": true,
     "homepage": "https://arcrelay.app",
     "shortDescription": "Local-first collaboration across your devices",
-    "copyright": "Copyright © 2026 ArcRelay",
+    "copyright": "Copyright © 2026 Shenzhen Changning Technology Co., Ltd.",
     "targets": "all",
     "resources": {
       "frontend/src/assets/fonts/OFL.txt": "licenses/NotoSansSC-OFL.txt",

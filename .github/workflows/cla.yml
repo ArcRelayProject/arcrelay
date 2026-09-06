@@ -1,0 +1,35 @@
+name: CLA
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify contributor agreement
+        env:
+          CLA_LABEL: "cla: signed"
+        run: |
+          author="$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")"
+          case "$author" in
+            dependabot\[bot\]|github-actions\[bot\])
+              echo "Automated dependency and workflow updates are exempt."
+              exit 0
+              ;;
+          esac
+
+          if jq -e --arg label "$CLA_LABEL" \
+            '.pull_request.labels | any(.name == $label)' \
+            "$GITHUB_EVENT_PATH" >/dev/null; then
+            echo "A maintainer verified the contributor agreement."
+            exit 0
+          fi
+
+          echo "::error::A maintainer must verify the signed ArcRelay contributor agreement and apply the '$CLA_LABEL' label. See https://github.com/ArcRelayProject/arcrelay/blob/main/CONTRIBUTING.md"
+          exit 1
