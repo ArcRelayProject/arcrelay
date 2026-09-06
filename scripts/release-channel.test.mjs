@@ -17,7 +17,7 @@ test("updater manifests require every signed release target", () => {
     version: "0.1.10042",
     platforms: {
       "darwin-aarch64": {
-        url: "https://github.com/ArcRelayProject/arcrelay/releases/download/test-v0.1.10042/ArcRelay.app.tar.gz",
+        url: "https://api.github.com/repos/ArcRelayProject/arcrelay/releases/assets/123456",
         signature: "a".repeat(64),
       },
       "windows-x86_64": {
@@ -32,4 +32,7 @@ test("updater manifests require every signed release target", () => {
   );
   assert.throws(() => validateUpdaterManifest(manifest, "0.1.1", ["darwin-aarch64"]));
   assert.throws(() => validateUpdaterManifest(manifest, manifest.version, ["darwin-x86_64"]));
+  manifest.platforms["darwin-aarch64"].url =
+    "https://example.com/ArcRelayProject/arcrelay/releases/assets/123456";
+  assert.throws(() => validateUpdaterManifest(manifest, manifest.version, ["darwin-aarch64"]));
 });

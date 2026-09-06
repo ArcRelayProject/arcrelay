@@ -43,7 +43,18 @@ export function validateUpdaterManifest(manifest, expectedVersion, requiredTarge
   }
   for (const target of requiredTargets) {
     const platform = manifest.platforms[target];
-    if (!platform?.url?.startsWith("https://github.com/ArcRelayProject/arcrelay/releases/download/")) {
+    let trustedDownload = false;
+    try {
+      const url = new URL(platform?.url);
+      trustedDownload =
+        (url.origin === "https://github.com" &&
+          url.pathname.startsWith("/ArcRelayProject/arcrelay/releases/download/")) ||
+        (url.origin === "https://api.github.com" &&
+          /^\/repos\/ArcRelayProject\/arcrelay\/releases\/assets\/\d+$/.test(url.pathname));
+    } catch {
+      trustedDownload = false;
+    }
+    if (!trustedDownload) {
       throw new Error(`Updater target ${target} has an invalid download URL`);
     }
     if (typeof platform.signature !== "string" || platform.signature.trim().length < 32) {
