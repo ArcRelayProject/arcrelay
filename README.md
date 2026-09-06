@@ -55,8 +55,8 @@ All desktop package manifests use one SemVer value. Check them with
 manifests report `0.2.0`.
 
 Pushing a matching `v*` tag runs the GitHub release workflow for macOS,
-Windows, and Linux and uploads the packages to a draft GitHub Release. A
-maintainer reviews the draft before publishing it.
+Windows, and Linux. The workflow publishes the stable release only after every
+platform package succeeds.
 
 Every successful `main` CI run also publishes an immutable GitHub prerelease
 for testing. Test releases use `test-v<version>.<run>` tags and may be unsigned.
