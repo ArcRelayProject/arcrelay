@@ -62,7 +62,7 @@ roxmltree = "0.20"
 rfd = { version = "0.16.0", default-features = false, features = ["common-controls-v6", "tokio", "xdg-portal"] }
 prost = "0.13"
 quinn = { version = "0.11.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
-rand = "0.8"
+rand = "0.10"
 qrcode = "0.14"
 sha2 = "0.10"
 thiserror = "2"

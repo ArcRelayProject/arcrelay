@@ -294,7 +294,7 @@ dependencies = [
  "qrcode",
  "quinn",
  "quote",
- "rand 0.8.8",
+ "rand 0.10.2",
  "reqwest",
  "rfd",
  "rmcp",
