@@ -17,8 +17,9 @@ export async function loadAppSettings(): Promise<AppSettings> {
       launchAtStartup: false,
       launchSilently: false,
       autoUpdateEnabled: true,
+      updateChannel: "stable",
       sounds: defaultSoundPreferences(),
-  notifications: {
+      notifications: {
         enabled: true,
         onlyWhenInactive: true,
         showPreviews: false,

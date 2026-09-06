@@ -18,7 +18,23 @@ jobs:
     outputs:
       release_id: ${{ steps.draft.outputs.release_id }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require release signing credentials
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required release credential $name is not configured."
+              exit 1
+            fi
+          done
       - name: Verify tag and package versions
         shell: bash
         run: |
@@ -26,6 +42,7 @@ jobs:
             echo "Stable release tags must use vMAJOR.MINOR.PATCH."
             exit 1
           fi
+          node scripts/release-channel.mjs validate-stable-version "${GITHUB_REF_NAME#v}"
           node scripts/version.mjs --check "${GITHUB_REF_NAME#v}"
       - id: draft
         name: Create one draft release
@@ -54,57 +71,53 @@ jobs:
             args: --bundles nsis
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: npm ci
-      - name: Configure optional Apple signing
+      - name: Import Apple signing certificate
         if: matrix.platform == 'macos-15'
-        shell: bash
         env:
-          ARCRELAY_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          ARCRELAY_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          ARCRELAY_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          ARCRELAY_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          ARCRELAY_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          ARCRELAY_APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-          ARCRELAY_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          write_if_set() {
-            local name="$1"
-            local value="$2"
-            local delimiter="ARCRELAY_ENV_${RANDOM}_${RANDOM}"
-            if [[ -n "$value" ]]; then
-              {
-                echo "${name}<<${delimiter}"
-                echo "$value"
-                echo "$delimiter"
-              } >> "$GITHUB_ENV"
-            fi
-          }
-          write_if_set APPLE_CERTIFICATE "$ARCRELAY_APPLE_CERTIFICATE"
-          write_if_set APPLE_CERTIFICATE_PASSWORD "$ARCRELAY_APPLE_CERTIFICATE_PASSWORD"
-          write_if_set APPLE_SIGNING_IDENTITY "$ARCRELAY_APPLE_SIGNING_IDENTITY"
-          write_if_set APPLE_API_ISSUER "$ARCRELAY_APPLE_API_ISSUER"
-          write_if_set APPLE_API_KEY "$ARCRELAY_APPLE_API_KEY"
-          write_if_set APPLE_API_KEY_PATH "$ARCRELAY_APPLE_API_KEY_PATH"
-          write_if_set APPLE_TEAM_ID "$ARCRELAY_APPLE_TEAM_ID"
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: scripts/import-apple-signing-certificate.sh
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         with:
           tauriScript: npm run tauri
           releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+      - name: Verify signed and notarized macOS package
+        if: matrix.platform == 'macos-15'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: |
+          app_path="$(find target -type d -path '*/release/bundle/macos/ArcRelay.app' | head -n 1)"
+          dmg_path="$(find target -type f -path '*/release/bundle/dmg/*.dmg' | head -n 1)"
+          test -n "$app_path"
+          test -n "$dmg_path"
+          codesign --verify --deep --strict --verbose=4 "$app_path"
+          codesign -d --verbose=4 "$app_path" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
+          xcrun stapler validate "$dmg_path"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+      - name: Remove temporary Apple signing keychain
+        if: always() && matrix.platform == 'macos-15'
+        run: scripts/cleanup-apple-signing-certificate.sh
 
   publish:
     needs:
@@ -115,6 +128,18 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate signed updater manifest
+        run: |
+          asset_api="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --jq '.[] | select(.name == "latest.json") | .url')"
+          test -n "$asset_api"
+          gh api -H 'Accept: application/octet-stream' "$asset_api" > latest.json
+          node scripts/release-channel.mjs validate-manifest latest.json "${GITHUB_REF_NAME#v}" 'darwin-aarch64,windows-x86_64'
+      - name: Cryptographically verify updater packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes minisign
+          scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
       - name: Publish stable release after every platform succeeds
         run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=false -f make_latest=true
 

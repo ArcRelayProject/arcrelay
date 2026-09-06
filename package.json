@@ -1,7 +1,7 @@
 {
   "name": "arcrelay-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts",
@@ -14,7 +14,7 @@
     "prepare:system-share": "node scripts/prepare-system-share.mjs",
     "check": "svelte-check --tsconfig frontend/tsconfig.json",
     "check:installers": "node scripts/check-installers.mjs",
-    "test": "node --experimental-strip-types --test frontend/src/*.test.ts frontend/src/clipboard/*.test.ts frontend/src/features/input-sharing/*.test.ts",
+    "test": "node --experimental-strip-types --test frontend/src/*.test.ts frontend/src/clipboard/*.test.ts frontend/src/features/input-sharing/*.test.ts scripts/*.test.mjs",
     "test:clipboard": "node --experimental-strip-types --test frontend/src/clipboard/*.test.ts",
     "test:segments": "node --experimental-strip-types --test frontend/src/clipboard/textSegments.test.ts",
     "test:input-topology": "node --experimental-strip-types --test frontend/src/features/input-sharing/topologyGeometry.test.ts",

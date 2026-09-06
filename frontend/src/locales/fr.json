@@ -2220,5 +2220,13 @@
   "请重新添加文件后重试": "Ajoutez à nouveau les fichiers et réessayez",
   "发送完成": "Transfert terminé",
   "发送结果": "Résultat du transfert",
-  "正在接收文件": "Réception des fichiers"
+  "正在接收文件": "Réception des fichiers",
+  "启动后及每 6 小时检查一次所选更新通道。": "Vérifier le canal de mise à jour choisi au démarrage puis toutes les 6 heures.",
+  "更新通道": "Canal de mise à jour",
+  "稳定版": "Stable",
+  "测试版": "Test",
+  "稳定版适合日常使用；测试版会随 main 的每次成功构建更新。": "Le canal Stable convient à un usage quotidien. Le canal Test suit chaque build main réussi.",
+  "已切换到稳定版通道": "Canal Stable sélectionné",
+  "已切换到测试版通道": "Canal Test sélectionné",
+  "当前版本 {version}，更新通道为 {channel}。": "Version actuelle : {version} ; canal de mise à jour : {channel}."
 }

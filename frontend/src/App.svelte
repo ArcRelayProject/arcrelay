@@ -146,6 +146,7 @@
     launchAtStartup: false,
     launchSilently: false,
     autoUpdateEnabled: true,
+    updateChannel: "stable",
     sounds: defaultSoundPreferences(),
     notifications: {
       enabled: true,
@@ -191,7 +192,7 @@
     },
   };
   let settingsSaving = false;
-  let appUpdateStatus: AppUpdateCheckResult = { currentVersion: "0.1.0", update: null };
+  let appUpdateStatus: AppUpdateCheckResult = { currentVersion: "0.1.1", channel: "stable", update: null };
   let appUpdateProgress: AppUpdateProgress | null = null;
   let appUpdateChecking = false;
   let appUpdateInstalling = false;

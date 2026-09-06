@@ -2220,5 +2220,13 @@
   "请重新添加文件后重试": "Add the files again and retry",
   "发送完成": "Transfer complete",
   "发送结果": "Transfer result",
-  "正在接收文件": "Receiving files"
+  "正在接收文件": "Receiving files",
+  "启动后及每 6 小时检查一次所选更新通道。": "Check the selected update channel after launch and every 6 hours.",
+  "更新通道": "Update Channel",
+  "稳定版": "Stable",
+  "测试版": "Test",
+  "稳定版适合日常使用；测试版会随 main 的每次成功构建更新。": "Stable is recommended for daily use. Test updates after every successful main build.",
+  "已切换到稳定版通道": "Switched to the Stable channel",
+  "已切换到测试版通道": "Switched to the Test channel",
+  "当前版本 {version}，更新通道为 {channel}。": "Current version {version}; update channel: {channel}."
 }

@@ -4,17 +4,30 @@ use std::sync::{
 };
 use std::time::Duration;
 
+use semver::Version;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+use crate::settings::UpdateChannel;
+
 const UPDATE_PROGRESS_EVENT: &str = "app-update-progress";
 const UPDATE_NOTIFICATION_VERSION_FILE: &str = "last-update-notification-version";
+const STABLE_UPDATE_ENDPOINT: &str =
+    "https://github.com/ArcRelayProject/arcrelay/releases/latest/download/latest.json";
+const TEST_UPDATE_ENDPOINT: &str =
+    "https://github.com/ArcRelayProject/arcrelay/releases/download/updater-test/latest.json";
+const TEST_PATCH_FLOOR: u64 = 10_000;
+
+struct PendingUpdate {
+    channel: UpdateChannel,
+    update: Update,
+}
 
 #[derive(Default)]
 pub struct AppUpdateState {
     checking: tokio::sync::Mutex<()>,
-    pending: Mutex<Option<Update>>,
+    pending: Mutex<Option<PendingUpdate>>,
     last_notified_version: Mutex<Option<String>>,
 }
 
@@ -30,7 +43,26 @@ pub struct AppUpdateMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct AppUpdateCheckResult {
     current_version: String,
+    channel: UpdateChannel,
     update: Option<AppUpdateMetadata>,
+}
+
+impl UpdateChannel {
+    fn endpoint(self) -> &'static str {
+        match self {
+            Self::Stable => STABLE_UPDATE_ENDPOINT,
+            Self::Test => TEST_UPDATE_ENDPOINT,
+        }
+    }
+}
+
+fn should_install_update(channel: UpdateChannel, current: &Version, candidate: &Version) -> bool {
+    let switching_from_test_to_stable = channel == UpdateChannel::Stable
+        && current.major == candidate.major
+        && current.minor == candidate.minor
+        && current.patch >= TEST_PATCH_FLOOR
+        && candidate.patch < TEST_PATCH_FLOOR;
+    switching_from_test_to_stable || candidate > current
 }
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -58,17 +90,28 @@ pub async fn check_for_app_update(
 ) -> Result<AppUpdateCheckResult, String> {
     let _checking = update_state.checking.lock().await;
     let current_version = app.package_info().version.to_string();
+    let channel = desktop_state.settings.snapshot().update_channel;
+    let endpoint = channel
+        .endpoint()
+        .parse::<tauri::Url>()
+        .map_err(|error| format!("invalid {channel:?} update endpoint: {error}"))?;
     let updater = app
         .updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|error| format!("failed to select {channel:?} update channel: {error}"))?
         .timeout(Duration::from_secs(30))
         .header("Cache-Control", "no-cache")
-        .map_err(|error| format!("failed to configure update request: {error}"))?
+        .map_err(|error| format!("failed to configure {channel:?} update request: {error}"))?;
+    let updater = updater
+        .version_comparator(move |current, release| {
+            should_install_update(channel, &current, &release.version)
+        })
         .build()
         .map_err(|error| format!("failed to initialize updater: {error}"))?;
     let update = updater
         .check()
         .await
-        .map_err(|error| format!("failed to check for updates: {error}"))?;
+        .map_err(|error| format!("failed to check the {channel:?} channel: {error}"))?;
     let metadata = update.as_ref().map(|update| AppUpdateMetadata {
         version: update.version.clone(),
         notes: update.body.clone(),
@@ -77,7 +120,8 @@ pub async fn check_for_app_update(
     *update_state
         .pending
         .lock()
-        .unwrap_or_else(|error| error.into_inner()) = update;
+        .unwrap_or_else(|error| error.into_inner()) =
+        update.map(|update| PendingUpdate { channel, update });
     if let Some(metadata) = metadata.as_ref() {
         let in_memory_version = update_state
             .last_notified_version
@@ -121,6 +165,7 @@ pub async fn check_for_app_update(
     }
     let result = AppUpdateCheckResult {
         current_version,
+        channel,
         update: metadata,
     };
     let _ = app.emit("app-update-checked", &result);
@@ -153,13 +198,19 @@ fn write_last_notified_version(version: &str) -> Result<(), String> {
 pub async fn install_app_update(
     app: AppHandle,
     state: State<'_, AppUpdateState>,
+    desktop_state: State<'_, crate::backend::DesktopState>,
 ) -> Result<(), String> {
-    let update = state
+    let pending = state
         .pending
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .take()
         .ok_or_else(|| "no update is pending installation; check for updates first".to_string())?;
+    let selected_channel = desktop_state.settings.snapshot().update_channel;
+    if pending.channel != selected_channel {
+        return Err("the update channel changed; check for updates again".to_string());
+    }
+    let update = pending.update;
     let retry_update = update.clone();
     let downloaded = Arc::new(AtomicU64::new(0));
     let progress_app = app.clone();
@@ -196,10 +247,14 @@ pub async fn install_app_update(
         .await;
 
     if let Err(error) = result {
-        *state
+        let mut pending = state
             .pending
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(retry_update);
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *pending = Some(PendingUpdate {
+            channel: selected_channel,
+            update: retry_update,
+        });
         let _ = app.emit(
             UPDATE_PROGRESS_EVENT,
             AppUpdateProgress {
@@ -258,5 +313,58 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .is_none());
+    }
+
+    #[test]
+    fn release_channels_use_independent_https_manifests() {
+        assert_eq!(UpdateChannel::Stable.endpoint(), STABLE_UPDATE_ENDPOINT);
+        assert_eq!(UpdateChannel::Test.endpoint(), TEST_UPDATE_ENDPOINT);
+        assert_ne!(
+            UpdateChannel::Stable.endpoint(),
+            UpdateChannel::Test.endpoint()
+        );
+        for endpoint in [STABLE_UPDATE_ENDPOINT, TEST_UPDATE_ENDPOINT] {
+            let url: tauri::Url = endpoint.parse().unwrap();
+            assert_eq!(url.scheme(), "https");
+            assert_eq!(url.host_str(), Some("github.com"));
+        }
+    }
+
+    #[test]
+    fn release_channels_advance_and_allow_switching_back_to_same_line_stable() {
+        let stable = Version::parse("0.1.1").unwrap();
+        let test_41 = Version::parse("0.1.10041").unwrap();
+        let test_42 = Version::parse("0.1.10042").unwrap();
+        let old_line_test = Version::parse("0.0.10099").unwrap();
+        assert!(should_install_update(
+            UpdateChannel::Test,
+            &stable,
+            &test_42
+        ));
+        assert!(should_install_update(
+            UpdateChannel::Test,
+            &test_41,
+            &test_42
+        ));
+        assert!(!should_install_update(
+            UpdateChannel::Test,
+            &test_42,
+            &test_41
+        ));
+        assert!(!should_install_update(
+            UpdateChannel::Test,
+            &stable,
+            &old_line_test
+        ));
+        assert!(should_install_update(
+            UpdateChannel::Stable,
+            &test_42,
+            &stable
+        ));
+        assert!(!should_install_update(
+            UpdateChannel::Stable,
+            &Version::parse("0.1.2").unwrap(),
+            &stable
+        ));
     }
 }

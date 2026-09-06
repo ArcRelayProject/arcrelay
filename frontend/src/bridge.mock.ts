@@ -293,7 +293,7 @@ export const bridge = {
     async discardSystemShareRequest(_requestId: string): Promise<void> {
     },
     async checkForAppUpdate(): Promise<AppUpdateCheckResult> {
-        return { currentVersion: "0.1.0", update: null };
+        return { currentVersion: "0.1.1", channel: mockData.appSettings.updateChannel, update: null };
     },
     async installAppUpdate(): Promise<void> {
     },
