@@ -60,7 +60,7 @@ schemars = "1.2"
 shellexpand = "3"
 roxmltree = "0.20"
 rfd = { version = "0.16.0", default-features = false, features = ["common-controls-v6", "tokio", "xdg-portal"] }
-prost = "0.13"
+prost = "0.14"
 quinn = { version = "0.11.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rand = "0.8"
 qrcode = "0.14"
