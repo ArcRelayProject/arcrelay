@@ -43,6 +43,9 @@ export function validateUpdaterManifest(manifest, expectedVersion, requiredTarge
   }
   for (const target of requiredTargets) {
     const platform = manifest.platforms[target];
+    if (!platform || typeof platform !== "object") {
+      throw new Error(`Updater manifest is missing target ${target}`);
+    }
     let trustedDownload = false;
     try {
       const url = new URL(platform?.url);

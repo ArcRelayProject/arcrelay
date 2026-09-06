@@ -93,7 +93,7 @@ jobs:
       matrix:
         include:
           - platform: macos-15
-            args: --bundles dmg
+            args: --bundles app,dmg
           - platform: windows-latest
             args: --bundles nsis
     runs-on: ${{ matrix.platform }}
