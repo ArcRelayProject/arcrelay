@@ -22,7 +22,9 @@ impl Tone {
 
     pub fn samples(self) -> Vec<f32> {
         self.pcm()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|bytes| f32::from(i16::from_le_bytes([bytes[0], bytes[1]])) / 32768.0)
             .collect()
     }

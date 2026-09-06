@@ -467,7 +467,7 @@ fn logo_pixels() -> Result<&'static LogoPixels, String> {
                 .to_rgba8();
             let (width, height) = rgba.dimensions();
             let mut premultiplied_bgra = Vec::with_capacity(rgba.as_raw().len());
-            for pixel in rgba.as_raw().chunks_exact(4) {
+            for pixel in rgba.as_raw().as_chunks::<4>().0 {
                 let alpha = u16::from(pixel[3]);
                 premultiplied_bgra.push(((u16::from(pixel[2]) * alpha + 127) / 255) as u8);
                 premultiplied_bgra.push(((u16::from(pixel[1]) * alpha + 127) / 255) as u8);
