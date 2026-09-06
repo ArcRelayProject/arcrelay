@@ -101,7 +101,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
-          args: --config tauri.ci.conf.json ${{ matrix.args }}
+          args: --config tauri.github.conf.json ${{ matrix.args }}
       - name: Verify signed and notarized macOS package
         if: matrix.platform == 'macos-15'
         env:
