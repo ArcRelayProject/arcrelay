@@ -31,7 +31,10 @@ test("updater manifests require every signed release target", () => {
     manifest,
   );
   assert.throws(() => validateUpdaterManifest(manifest, "0.1.1", ["darwin-aarch64"]));
-  assert.throws(() => validateUpdaterManifest(manifest, manifest.version, ["darwin-x86_64"]));
+  assert.throws(
+    () => validateUpdaterManifest(manifest, manifest.version, ["darwin-x86_64"]),
+    /missing target darwin-x86_64/,
+  );
   manifest.platforms["darwin-aarch64"].url =
     "https://example.com/ArcRelayProject/arcrelay/releases/assets/123456";
   assert.throws(() => validateUpdaterManifest(manifest, manifest.version, ["darwin-aarch64"]));
