@@ -8,12 +8,33 @@ target_list="${2:?usage: verify-updater-assets.sh MANIFEST TARGETS}"
 : "${RELEASE_ID:?RELEASE_ID is required}"
 : "${GH_TOKEN:?GH_TOKEN is required}"
 
-for command in base64 curl gh jq minisign python3; do
+for command in base64 curl gh jq python3; do
   command -v "$command" >/dev/null
 done
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
+
+minisign_bin="$(command -v minisign || true)"
+if [[ -z "$minisign_bin" ]]; then
+  if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
+    echo "minisign is required on non-Linux-x86_64 hosts" >&2
+    exit 1
+  fi
+  for command in sha256sum tar; do
+    command -v "$command" >/dev/null
+  done
+  minisign_archive="$work_dir/minisign-0.12-linux.tar.gz"
+  curl --fail --location --silent --show-error \
+    --output "$minisign_archive" \
+    https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz
+  printf '%s  %s\n' \
+    '9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73' \
+    "$minisign_archive" | sha256sum --check --status
+  tar -xzf "$minisign_archive" -C "$work_dir"
+  minisign_bin="$work_dir/minisign-linux/x86_64/minisign"
+  test -x "$minisign_bin"
+fi
 
 jq -er '.plugins.updater.pubkey' tauri.conf.json | base64 --decode > "$work_dir/public.key"
 gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" > "$work_dir/release-assets.json"
@@ -43,5 +64,5 @@ PY
   jq -er --arg target "$target" '.platforms[$target].signature' "$manifest_path" \
     | base64 --decode > "$signature_path"
   gh api -H 'Accept: application/octet-stream' "$asset_api" > "$payload_path"
-  minisign -Vm "$payload_path" -x "$signature_path" -p "$work_dir/public.key"
+  "$minisign_bin" -Vm "$payload_path" -x "$signature_path" -p "$work_dir/public.key"
 done

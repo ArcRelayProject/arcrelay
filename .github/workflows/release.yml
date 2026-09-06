@@ -145,10 +145,7 @@ jobs:
           gh api -H 'Accept: application/octet-stream' "$asset_api" > latest.json
           node scripts/release-channel.mjs validate-manifest latest.json "${GITHUB_REF_NAME#v}" 'darwin-aarch64,windows-x86_64'
       - name: Cryptographically verify updater packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes minisign
-          scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
+        run: scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
       - name: Publish stable release after every platform succeeds
         run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=false -f make_latest=true
 
