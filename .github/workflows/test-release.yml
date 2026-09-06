@@ -76,18 +76,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev patchelf
       - run: npm ci
+      - name: Configure optional Apple signing
+        if: matrix.platform == 'macos-15'
+        shell: bash
+        env:
+          ARCRELAY_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          ARCRELAY_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          ARCRELAY_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          ARCRELAY_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          ARCRELAY_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          ARCRELAY_APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+          ARCRELAY_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          write_if_set() {
+            local name="$1"
+            local value="$2"
+            local delimiter="ARCRELAY_ENV_${RANDOM}_${RANDOM}"
+            if [[ -n "$value" ]]; then
+              {
+                echo "${name}<<${delimiter}"
+                echo "$value"
+                echo "$delimiter"
+              } >> "$GITHUB_ENV"
+            fi
+          }
+          write_if_set APPLE_CERTIFICATE "$ARCRELAY_APPLE_CERTIFICATE"
+          write_if_set APPLE_CERTIFICATE_PASSWORD "$ARCRELAY_APPLE_CERTIFICATE_PASSWORD"
+          write_if_set APPLE_SIGNING_IDENTITY "$ARCRELAY_APPLE_SIGNING_IDENTITY"
+          write_if_set APPLE_API_ISSUER "$ARCRELAY_APPLE_API_ISSUER"
+          write_if_set APPLE_API_KEY "$ARCRELAY_APPLE_API_KEY"
+          write_if_set APPLE_API_KEY_PATH "$ARCRELAY_APPLE_API_KEY_PATH"
+          write_if_set APPLE_TEAM_ID "$ARCRELAY_APPLE_TEAM_ID"
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: npm run tauri
           tagName: ${{ needs.metadata.outputs.tag }}
