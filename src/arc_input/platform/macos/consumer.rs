@@ -3,6 +3,14 @@ use arcrelay_input::{ConsumerKey, ConsumerKeyEvent, PlatformError};
 use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType};
 use objc2_foundation::NSPoint;
 
+// Private Quartz compound-event fields, checked against AppKit-created events
+// in the tests below. Read data1 only for NX_SYSDEFINED/AUX_CONTROL_BUTTONS;
+// other subtypes need not carry compound data.
+const FIELD_EVENT_SUBTYPE: u32 = 0x53;
+const FIELD_EVENT_DATA1: u32 = 0x95;
+const SYSTEM_DEFINED: u32 = 14;
+const AUX_CONTROL_BUTTONS: i64 = 8;
+
 fn key_from_native(value: u16) -> Option<ConsumerKey> {
     Some(match value {
         0 => ConsumerKey::VolumeUp,
@@ -29,18 +37,16 @@ fn native_key(key: ConsumerKey) -> u16 {
     }
 }
 pub(super) unsafe fn decode(raw: CGEventRef) -> Option<ConsumerKeyEvent> {
-    objc2::rc::autoreleasepool(|_| decode_inner(raw))
-}
-
-unsafe fn decode_inner(raw: CGEventRef) -> Option<ConsumerKeyEvent> {
-    if raw.is_null() || CGEventGetType(raw) != 14 {
+    if raw.is_null() || CGEventGetType(raw) != SYSTEM_DEFINED {
         return None;
     }
-    let event = NSEvent::eventWithCGEvent(&*raw.cast())?;
-    if event.r#type() != NSEventType::SystemDefined || event.subtype().0 != 8 {
+    // Do not convert captured events to NSEvent on the event-tap thread.
+    // eventWithCGEvent processes Caps Lock/input-source transitions in HIToolbox,
+    // whose main-queue assertion terminates the process before we can filter it.
+    if CGEventGetIntegerValueField(raw, FIELD_EVENT_SUBTYPE) != AUX_CONTROL_BUTTONS {
         return None;
     }
-    let data = event.data1() as u32;
+    let data = CGEventGetIntegerValueField(raw, FIELD_EVENT_DATA1) as u32;
     let state = (data >> 8) & 0xff;
     if !matches!(state, 10 | 11) {
         return None;
@@ -81,6 +87,66 @@ pub(super) fn pulse(key: ConsumerKey) -> Result<(), PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decode_system_event(subtype: i16, data: isize) -> Option<ConsumerKeyEvent> {
+        // Construct fixtures through AppKit so the test independently checks the
+        // private Quartz field mapping. Never post these events to the OS.
+        let event = NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+            NSEventType::SystemDefined, NSPoint::new(0.0, 0.0), NSEventModifierFlags::empty(),
+            0.0, 0, None, subtype, data, -1,
+        ).unwrap().CGEvent().unwrap();
+        unsafe { decode((&*event as *const _ as *const c_void).cast_mut()) }
+    }
+
+    #[test]
+    fn system_event_decode_on_background_thread_ignores_caps_lock_and_other_subtypes() {
+        std::thread::spawn(|| {
+            objc2::rc::autoreleasepool(|_| {
+                for subtype in [0, 1, 6, 7, 9, 10, 11, 12, 13] {
+                    assert_eq!(decode_system_event(subtype, 0x0a00), None);
+                }
+                for key in [4, 6] {
+                    // Caps Lock and Power are local-only.
+                    for state in [10, 11] {
+                        assert_eq!(decode_system_event(8, (key << 16) | (state << 8)), None);
+                    }
+                }
+                assert_eq!(unsafe { decode(std::ptr::null_mut()) }, None);
+                for down in [true, false] {
+                    let raw = unsafe { CGEventCreateKeyboardEvent(std::ptr::null(), 0x39, down) };
+                    assert!(!raw.is_null());
+                    let decoded = unsafe { decode(raw) };
+                    unsafe { CFRelease(raw) };
+                    assert_eq!(decoded, None);
+                }
+            });
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn system_event_decode_preserves_repeat_and_rejects_invalid_key_states() {
+        objc2::rc::autoreleasepool(|_| {
+            for (state, repeat, expected) in [
+                (10, 0, Some((true, false))),
+                (10, 1, Some((true, true))),
+                (11, 0, Some((false, false))),
+                (11, 1, Some((false, false))),
+                (0, 0, None),
+                (12, 0, None),
+            ] {
+                assert_eq!(
+                    decode_system_event(8, (16 << 16) | (state << 8) | repeat),
+                    expected.map(|(down, repeat)| ConsumerKeyEvent {
+                        key: ConsumerKey::PlayPause,
+                        down,
+                        repeat,
+                    }),
+                );
+            }
+        });
+    }
 
     #[test]
     fn capture_suppresses_only_negotiated_keys_and_never_replays_a_held_key_on_handoff() {
