@@ -330,7 +330,7 @@ dependencies = [
  "tracing-subscriber",
  "ts-rs",
  "uuid",
- "windows 0.61.3",
+ "windows 0.62.2",
  "windows-core 0.61.2",
  "x11rb",
  "zip 7.2.0",

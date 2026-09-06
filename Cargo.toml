@@ -81,7 +81,7 @@ tauri-nspanel = { version = "2.1.0", git = "https://github.com/ahkohd/tauri-nspa
 
 [target.'cfg(target_os = "windows")'.dependencies]
 sysinfo = "0.33"
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
     "Win32_Devices_Display",
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
