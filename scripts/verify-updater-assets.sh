@@ -32,7 +32,11 @@ if not name or name in {'.', '..'} or '/' in name or '\\' in name:
 print(name)
 PY
 )"
-  asset_api="$(jq -er --arg name "$asset_name" '.[] | select(.name == $name) | .url' "$work_dir/release-assets.json")"
+  asset_api="$(jq -er \
+    --arg url "$asset_url" \
+    --arg name "$asset_name" \
+    'first(.[] | select(.url == $url or .browser_download_url == $url or .name == $name) | .url)' \
+    "$work_dir/release-assets.json")"
   signature_path="$work_dir/$target.sig"
   payload_path="$work_dir/$target.update"
 
