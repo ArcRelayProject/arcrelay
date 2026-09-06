@@ -54,12 +54,13 @@ All desktop package manifests use one SemVer value. Check them with
 `npm run version:set -- 0.2.0`. A `v0.2.0` tag must point to a commit whose
 manifests report `0.2.0`.
 
-Pushing a matching `v*` tag runs the GitHub release workflow for macOS,
-Windows, and Linux. The workflow publishes the stable release only after every
-platform package succeeds.
+Pushing a matching `v*` tag runs the GitHub release workflow for macOS and
+Windows. The workflow publishes the stable release only after both platform
+packages succeed. Official Linux packages are deferred until the native
+process and system-monitor services have Linux implementations.
 
-Every successful `main` CI run also publishes an immutable GitHub prerelease
-for testing. Test releases use `test-v<version>.<run>` tags and may be unsigned.
+Every successful `main` CI run also publishes a GitHub prerelease for testing.
+Test releases use `test-v<version>.<run>` tags and may be unsigned.
 
 ## Documentation
 
