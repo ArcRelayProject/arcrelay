@@ -5,6 +5,10 @@
     "externalBin": [
       "binaries/sniptra",
       "binaries/sniptra-ocr-worker"
-    ]
+    ],
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "gen/apple-macos/ArcRelay/ArcRelay.entitlements"
+    }
   }
 }

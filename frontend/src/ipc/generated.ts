@@ -32,11 +32,11 @@ export type ActivationPolicy = "Immediate" | { "RequireModifier": { hid_usage: n
 
 export type ActivityStatus = "awaitingConfirmation" | "skipped" | "queued" | "running" | "succeeded" | "failed" | "canceled" | "interrupted";
 
-export type AppSettings = { revision: number, deviceName: string, theme: ThemePreference, language: LanguagePreference, launchAtStartup: boolean, launchSilently: boolean, autoUpdateEnabled: boolean, notifications: NotificationPreferences, sounds: SoundPreferences, clipboardEnabled: boolean, clipboardShortcut: string, clipboardAutoFocusSearch: boolean, clipboardSortBy: ClipboardSortPreference, clipboardSyncEnabled: boolean, clipboardSyncUpdateSystemClipboard: boolean, clipboardSyncEditsAndDeletes: boolean, clipboardSyncFavorites: boolean, nearbyDiscoverable: boolean, enhancedScreenshotEnabled: boolean, screenshotShortcut: string, screenshotIncludeCursor: boolean, screenshotFormat: ScreenshotFormat, screenshotFileNameTemplate: string, webFiles: WebGatewaySettings, };
+export type AppSettings = { revision: number, deviceName: string, theme: ThemePreference, language: LanguagePreference, launchAtStartup: boolean, launchSilently: boolean, autoUpdateEnabled: boolean, updateChannel: UpdateChannel, notifications: NotificationPreferences, sounds: SoundPreferences, clipboardEnabled: boolean, clipboardShortcut: string, clipboardAutoFocusSearch: boolean, clipboardSortBy: ClipboardSortPreference, clipboardSyncEnabled: boolean, clipboardSyncUpdateSystemClipboard: boolean, clipboardSyncEditsAndDeletes: boolean, clipboardSyncFavorites: boolean, nearbyDiscoverable: boolean, enhancedScreenshotEnabled: boolean, screenshotShortcut: string, screenshotIncludeCursor: boolean, screenshotFormat: ScreenshotFormat, screenshotFileNameTemplate: string, webFiles: WebGatewaySettings, };
 
-export type AppSettingsPatch = { deviceName?: string, theme?: ThemePreference, language?: LanguagePreference, launchAtStartup?: boolean, launchSilently?: boolean, autoUpdateEnabled?: boolean, notifications?: NotificationPreferencesPatch, sounds?: SoundPreferencesPatch, clipboardEnabled?: boolean, clipboardShortcut?: string, clipboardAutoFocusSearch?: boolean, clipboardSortBy?: ClipboardSortPreference, clipboardSyncEnabled?: boolean, clipboardSyncUpdateSystemClipboard?: boolean, clipboardSyncEditsAndDeletes?: boolean, clipboardSyncFavorites?: boolean, nearbyDiscoverable?: boolean, enhancedScreenshotEnabled?: boolean, screenshotShortcut?: string, screenshotIncludeCursor?: boolean, screenshotFormat?: ScreenshotFormat, screenshotFileNameTemplate?: string, webFiles?: WebGatewaySettingsPatch, };
+export type AppSettingsPatch = { deviceName?: string, theme?: ThemePreference, language?: LanguagePreference, launchAtStartup?: boolean, launchSilently?: boolean, autoUpdateEnabled?: boolean, updateChannel?: UpdateChannel, notifications?: NotificationPreferencesPatch, sounds?: SoundPreferencesPatch, clipboardEnabled?: boolean, clipboardShortcut?: string, clipboardAutoFocusSearch?: boolean, clipboardSortBy?: ClipboardSortPreference, clipboardSyncEnabled?: boolean, clipboardSyncUpdateSystemClipboard?: boolean, clipboardSyncEditsAndDeletes?: boolean, clipboardSyncFavorites?: boolean, nearbyDiscoverable?: boolean, enhancedScreenshotEnabled?: boolean, screenshotShortcut?: string, screenshotIncludeCursor?: boolean, screenshotFormat?: ScreenshotFormat, screenshotFileNameTemplate?: string, webFiles?: WebGatewaySettingsPatch, };
 
-export type AppUpdateCheckResult = { currentVersion: string, update: AppUpdateMetadata | null, };
+export type AppUpdateCheckResult = { currentVersion: string, channel: UpdateChannel, update: AppUpdateMetadata | null, };
 
 export type AppUpdateMetadata = { version: string, notes: string | null, publishedAt: string | null, };
 
@@ -445,6 +445,8 @@ export type TransferSnapshot = { revision: number, deviceId: string, deviceName:
 export type TransferStatus = "preparing" | "awaitingApproval" | "connecting" | "transferring" | "paused" | "completed" | "rejected" | "cancelled" | "failed";
 
 export type TransferView = { id: string, wireId: number, peerId: string, peerName: string, direction: TransferDirection, status: TransferStatus, files: Array<TransferFileView>, totalBytes: number, completedBytes: number, speedBytesPerSecond: number, remainingSeconds: number | null, errorMessage: string | null, createdAtMs: number, updatedAtMs: number, };
+
+export type UpdateChannel = "stable" | "test";
 
 export type WebAccessMode = "disabled" | "public" | "password";
 

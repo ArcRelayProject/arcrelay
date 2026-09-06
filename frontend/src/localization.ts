@@ -116,6 +116,7 @@ const messageTemplates = [
   "可更新到 {version}。更新包会在安装前验证签名。",
   "打开设备与连接，当前 {count} 台设备已连接",
   "当前版本 {version}，更新通道为 main。",
+  "当前版本 {version}，更新通道为 {channel}。",
   "“{name}”将被永久删除，此操作无法撤销。",
   "已接受；以后将自动接收 {name} 的文件",
   "安装 ArcRelay {version}？",

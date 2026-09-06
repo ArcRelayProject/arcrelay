@@ -1,6 +1,6 @@
 <script lang="ts">
   import AppSelect from "../../components/AppSelect.svelte";
-  import { translate as uiTranslate, language as uiLanguage, languageOptions } from "../../i18n";
+  import { t as uiT, translate as uiTranslate, language as uiLanguage, languageOptions } from "../../i18n";
   import {
     Camera,
     Bell,
@@ -101,6 +101,10 @@
   let manualPort = "";
   let manualValidationError = "";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
+  $: updateChannelOptions = [
+    { value: "stable" as const, label: uiTranslate("稳定版", $uiLanguage) },
+    { value: "test" as const, label: uiTranslate("测试版", $uiLanguage) },
+  ];
   let selectedDeviceId = "";
   let autoConnectBusyId = "";
   let remoteDevices: ConnectedDevice[] = [];
@@ -720,9 +724,24 @@
               on:click={() => patchAppSettings({ autoUpdateEnabled: !appSettings.autoUpdateEnabled }, appSettings.autoUpdateEnabled ? "已关闭自动检查更新" : "已开启自动检查更新")}
             >
               <span class="row-icon"><ClockCounterClockwise size={21} /></span>
-              <span class="row-copy"><strong>{uiTranslate("自动检查更新", $uiLanguage)}</strong><small>{uiTranslate("启动后及每 6 小时检查一次 main 分支的最新成功构建。", $uiLanguage)}</small></span>
+              <span class="row-copy"><strong>{uiTranslate("自动检查更新", $uiLanguage)}</strong><small>{uiTranslate("启动后及每 6 小时检查一次所选更新通道。", $uiLanguage)}</small></span>
               <span class:checked={appSettings.autoUpdateEnabled} class="switch-control"><span></span></span>
             </button>
+            <div class="settings-row setting-field-row">
+              <span class="row-icon"><RocketLaunch size={21} /></span>
+              <span class="row-copy"><strong>{uiTranslate("更新通道", $uiLanguage)}</strong><small>{uiTranslate("稳定版适合日常使用；测试版会随 main 的每次成功构建更新。", $uiLanguage)}</small></span>
+              <AppSelect
+                aria-label={uiTranslate("更新通道", $uiLanguage)}
+                value={appSettings.updateChannel}
+                options={updateChannelOptions}
+                disabled={settingsSaving || appUpdateChecking || appUpdateInstalling}
+                onValueChange={async (updateChannel) => {
+                  await patchAppSettings({ updateChannel }, updateChannel === "stable" ? "已切换到稳定版通道" : "已切换到测试版通道");
+                  appUpdateStatus = { ...appUpdateStatus, channel: updateChannel, update: null };
+                  await checkForAppUpdate(false);
+                }}
+              />
+            </div>
             {#if isMacPlatform}
               <div class="settings-row setting-field-row">
                 <span class="row-icon"><ShieldCheck size={21} /></span>
@@ -747,7 +766,7 @@
                 {:else if appUpdateStatus.update}
                   <small>{uiTranslate("可更新到", $uiLanguage)} {appUpdateStatus.update.version}{uiTranslate("。更新包会在安装前验证签名。", $uiLanguage)}</small>
                 {:else}
-                  <small>{uiTranslate(`当前版本 ${appUpdateStatus.currentVersion}，更新通道为 main。`, $uiLanguage)}</small>
+                  <small>{uiT("当前版本 {version}，更新通道为 {channel}。", $uiLanguage, { version: appUpdateStatus.currentVersion, channel: uiTranslate(appUpdateStatus.channel === "stable" ? "稳定版" : "测试版", $uiLanguage) })}</small>
                 {/if}
               </span>
               <span class="app-update-actions">

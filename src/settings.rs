@@ -18,6 +18,7 @@ pub struct AppSettings {
     pub launch_at_startup: bool,
     pub launch_silently: bool,
     pub auto_update_enabled: bool,
+    pub update_channel: UpdateChannel,
     pub notifications: NotificationPreferences,
     pub sounds: crate::sound::SoundPreferences,
     pub clipboard_enabled: bool,
@@ -48,6 +49,7 @@ pub struct AppSettingsPatch {
     pub launch_at_startup: Option<bool>,
     pub launch_silently: Option<bool>,
     pub auto_update_enabled: Option<bool>,
+    pub update_channel: Option<UpdateChannel>,
     pub notifications: Option<NotificationPreferencesPatch>,
     pub sounds: Option<crate::sound::SoundPreferencesPatch>,
     pub clipboard_enabled: Option<bool>,
@@ -86,6 +88,9 @@ impl AppSettingsPatch {
         }
         if let Some(value) = self.auto_update_enabled {
             current.auto_update_enabled = value;
+        }
+        if let Some(value) = self.update_channel {
+            current.update_channel = value;
         }
         if let Some(value) = self.sounds {
             current.sounds = value.apply(current.sounds);
@@ -152,6 +157,7 @@ impl Default for AppSettings {
             launch_at_startup: false,
             launch_silently: false,
             auto_update_enabled: true,
+            update_channel: UpdateChannel::Stable,
             notifications: NotificationPreferences::default(),
             sounds: crate::sound::SoundPreferences::default(),
             clipboard_enabled: true,
@@ -242,6 +248,13 @@ pub enum LanguagePreference {
     FrFr,
     EsEs,
     PtBr,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateChannel {
+    Stable,
+    Test,
 }
 
 impl LanguagePreference {
@@ -487,12 +500,24 @@ mod tests {
         assert!(!settings.launch_silently);
         assert!(settings.clipboard_auto_focus_search);
         assert!(settings.auto_update_enabled);
+        assert_eq!(settings.update_channel, UpdateChannel::Stable);
         assert!(settings.notifications.enabled);
         assert!(settings.notifications.only_when_inactive);
         assert!(!settings.notifications.show_previews);
         assert!(settings.notifications.workflow_failed);
         assert!(!settings.notifications.workflow_completed);
         assert!(!settings.notifications.device_connections);
+    }
+
+    #[test]
+    fn update_channel_can_be_changed_without_resetting_other_settings() {
+        let settings = AppSettingsPatch {
+            update_channel: Some(UpdateChannel::Test),
+            ..Default::default()
+        }
+        .apply(AppSettings::default());
+        assert_eq!(settings.update_channel, UpdateChannel::Test);
+        assert!(settings.auto_update_enabled);
     }
 
     #[test]

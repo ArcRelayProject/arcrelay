@@ -34,17 +34,34 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Require release signing credentials
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required release credential $name is not configured."
+              exit 1
+            fi
+          done
       - id: release
         name: Define test release
         shell: bash
         run: |
           commit="$(git rev-parse HEAD)"
           short_commit="$(git rev-parse --short=12 HEAD)"
-          version="$(node -p "require('./package.json').version")"
+          base_version="$(node -p "require('./package.json').version")"
+          version="$(node scripts/release-channel.mjs test-version "$base_version" "$GITHUB_RUN_NUMBER")"
           {
             echo "commit=${commit}"
             echo "short_commit=${short_commit}"
-            echo "tag=test-v${version}.${GITHUB_RUN_NUMBER}"
+            echo "tag=test-v${version}"
             echo "version=${version}"
           } >> "$GITHUB_OUTPUT"
       - id: draft
@@ -57,7 +74,7 @@ jobs:
           RELEASE_BODY: |
             Automated test build from `${{ steps.release.outputs.short_commit }}` on `main`.
 
-            This prerelease is intended for testing and may be unsigned or unstable.
+            This signed prerelease follows the Test update channel and may be unstable.
         run: |
           release_id="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
             -f tag_name="$RELEASE_TAG" \
@@ -91,49 +108,47 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: npm ci
-      - name: Configure optional Apple signing
+      - name: Set test package version
+        run: node scripts/version.mjs "${{ needs.metadata.outputs.version }}"
+      - name: Import Apple signing certificate
         if: matrix.platform == 'macos-15'
-        shell: bash
         env:
-          ARCRELAY_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          ARCRELAY_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          ARCRELAY_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          ARCRELAY_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          ARCRELAY_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          ARCRELAY_APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-          ARCRELAY_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          write_if_set() {
-            local name="$1"
-            local value="$2"
-            local delimiter="ARCRELAY_ENV_${RANDOM}_${RANDOM}"
-            if [[ -n "$value" ]]; then
-              {
-                echo "${name}<<${delimiter}"
-                echo "$value"
-                echo "$delimiter"
-              } >> "$GITHUB_ENV"
-            fi
-          }
-          write_if_set APPLE_CERTIFICATE "$ARCRELAY_APPLE_CERTIFICATE"
-          write_if_set APPLE_CERTIFICATE_PASSWORD "$ARCRELAY_APPLE_CERTIFICATE_PASSWORD"
-          write_if_set APPLE_SIGNING_IDENTITY "$ARCRELAY_APPLE_SIGNING_IDENTITY"
-          write_if_set APPLE_API_ISSUER "$ARCRELAY_APPLE_API_ISSUER"
-          write_if_set APPLE_API_KEY "$ARCRELAY_APPLE_API_KEY"
-          write_if_set APPLE_API_KEY_PATH "$ARCRELAY_APPLE_API_KEY_PATH"
-          write_if_set APPLE_TEAM_ID "$ARCRELAY_APPLE_TEAM_ID"
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: scripts/import-apple-signing-certificate.sh
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         with:
           tauriScript: npm run tauri
           releaseId: ${{ needs.metadata.outputs.release_id }}
           tagName: ${{ needs.metadata.outputs.tag }}
           releaseDraft: true
           prerelease: true
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+      - name: Verify signed and notarized macOS package
+        if: matrix.platform == 'macos-15'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: |
+          app_path="$(find target -type d -path '*/release/bundle/macos/ArcRelay.app' | head -n 1)"
+          dmg_path="$(find target -type f -path '*/release/bundle/dmg/*.dmg' | head -n 1)"
+          test -n "$app_path"
+          test -n "$dmg_path"
+          codesign --verify --deep --strict --verbose=4 "$app_path"
+          codesign -d --verbose=4 "$app_path" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
+          xcrun stapler validate "$dmg_path"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+      - name: Remove temporary Apple signing keychain
+        if: always() && matrix.platform == 'macos-15'
+        run: scripts/cleanup-apple-signing-certificate.sh
 
   publish:
     needs:
@@ -144,8 +159,42 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_ID: ${{ needs.metadata.outputs.release_id }}
     steps:
-      - name: Publish prerelease after every platform succeeds
-        run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=true -f make_latest=false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+      - name: Validate signed updater manifest
+        env:
+          EXPECTED_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          asset_api="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --jq '.[] | select(.name == "latest.json") | .url')"
+          test -n "$asset_api"
+          gh api -H 'Accept: application/octet-stream' "$asset_api" > latest.json
+          node scripts/release-channel.mjs validate-manifest latest.json "$EXPECTED_VERSION" 'darwin-aarch64,windows-x86_64'
+      - name: Cryptographically verify updater packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes minisign
+          scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
+      - name: Publish prerelease and advance Test channel
+        env:
+          RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=true -f make_latest=false
+          if ! channel_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/updater-test" --jq .id 2>/dev/null)"; then
+            channel_id="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name=updater-test \
+              -f target_commitish="$RELEASE_COMMIT" \
+              -f name='ArcRelay Test update channel' \
+              -f body='Machine-readable pointer used by ArcRelay Test channel clients.' \
+              -F draft=false \
+              -F prerelease=true \
+              --jq .id)"
+          fi
+          existing_asset="$(gh api "repos/$GITHUB_REPOSITORY/releases/$channel_id/assets" --jq '.[] | select(.name == "latest.json") | .id' | head -n 1)"
+          if [[ -n "$existing_asset" ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing_asset"
+          fi
+          gh release upload updater-test latest.json --repo "$GITHUB_REPOSITORY"
 
   cleanup:
     needs:
@@ -159,4 +208,7 @@ jobs:
       RELEASE_ID: ${{ needs.metadata.outputs.release_id }}
     steps:
       - name: Remove an incomplete draft release
-        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+        run: |
+          if [[ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq .draft)" == true ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          fi

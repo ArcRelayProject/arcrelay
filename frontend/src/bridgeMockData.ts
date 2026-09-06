@@ -195,6 +195,7 @@ export const mockData: BridgeMockData = {
   launchAtStartup: false,
   launchSilently: false,
   autoUpdateEnabled: true,
+  updateChannel: "stable",
   sounds: defaultSoundPreferences(),
   notifications: {
     enabled: true,
