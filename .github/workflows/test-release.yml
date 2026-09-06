@@ -180,10 +180,7 @@ jobs:
           gh api -H 'Accept: application/octet-stream' "$asset_api" > latest.json
           node scripts/release-channel.mjs validate-manifest latest.json "$EXPECTED_VERSION" 'darwin-aarch64,windows-x86_64'
       - name: Cryptographically verify updater packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes minisign
-          scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
+        run: scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
       - name: Publish prerelease and advance Test channel
         env:
           RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
