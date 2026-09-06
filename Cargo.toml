@@ -64,7 +64,7 @@ prost = "0.13"
 quinn = { version = "0.11.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rand = "0.8"
 qrcode = "0.14"
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "2"
 zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
