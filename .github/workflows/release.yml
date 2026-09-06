@@ -13,7 +13,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Verify tag and package versions
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Stable release tags must use vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          node scripts/version.mjs --check "${GITHUB_REF_NAME#v}"
+      - id: draft
+        name: Create one draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_id="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name="ArcRelay $GITHUB_REF_NAME" \
+            -F draft=true \
+            -F prerelease=false \
+            -F generate_release_notes=true \
+            --jq .id)"
+          echo "release_id=${release_id}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -32,14 +62,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: npm ci
-      - name: Verify tag and package versions
-        shell: bash
-        run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Stable release tags must use vMAJOR.MINOR.PATCH."
-            exit 1
-          fi
-          node scripts/version.mjs --check "${GITHUB_REF_NAME#v}"
       - name: Configure optional Apple signing
         if: matrix.platform == 'macos-15'
         shell: bash
@@ -78,18 +100,34 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: npm run tauri
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ github.ref_name }}
-          releaseName: ArcRelay ${{ github.ref_name }}
-          generateReleaseNotes: true
           releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: false
           args: ${{ matrix.args }}
 
   publish:
-    needs: build
+    needs:
+      - prepare
+      - build
     runs-on: ubuntu-22.04
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
     steps:
       - name: Publish stable release after every platform succeeds
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+        run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=false -f make_latest=true
+
+  cleanup:
+    needs:
+      - prepare
+      - build
+      - publish
+    if: ${{ always() && needs.prepare.result == 'success' && needs.publish.result != 'success' }}
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+    steps:
+      - name: Remove an incomplete draft release
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
