@@ -54,6 +54,9 @@ Pushing a matching `v*` tag runs the GitHub release workflow for macOS,
 Windows, and Linux and uploads the packages to a draft GitHub Release. A
 maintainer reviews the draft before publishing it.
 
+Every successful `main` CI run also publishes an immutable GitHub prerelease
+for testing. Test releases use `test-v<version>.<run>` tags and may be unsigned.
+
 ## Documentation
 
 The [action text format](docs/action-text-format.md) describes the portable JSON

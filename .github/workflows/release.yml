@@ -41,7 +41,12 @@ jobs:
       - run: npm ci
       - name: Verify tag and package versions
         shell: bash
-        run: node scripts/version.mjs --check "${GITHUB_REF_NAME#v}"
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Stable release tags must use vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          node scripts/version.mjs --check "${GITHUB_REF_NAME#v}"
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
