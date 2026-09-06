@@ -1,0 +1,45 @@
+{
+  "name": "arcrelay-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.ts",
+    "build": "svelte-check --tsconfig frontend/tsconfig.json && vite build --config frontend/vite.config.ts && vite build --config frontend/vite.web-files.config.ts",
+    "build:web-files": "vite build --config frontend/vite.web-files.config.ts",
+    "build:tauri": "npm run prepare:sniptra && npm run prepare:system-share && npm run build",
+    "bundle": "tauri build",
+    "bundle:official": "tauri build --config tauri.ci.conf.json",
+    "prepare:sniptra": "node scripts/prepare-sniptra-sidecars.mjs",
+    "prepare:system-share": "node scripts/prepare-system-share.mjs",
+    "check": "svelte-check --tsconfig frontend/tsconfig.json",
+    "check:installers": "node scripts/check-installers.mjs",
+    "test": "node --experimental-strip-types --test frontend/src/*.test.ts frontend/src/clipboard/*.test.ts frontend/src/features/input-sharing/*.test.ts",
+    "test:clipboard": "node --experimental-strip-types --test frontend/src/clipboard/*.test.ts",
+    "test:segments": "node --experimental-strip-types --test frontend/src/clipboard/textSegments.test.ts",
+    "test:input-topology": "node --experimental-strip-types --test frontend/src/features/input-sharing/topologyGeometry.test.ts",
+    "version:check": "node scripts/version.mjs --check",
+    "version:set": "node scripts/version.mjs",
+    "macos:xcode:generate": "./scripts/macos-xcode-generate.sh",
+    "tauri:macos:dev": "./scripts/macos-xcode-dev.sh",
+    "tauri": "tauri",
+    "generate:ipc": "node scripts/generate-ipc.mjs"
+  },
+  "dependencies": {
+    "@crabnebula/tauri-plugin-drag": "^2.1.0",
+    "@tauri-apps/api": "2.11.1",
+    "bits-ui": "^2.18.1",
+    "phosphor-svelte": "3.1.0",
+    "qrcode": "^1.5.4",
+    "svelte": "5.56.8"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "6.2.4",
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "24.10.12",
+    "@types/qrcode": "^1.5.5",
+    "svelte-check": "4.3.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.1"
+  }
+}

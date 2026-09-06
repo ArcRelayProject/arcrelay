@@ -1,0 +1,119 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ArcRelay",
+  "version": "0.1.0",
+  "identifier": "com.arcrelay.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:tauri",
+    "frontendDist": "dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPCACHE/clipboard-previews/**",
+          "$APPCACHE/remote-file-thumbnails/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "homepage": "https://arcrelay.app",
+    "shortDescription": "Local-first collaboration across your devices",
+    "copyright": "Copyright © 2026 ArcRelay",
+    "targets": "all",
+    "resources": {
+      "frontend/src/assets/fonts/OFL.txt": "licenses/NotoSansSC-OFL.txt",
+      "icons/icon-macos-1024.png": "icons/icon-macos-1024.png",
+      "icons/icon-drag-preview.png": "icons/icon-drag-preview.png",
+      "binaries/windows-share": "system-share/windows",
+      "native/windows-share/register-sparse-package.ps1": "system-share/windows/register-sparse-package.ps1",
+      "native/windows-share/unregister-sparse-package.ps1": "system-share/windows/unregister-sparse-package.ps1"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "wix": {
+        "fragmentPaths": [
+          "installer/wix/system-share.wxs"
+        ],
+        "componentRefs": [
+          "ArcRelaySystemShareRegistry"
+        ],
+        "language": [
+          "zh-CN",
+          "en-US"
+        ]
+      },
+      "nsis": {
+        "template": "installer/nsis/installer.nsi",
+        "headerImage": "installer/assets/header.bmp",
+        "sidebarImage": "installer/assets/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "installerHooks": "installer/nsis/hooks.nsh",
+        "customLanguageFiles": {
+          "English": "installer/nsis/languages/English.nsh",
+          "SimpChinese": "installer/nsis/languages/SimpChinese.nsh",
+          "German": "installer/nsis/languages/German.nsh",
+          "French": "installer/nsis/languages/French.nsh",
+          "Spanish": "installer/nsis/languages/Spanish.nsh",
+          "PortugueseBR": "installer/nsis/languages/PortugueseBR.nsh",
+          "Japanese": "installer/nsis/languages/Japanese.nsh",
+          "Korean": "installer/nsis/languages/Korean.nsh"
+        },
+        "languages": [
+          "English",
+          "SimpChinese",
+          "German",
+          "French",
+          "Spanish",
+          "PortugueseBR",
+          "Japanese",
+          "Korean"
+        ]
+      }
+    },
+    "macOS": {
+      "files": {
+        "PlugIns/ArcRelayShare.appex": "binaries/macos-share/ArcRelayShare.appex"
+      },
+      "dmg": {
+        "background": "installer/assets/dmg-background.png",
+        "windowSize": {
+          "width": 720,
+          "height": 480
+        },
+        "appPosition": {
+          "x": 190,
+          "y": 304
+        },
+        "applicationFolderPosition": {
+          "x": 530,
+          "y": 304
+        }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4RkM0NTQxRDI2MDVBNTUKUldSVldtRFNRVVg4U0ozajVadDFSdHJUamtBdzBaNit0UTI1M1ZUdUJnVy96QnZlUDVaai9FNEsK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

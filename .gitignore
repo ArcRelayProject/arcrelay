@@ -1,0 +1,17 @@
+/target
+/node_modules
+/dist
+/gen/schemas
+/gen/**/xcuserdata/
+.DS_Store
+*.log
+/arcrelay-updater.key
+
+# Development review artifacts are intentionally excluded from the public repository.
+/*-comparison*.png
+/*-focused*.png
+/*-implementation*.png
+/design-qa.md
+/design-source*.png
+/docs/design/
+/*-e2e-report.md

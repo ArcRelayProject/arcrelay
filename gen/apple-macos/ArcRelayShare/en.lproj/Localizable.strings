@@ -1,0 +1,10 @@
+"发送到附近设备" = "Send to a nearby device";
+"正在读取所选文件…" = "Reading selected files…";
+"已选择 %d 个文件" = "%d files selected";
+"在 ArcRelay 中选择设备" = "Choose a device in ArcRelay";
+"继续" = "Continue";
+"取消" = "Cancel";
+"当前分享内容不包含可读取的文件。" = "The shared content does not contain readable files.";
+"一次最多分享 256 个文件。" = "Share no more than 256 files at a time.";
+"分享已取消" = "Sharing was cancelled";
+"正在准备文件…" = "Preparing files…";

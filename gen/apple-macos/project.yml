@@ -1,0 +1,138 @@
+name: ArcRelay
+options:
+  deploymentTarget:
+    macOS: "10.13"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  ArcRelay:
+    type: application
+    platform: macOS
+    sources:
+      - path: AppIcon.icon
+      - path: ArcRelay
+        excludes:
+          - Info.plist
+          - ArcRelay.entitlements
+    info:
+      path: ArcRelay/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: English
+        CFBundleDisplayName: ArcRelay
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: ArcRelay
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSBonjourServices:
+          - _arcrelay._udp
+        NSHighResolutionCapable: true
+        NSLocalNetworkUsageDescription: ArcRelay uses your local network to discover and securely connect your devices.
+        NSPrincipalClass: NSApplication
+        NSScreenCaptureUsageDescription: ArcRelay uses screen capture only when you start a screenshot action.
+    entitlements:
+      path: ArcRelay/ArcRelay.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.arcrelay.shared
+    settings:
+      base:
+        PRODUCT_NAME: ArcRelay
+        PRODUCT_BUNDLE_IDENTIFIER: com.arcrelay.desktop
+        EXECUTABLE_NAME: ArcRelay
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 0.1.0
+      configs:
+        Debug:
+          ONLY_ACTIVE_ARCH: YES
+        Release:
+          ONLY_ACTIVE_ARCH: NO
+          ARCHS: [arm64, x86_64]
+    dependencies:
+      - target: ArcRelayShare
+        embed: true
+      - sdk: AppKit.framework
+      - sdk: CoreGraphics.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: Security.framework
+      - sdk: WebKit.framework
+    postCompileScripts:
+      - name: Build and Copy Rust Binary
+        script: ${PROJECT_DIR}/scripts/build-rust.sh "${CONFIGURATION}" "${ARCHS}"
+        basedOnDependencyAnalysis: false
+  ArcRelayShare:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: ArcRelayShare
+        excludes:
+          - Info.plist
+          - ArcRelayShare.entitlements
+    info:
+      path: ArcRelayShare/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: "$(DEVELOPMENT_LANGUAGE)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundlePackageType: XPC!
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 256
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+    entitlements:
+      path: ArcRelayShare/ArcRelayShare.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - group.com.arcrelay.shared
+    settings:
+      base:
+        PRODUCT_NAME: ArcRelayShare
+        PRODUCT_BUNDLE_IDENTIFIER: com.arcrelay.desktop.share
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 0.1.0
+      configs:
+        Debug:
+          ONLY_ACTIVE_ARCH: YES
+        Release:
+          ONLY_ACTIVE_ARCH: NO
+          ARCHS: [arm64, x86_64]
+    dependencies:
+      - sdk: AppKit.framework
+schemes:
+  ArcRelay:
+    build:
+      targets:
+        ArcRelay: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

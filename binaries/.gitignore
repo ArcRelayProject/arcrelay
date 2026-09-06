@@ -1,0 +1,4 @@
+*
+!.gitignore
+!macos-share/
+!windows-share/

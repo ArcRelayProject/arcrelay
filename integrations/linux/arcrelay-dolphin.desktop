@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/octet-stream;image/*;audio/*;video/*;text/*;application/pdf;application/zip;
+Actions=ArcRelayShare;
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Submenu=ArcRelay
+X-KDE-Submenu[zh_CN]=ArcRelay
+
+[Desktop Action ArcRelayShare]
+Name=Share with ArcRelay
+Name[zh_CN]=通过 ArcRelay 分享
+Icon=arcrelay-desktop
+Exec="@ARCRELAY_EXE@" --arcrelay-share-source linux-file-manager --arcrelay-share %F

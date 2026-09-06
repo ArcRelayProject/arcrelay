@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="relay" x1="328" y1="608" x2="696" y2="326" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE" />
+      <stop offset="0.48" stop-color="#2F9BFF" />
+      <stop offset="1" stop-color="#6D4AFF" />
+    </linearGradient>
+  </defs>
+  <path d="M330 607C354 430 478 315 694 329" fill="none" stroke="url(#relay)" stroke-linecap="round" stroke-width="82" />
+</svg>

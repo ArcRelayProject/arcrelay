@@ -1,0 +1,8 @@
+@import "./fonts.css";
+@import "./styles/base.css";
+@import "./styles/privacy.css";
+@import "./styles/actions.css";
+@import "./styles/settings.css";
+@import "./styles/advanced-settings.css";
+@import "./styles/action-editor.css";
+@import "./styles/responsive.css";

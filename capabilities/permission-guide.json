@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "permission-guide",
+  "description": "Permissions required by the Accessibility permission guide window",
+  "windows": ["permission-guide"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "drag:default"
+  ]
+}

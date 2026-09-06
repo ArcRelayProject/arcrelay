@@ -1,0 +1,10 @@
+[Nemo Action]
+Name=Share with ArcRelay
+Name[zh_CN]=通过 ArcRelay 分享
+Comment=Send selected files to a nearby device
+Comment[zh_CN]=将所选文件发送到附近设备
+Exec="@ARCRELAY_EXE@" --arcrelay-share-source linux-file-manager --arcrelay-share %F
+Icon-Name=arcrelay-desktop
+Selection=notnone
+Extensions=any;
+Dependencies=arcrelay-desktop;

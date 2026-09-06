@@ -1,0 +1,458 @@
+@media (max-width: 1240px) {
+  .window-frame {
+    --sidebar-width: 184px;
+    --detail-panel-width: 286px;
+    --page-inline: 20px;
+  }
+
+  .actions-content {
+    padding-inline: var(--page-inline);
+  }
+
+  .primary-nav {
+    gap: 6px;
+    margin-top: 22px;
+  }
+
+  .primary-nav button {
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .sidebar-status {
+    gap: 15px;
+    font-size: 13px;
+  }
+
+  .page-header {
+    gap: 16px;
+  }
+
+  .actions-header {
+    gap: 14px;
+    padding-block: 18px 15px;
+  }
+
+  .actions-title-row,
+  .actions-toolbar {
+    gap: 12px;
+  }
+
+  .actions-title-copy p {
+    display: none;
+  }
+
+  .actions-toolbar .search-box {
+    min-width: 170px;
+  }
+
+  .utility-actions .secondary-button {
+    padding-inline: 11px;
+  }
+
+  .table-heading,
+  .action-row {
+    grid-template-columns: minmax(174px, 1.4fr) minmax(88px, 0.72fr) minmax(68px, 0.58fr) 36px;
+    column-gap: 14px;
+  }
+
+  .action-row {
+    min-height: 72px;
+    padding-inline: 14px;
+  }
+
+  .action-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .action-name-cell strong {
+    font-size: 14px;
+  }
+
+  .action-name-cell small,
+  .muted-cell,
+  .shortcut-cell {
+    font-size: 12px;
+  }
+
+  .run-icon-button,
+  .icon-danger-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .table-heading span:nth-child(4),
+  .action-row .shortcut-cell {
+    display: none;
+  }
+
+  .two-column-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1320px) {
+  .notification-heading,
+  .notification-row {
+    grid-template-columns: minmax(220px, 1.65fr) minmax(105px, 0.72fr) minmax(72px, 0.5fr) 60px;
+    column-gap: 14px;
+    padding-inline: 16px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .window-frame {
+    --detail-panel-width: 272px;
+  }
+
+  .actions-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions-toolbar .search-box {
+    flex-basis: auto;
+    max-width: none;
+  }
+
+  .utility-actions {
+    justify-content: flex-end;
+  }
+
+  .table-heading,
+  .action-row {
+    grid-template-columns: minmax(174px, 1fr) minmax(70px, 0.45fr) 36px;
+  }
+
+  .table-heading span:nth-child(2),
+  .action-row > .muted-cell:nth-child(2),
+  .table-heading span:nth-child(4),
+  .action-row .shortcut-cell {
+    display: none;
+  }
+
+  .device-master-detail {
+    grid-template-columns: 238px minmax(0, 1fr);
+  }
+
+  .device-inspector {
+    padding-inline: 25px;
+  }
+
+  .add-device-sheet-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .add-device-discovery {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-height: 760px) {
+  .window-frame {
+    --page-header-height: 84px;
+    --page-title-size: 25px;
+    --detail-header-height: 58px;
+  }
+
+  .sidebar {
+    padding-block: 12px 14px;
+  }
+
+  .primary-nav {
+    margin-top: 18px;
+  }
+
+  .primary-nav button {
+    height: 44px;
+  }
+
+  .sidebar-status {
+    gap: 11px;
+    padding-top: 15px;
+  }
+
+  .actions-header {
+    gap: 12px;
+    padding-block: 15px 13px;
+  }
+
+  .actions-scroll {
+    padding-top: 13px;
+  }
+
+  .action-row {
+    min-height: 68px;
+  }
+
+  .inspector-hero {
+    margin: 12px;
+    padding: 14px;
+  }
+
+  .inspector-section {
+    margin-inline: 12px;
+    padding: 15px;
+  }
+
+  .action-inspector-details {
+    margin-inline: 12px;
+  }
+
+  .action-inspector-section {
+    padding-block: 15px 17px;
+  }
+
+  .inspector-footer {
+    padding: 11px 12px 12px;
+  }
+
+  .device-inspector .inspector-section {
+    min-height: 66px;
+    margin-inline: 0;
+    padding: 0 2px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .workflow-editor-grid {
+    grid-template-columns: 168px minmax(380px, 1fr) var(--detail-panel-width);
+  }
+
+  .workflow-list-row {
+    grid-template-columns: 44px minmax(220px, 1fr) auto;
+  }
+
+  .workflow-list-run {
+    display: none;
+  }
+
+  .settings-page {
+    padding-inline: var(--page-inline);
+  }
+
+  .device-table-heading,
+  .device-table-row {
+    grid-template-columns: minmax(190px, 1.5fr) minmax(104px, 0.82fr) minmax(72px, 0.58fr) 64px;
+  }
+
+  .device-table-heading span:nth-child(2),
+  .device-table-row > span:nth-child(2),
+  .device-table-heading span:nth-child(4),
+  .device-table-row > span:nth-child(4) {
+    display: none;
+  }
+
+  .settings-pairing-banner {
+    grid-template-columns: auto minmax(190px, 1fr) minmax(138px, auto);
+  }
+
+  .settings-pairing-banner .pairing-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 940px) {
+  .connection-status-strip {
+    gap: 13px;
+  }
+
+  .status-separator {
+    display: none;
+  }
+
+  .connection-support-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-tabs {
+    gap: 22px;
+  }
+
+  .settings-pairing-banner {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .pairing-code-block {
+    grid-column: 2;
+    padding: 12px 0 0;
+    border-top: 1px solid #dcddf0;
+    border-left: 0;
+  }
+
+  .desktop-discovery-panel {
+    align-items: flex-start;
+  }
+
+  .consumer-connection-hero {
+    grid-template-columns: 42px minmax(0, 1fr);
+    padding-block: 16px;
+  }
+
+  .consumer-connection-hero .add-device-button {
+    grid-column: 2;
+    justify-content: center;
+    justify-self: start;
+  }
+
+  .add-device-guide {
+    grid-template-columns: 1fr;
+    padding: 15px;
+  }
+
+  .add-device-guide-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .add-device-guide-header > small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .connection-method-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .device-consumer-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .device-consumer-state {
+    grid-column: 1;
+    padding-left: 48px;
+  }
+
+  .device-consumer-row > .device-row-actions {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .advanced-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-status-grid > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .advanced-status-grid > div:last-child {
+    border-bottom: 0;
+  }
+
+  .device-master-detail {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .device-inspector {
+    padding: 25px 20px 20px;
+  }
+
+  .device-connection-facts {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .add-device-manual {
+    grid-template-columns: minmax(160px, 1fr) 110px auto;
+  }
+
+}
+
+@media (max-width: 760px) {
+  .connection-toolbar {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .device-master-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .device-master-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .device-master-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .add-device-manual {
+    grid-template-columns: 1fr;
+  }
+
+  .add-device-manual .field-error {
+    grid-column: 1;
+  }
+}
+
+/* Localized navigation needs room for words as well as CJK labels. */
+@media (min-width: 921px) and (max-width: 1280px) {
+  .window-frame { --sidebar-width: 220px; }
+}
+.primary-nav button {
+  min-width: 0;
+  min-height: 44px;
+  height: auto;
+  padding: 11px 12px;
+  gap: 10px;
+  line-height: 1.3;
+}
+.primary-nav button > svg { flex: 0 0 auto; }
+.primary-nav button > span:not(.nav-count) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.primary-nav .nav-count { flex: 0 0 auto; margin-left: auto; }
+.settings-tabs {
+  gap: clamp(12px, 2vw, 24px);
+  height: auto;
+  flex-wrap: wrap;
+}
+.settings-tabs button { min-height: 42px; }
+.settings-row .row-copy { min-width: 0; overflow-wrap: anywhere; }
+.settings-row .row-icon,
+.settings-row .switch-control { flex-shrink: 0; }
+.setting-field-row .app-select-trigger { max-width: min(220px, 38%); }
+
+.setting-field-row .device-name-input {
+  width: 190px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.notification-inspector .inspector-section {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+}
+
+.notification-inspector .detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
+}
+
+.notification-inspector .detail-list dd {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.notification-footer button {
+  min-width: 0;
+  height: auto;
+  min-height: 42px;
+  padding: 9px;
+  line-height: 1.3;
+}
+
+.notification-footer button svg { flex-shrink: 0; }

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Share with ArcRelay
+Name[zh_CN]=通过 ArcRelay 分享
+Comment=Send selected files to a nearby device
+Comment[zh_CN]=将所选文件发送到附近设备
+Icon=arcrelay-desktop
+NoDisplay=true
+Terminal=false
+Exec="@ARCRELAY_EXE@" --arcrelay-share-source linux-file-manager --arcrelay-share %F
+MimeType=application/octet-stream;image/*;audio/*;video/*;text/*;application/pdf;application/zip;
+StartupNotify=true
+Categories=Network;Utility;

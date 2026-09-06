@@ -1,0 +1,123 @@
+[package]
+name = "arcrelay-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+arcrelay-content = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-content.git", rev = "a4b00f20f1e03c2905abe9bae36c601fb7683e1c" }
+arcrelay-automation = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-automation.git", rev = "1487b7f0759d6bd0eff6683ce90f540dc208f97f", features = ["schema"] }
+tokio-util = "0.7"
+chrono = { version = "0.4", features = ["serde"] }
+iana-time-zone = "0.1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+arcrelay-desktop-ipc = { path = "ipc-macros" }
+ts-rs = { version = "12", features = ["serde-json-impl", "chrono-impl", "uuid-impl", "no-serde-warnings"] }
+notify = "8"
+notify-rust = "4.18.0"
+rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "e4a4eda4e9cc8c3d823e94b0e05f2aa4860c5d25" }
+arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "a1ecfd3ba798b3fee97ec298289363850af5b702" }
+arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "4b792e690b77475a6f1aede4b21824a486d1044d" }
+arcrelay-network = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-network.git", rev = "45778f0595571be3cd6d7bfc1657d71e0ba9d8b1" }
+arcrelay-peer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-peer.git", rev = "739e41c49020cf19f0d490c64143e68e995aef83" }
+arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "8428b3172090c2d13446ba52ad38c672be6ec287" }
+arcrelay-print = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-print.git", rev = "9117b7d357fef2632a9e5226a4a0fd02b0271189" }
+arcrelay-transfer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transfer.git", rev = "a202d3cb3ea85269925ce26fea60b524a6baf287" }
+arcrelay-transport = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transport.git", rev = "16305821fea3778e3fc544f0e57eb3b5b51fec11" }
+arcrelay-wire = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-wire.git", rev = "ac143db0e09039d7eeaf211f1399141086716533" }
+arcrelay-web-gateway = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-web-gateway.git", rev = "946ae378a36aa7a5d679a4c5ed1ecf7221819134" }
+async-trait = "0.1"
+tauri = { version = "2.11.5", features = ["tray-icon", "image-png", "macos-private-api", "protocol-asset"] }
+tauri-plugin-global-shortcut = "2.3.2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-notification = "2.3.3"
+tauri-plugin-drag = "2.1.1"
+tauri-plugin-dialog = "2.6.0"
+tauri-plugin-updater = "2.10.1"
+tokio = { version = "1", features = ["fs", "io-util", "io-std", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-appender = "0.2.5"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+hostname = "0.4"
+sys-locale = "0.3.2"
+dirs = "6"
+fs2 = "0.4"
+libc = "0.2"
+uuid = { version = "1", features = ["v4"] }
+app-info = "0.1.1"
+base64 = "0.22"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+rmcp = { version = "3.1.2", features = ["macros", "schemars", "transport-streamable-http-server"] }
+schemars = "1.2"
+shellexpand = "3"
+roxmltree = "0.20"
+rfd = { version = "0.16.0", default-features = false, features = ["common-controls-v6", "tokio", "xdg-portal"] }
+prost = "0.13"
+quinn = { version = "0.11.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rand = "0.8"
+qrcode = "0.14"
+sha2 = "0.10"
+thiserror = "2"
+zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+core-foundation = "0.10"
+core-graphics = { version = "0.24", features = ["highsierra"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSFont", "NSGraphics", "NSImage", "NSImageView", "NSPanel", "NSPasteboard", "NSRunningApplication", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "NSWorkspace", "block2", "libc", "objc2-core-graphics", "objc2-quartz-core"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "SMErrors", "objc2", "objc2-foundation"] }
+tauri-nspanel = { version = "2.1.0", git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+sysinfo = "0.33"
+windows = { version = "0.61", features = [
+    "Win32_Devices_Display",
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Pointer",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.61"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+shell-words = "1.1"
+x11rb = "0.13"
+gdk = "0.18"
+gtk = "0.18"
+
+[build-dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+heck = "0.5"
+tauri-build = { version = "2.6.3", features = [] }
+
+[dev-dependencies]
+tempfile = "3"
