@@ -87,7 +87,7 @@ function setVersion(next) {
   );
 
   const cargoLockPattern = new RegExp(
-    `(name = "arcrelay-desktop"\\nversion = ")${previous.replaceAll(".", "\\.")}(" )?`,
+    `(name = "arcrelay-desktop"\\r?\\nversion = ")${previous.replaceAll(".", "\\.")}(" )?`,
   );
   replace(
     "Cargo.lock",
