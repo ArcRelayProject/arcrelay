@@ -90,6 +90,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ needs.metadata.outputs.tag }}
+          releaseCommitish: ${{ needs.metadata.outputs.commit }}
           releaseName: ArcRelay Test ${{ needs.metadata.outputs.tag }}
           releaseBody: |
             Automated test build from `${{ needs.metadata.outputs.short_commit }}` on `main`.
