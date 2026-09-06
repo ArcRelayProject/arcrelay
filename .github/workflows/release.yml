@@ -107,14 +107,23 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
         run: |
-          app_path="$(find target -type d -path '*/release/bundle/macos/ArcRelay.app' | head -n 1)"
           dmg_path="$(find target -type f -path '*/release/bundle/dmg/*.dmg' | head -n 1)"
-          test -n "$app_path"
           test -n "$dmg_path"
+          codesign --verify --strict --verbose=4 "$dmg_path"
+
+          mount_dir="$(mktemp -d)"
+          cleanup() {
+            hdiutil detach "$mount_dir"
+            rmdir "$mount_dir"
+          }
+          trap cleanup EXIT
+          hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_dir"
+          app_path="$mount_dir/ArcRelay.app"
+          test -d "$app_path"
           codesign --verify --deep --strict --verbose=4 "$app_path"
           codesign -d --verbose=4 "$app_path" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
-          xcrun stapler validate "$dmg_path"
-          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+          xcrun stapler validate "$app_path"
+          spctl --assess --type execute --verbose=4 "$app_path"
       - name: Remove temporary Apple signing keychain
         if: always() && matrix.platform == 'macos-15'
         run: scripts/cleanup-apple-signing-certificate.sh
