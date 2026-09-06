@@ -1,4 +1,4 @@
-# ArcRelay Desktop
+# ArcRelay
 
 ArcRelay Desktop is the open-source desktop client for ArcRelay, a local-first
 device collaboration system. It provides clipboard sharing, nearby file
@@ -7,6 +7,10 @@ system integration.
 
 The official ArcRelay mobile application is distributed separately and its
 source code is not included in this repository.
+
+[Download test builds](https://github.com/ArcRelayProject/arcrelay/releases) ·
+[Report a bug](https://github.com/ArcRelayProject/arcrelay/issues/new) ·
+[Read the security policy](SECURITY.md)
 
 ## Development
 
@@ -70,5 +74,5 @@ Source code in this repository is licensed under the GNU Affero General Public
 License, version 3 only. See [LICENSE](LICENSE).
 
 The ArcRelay name, logos, and other brand assets are not granted under the
-software license. See the project-level trademark policy before distributing a
+software license. See [TRADEMARKS.md](TRADEMARKS.md) before distributing a
 modified build under ArcRelay branding.
