@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateManifest, resolveRelease } from './sniptra-release.mjs';
+import { validateManifest, resolveRelease, archiveExtractor } from './sniptra-release.mjs';
 const tag = 'v0.1.0-ci.16';
 function manifest() {
   return { schema_version: 1, protocol_version: 1, release: tag, assets: Object.fromEntries(
@@ -36,4 +36,10 @@ test('skips incompatible releases, resolves once, and rejects incompatible pins'
     assert.equal(calls.length, 3);
     await assert.rejects(resolveRelease(tag), /incompatible/);
   } finally { globalThis.fetch = oldFetch; }
+});
+
+test('Windows extraction uses native bsdtar, independent of Git Bash PATH', () => {
+  assert.equal(archiveExtractor('win32', 'C:\\Windows'), 'C:\\Windows\\System32\\tar.exe');
+  assert.equal(archiveExtractor('darwin'), 'tar');
+  assert.throws(() => archiveExtractor('win32', ''), /SystemRoot/);
 });

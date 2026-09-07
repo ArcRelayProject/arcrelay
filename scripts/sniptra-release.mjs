@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 const repository = 'ArcRelayProject/sniptra';
 const api = `https://api.github.com/repos/${repository}`;
 const platforms = ['macos-universal', 'windows-x86_64'];
+export function archiveExtractor(platform = process.platform, systemRoot = process.env.SystemRoot) {
+  if (platform !== 'win32') return 'tar';
+  if (!systemRoot) throw new Error('Windows SystemRoot is unavailable');
+  return path.win32.join(systemRoot, 'System32', 'tar.exe');
+}
 export function validateManifest(m, tag) {
   if (m.schema_version !== 1 || m.protocol_version !== 1 || m.release !== tag ||
       !/^v\d+\.\d+\.\d+-ci\.\d+$/.test(tag)) throw new Error('Incompatible Sniptra manifest');
@@ -69,7 +74,7 @@ async function main() {
     // The verified official archive has a fixed allowlist. Extract only these names.
     const ext = platform.startsWith('windows') ? '.exe' : '';
     const names = [`sniptra${ext}`, `sniptra-ocr-worker${ext}`, 'integration-info.json', 'SHA256SUMS.txt', 'BINARY-LICENSE.txt', 'README.md'];
-    execFileSync('tar', ['-xf', archive, '-C', directory, ...names], { stdio: 'inherit' });
+    execFileSync(archiveExtractor(), ['-xf', 'component.zip', ...names], { cwd: directory, stdio: 'inherit' });
     if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV,
       `SNIPTRA_ARTIFACT_DIR=${directory}\nSNIPTRA_SIDECAR_TARGET=${target}\nARCRELAY_REQUIRE_SNIPTRA=1\n`);
     console.log(`Component directory: ${directory}`);
