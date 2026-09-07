@@ -126,6 +126,7 @@ function verifyChecksums(directory, expectedNames) {
     if (!line.trim()) continue;
     const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
     if (!match) throw new Error(`Invalid checksum entry: ${line}`);
+    if (path.basename(match[2]) !== match[2] || match[2].includes("\\")) throw new Error("Invalid checksum filename");
     const file = path.join(directory, match[2]);
     const actual = createHash("sha256").update(readFileSync(file)).digest("hex");
     if (actual.toLowerCase() !== match[1].toLowerCase()) {
@@ -152,6 +153,23 @@ if (artifactDirectory) {
   ]);
   if (process.platform !== "win32") chmodSync(sniptra, 0o755);
   const executableInfo = verifyIntegrationExecutable(sniptra);
+  if (process.platform !== "win32") chmodSync(worker, 0o755);
+  const handshake = execFileSync(worker, [], {
+    input: '{"type":"hello","payload":{"protocol_version":1}}\n{"type":"shutdown"}\n',
+    encoding: "utf8", timeout: 30000,
+  });
+  const ready = JSON.parse(handshake.trim().split(/\r?\n/)[0]);
+  if (ready.type !== "ready" || ready.payload?.protocol_version !== 1) {
+    throw new Error("Sniptra OCR worker protocol startup failed");
+  }
+  const notices = path.join(binariesDirectory, "sniptra-notices");
+  mkdirSync(notices, { recursive: true });
+  for (const name of ["BINARY-LICENSE.txt", "README.md"]) {
+    // Older Jenkins integration directories predate bundled notices. The official
+    // GitHub downloader separately requires these entries in its verified ZIP.
+    const notice = path.join(artifactDirectory, name);
+    if (existsSync(notice)) copyFileSync(notice, path.join(notices, name));
+  }
   const archivedInfo = JSON.parse(readFileSync(integrationInfo, "utf8").replace(/^\uFEFF/, ""));
   if (JSON.stringify(executableInfo) !== JSON.stringify(archivedInfo)) {
     throw new Error("Sniptra integration metadata does not match the executable");

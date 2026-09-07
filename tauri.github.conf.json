@@ -5,6 +5,13 @@
     "macOS": {
       "hardenedRuntime": true,
       "entitlements": "gen/apple-macos/ArcRelay/ArcRelay.entitlements"
+    },
+    "externalBin": [
+      "binaries/sniptra",
+      "binaries/sniptra-ocr-worker"
+    ],
+    "resources": {
+      "binaries/sniptra-notices/": "sniptra-notices/"
     }
   }
 }
