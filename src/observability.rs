@@ -379,6 +379,7 @@ pub fn diagnostics_directory() -> PathBuf {
     log_directory().join("diagnostics")
 }
 
+#[cfg(target_os = "macos")]
 pub fn ensure_diagnostics_directory() -> io::Result<PathBuf> {
     let directory = diagnostics_directory();
     fs::create_dir_all(&directory)?;
