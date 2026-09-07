@@ -11,6 +11,60 @@ pub fn ensure_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
     ensure_clipboard_window_on_main(app)
 }
 
+pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        dispatch_appkit(app, "destroy clipboard window", |app| {
+            destroy_clipboard_window_on_main(&app)
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    destroy_clipboard_window_on_main(app)
+}
+
+fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    debug_assert!(objc2::MainThreadMarker::new().is_some());
+    CREATING_CLIPBOARD_WINDOW.store(false, Ordering::SeqCst);
+    CLIPBOARD_WINDOW_PINNED.store(false, Ordering::SeqCst);
+    CLIPBOARD_CONTEXT_MENU_OPEN.store(false, Ordering::SeqCst);
+    CLIPBOARD_SIZE_SAVE_REVISION.fetch_add(1, Ordering::SeqCst);
+    CLIPBOARD_SCALE_RESTORE_REVISION.fetch_add(1, Ordering::SeqCst);
+    #[cfg(target_os = "macos")]
+    stop_clipboard_outside_click_monitor();
+
+    let window = app.get_webview_window(CLIPBOARD_WINDOW_LABEL);
+    if window.is_some() {
+        if let Ok(size) = capture_clipboard_window_size(app) {
+            if let Err(error) = save_clipboard_window_size_value(&size) {
+                tracing::warn!(%error, "Failed to save clipboard window size before destroying it");
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(panel) = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
+        // Remove the strong panel-manager reference and restore the original
+        // NSWindow class before Tauri releases the WebView and native window.
+        let _ = panel.to_window();
+    }
+    crate::commands::clear_clipboard_thumbnail_cache();
+    if let Some(state) = app.try_state::<crate::backend::DesktopState>() {
+        state.text_selection.clear();
+    }
+    if let Some(window) = window {
+        window.destroy()?;
+    }
+    Ok(())
+}
+
+pub fn sync_clipboard_window(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
+    if enabled {
+        ensure_clipboard_window(app)
+    } else {
+        destroy_clipboard_window(app)
+    }
+}
+
 fn ensure_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());

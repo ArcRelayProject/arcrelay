@@ -162,6 +162,15 @@ pub async fn update(
     state
         .screenshot
         .set_enabled(next.enhanced_screenshot_enabled);
+    if previous.clipboard_enabled != next.clipboard_enabled {
+        if let Err(error) = crate::windowing::sync_clipboard_window(app, next.clipboard_enabled) {
+            tracing::warn!(
+                enabled = next.clipboard_enabled,
+                %error,
+                "could not synchronize clipboard WebView lifecycle"
+            );
+        }
+    }
     if name_changed {
         if let Err(error) = state
             .command_tx
@@ -183,9 +192,6 @@ pub async fn update(
         } else {
             network.discovery().unpublish_web_gateway();
         }
-    }
-    if !next.clipboard_enabled {
-        let _ = crate::windowing::hide_clipboard_window(app);
     }
     if let Err(error) = crate::windowing::refresh_tray_menu(app) {
         tracing::warn!(%error, "could not refresh tray menu");

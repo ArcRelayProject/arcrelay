@@ -333,7 +333,12 @@ fn main() {
             if let Err(error) = system_share::install_linux_user_integrations() {
                 tracing::warn!(%error, "Could not install Linux file-manager share integrations");
             }
-            windowing::ensure_clipboard_window(app.handle())?;
+            let clipboard_enabled = app
+                .state::<backend::DesktopState>()
+                .settings
+                .snapshot()
+                .clipboard_enabled;
+            windowing::sync_clipboard_window(app.handle(), clipboard_enabled)?;
             observability::start_health_reporter();
             hang_watchdog::start(app.handle().clone());
             if let Err(error) = app.global_shortcut().on_shortcut(
