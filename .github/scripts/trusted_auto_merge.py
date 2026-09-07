@@ -56,6 +56,20 @@ def configure(repository, number):
     gh("pr", "merge", str(number), "--repo", repository, "--auto", "--squash", "--match-head-commit", sha)
     print(f"PR #{number}: protected auto-merge requested for {sha}.")
 
+    # Merges performed with GITHUB_TOKEN do not emit a push event that starts
+    # another workflow. Explicitly dispatch main CI once this invocation has
+    # completed the merge so the workflow_run-based Test release can continue.
+    merged_pr = json.loads(gh("api", endpoint))
+    if merged_pr.get("merged"):
+        gh(
+            "api",
+            f"repos/{repository}/actions/workflows/ci.yml/dispatches",
+            "--method",
+            "POST",
+            payload={"ref": "main"},
+        )
+        print(f"PR #{number}: dispatched main CI for merge {merged_pr['merge_commit_sha']}.")
+
 
 def main():
     repository = os.environ["GITHUB_REPOSITORY"]

@@ -31,7 +31,8 @@ class TrustedAutoMergeTests(unittest.TestCase):
     @patch.object(policy, "gh")
     def test_approval_and_auto_merge_are_bound_to_same_head_without_admin_bypass(self, gh):
         import json
-        gh.side_effect = [json.dumps(self.pr), "[]", "{}", ""]
+        merged = {"merged": True, "merge_commit_sha": "c" * 40}
+        gh.side_effect = [json.dumps(self.pr), "[]", "{}", "", json.dumps(merged), ""]
         policy.configure(self.repo, 12)
         calls = gh.call_args_list
         self.assertEqual(calls[2].kwargs["payload"]["commit_id"], self.pr["head"]["sha"])
@@ -39,14 +40,26 @@ class TrustedAutoMergeTests(unittest.TestCase):
         self.assertIn("--auto", calls[3].args)
         self.assertNotIn("--admin", calls[3].args)
         self.assertEqual(calls[3].args[-2:], ("--match-head-commit", self.pr["head"]["sha"]))
+        self.assertEqual(calls[5].args[1], "repos/ArcRelayProject/arcrelay/actions/workflows/ci.yml/dispatches")
+        self.assertEqual(calls[5].kwargs["payload"], {"ref": "main"})
+
+    @patch.object(policy, "gh")
+    def test_main_ci_is_not_dispatched_while_auto_merge_is_pending(self, gh):
+        import json
+        gh.side_effect = [json.dumps(self.pr), "[]", "{}", "", json.dumps({"merged": False})]
+        policy.configure(self.repo, 12)
+        self.assertEqual(gh.call_count, 5)
+        self.assertFalse(any("dispatches" in " ".join(call.args) for call in gh.call_args_list))
 
     @patch.object(policy, "gh")
     def test_current_approval_is_reused_but_stale_approval_is_replaced(self, gh):
         import json
-        for commit, expected_calls in [(self.pr["head"]["sha"], 3), ("b" * 40, 4)]:
+        for commit, expected_calls in [(self.pr["head"]["sha"], 5), ("b" * 40, 6)]:
             gh.reset_mock()
             review = {"user": {"login": "github-actions[bot]"}, "state": "APPROVED", "commit_id": commit}
-            gh.side_effect = [json.dumps(self.pr), json.dumps([review]), "", ""]
+            merged = {"merged": True, "merge_commit_sha": "c" * 40}
+            approval = [] if commit == self.pr["head"]["sha"] else [""]
+            gh.side_effect = [json.dumps(self.pr), json.dumps([review]), *approval, "", json.dumps(merged), ""]
             policy.configure(self.repo, 12)
             self.assertEqual(gh.call_count, expected_calls)
 
