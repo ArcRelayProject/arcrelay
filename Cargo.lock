@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=7bc7be44e0aca2630b5edd3af201f7bd5bf4b1ea#7bc7be44e0aca2630b5edd3af201f7bd5bf4b1ea"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=8fb7e2289725490ff492a10e01e3336924d53a2b#8fb7e2289725490ff492a10e01e3336924d53a2b"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -350,7 +350,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-files"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=6e3a8d27476b14e04b407c9033be18c78465b0aa#6e3a8d27476b14e04b407c9033be18c78465b0aa"
+source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=b9e94d7eb91a5c6ca3995783759e96241b5b00dc#b9e94d7eb91a5c6ca3995783759e96241b5b00dc"
 dependencies = [
  "argon2",
  "fs2",
@@ -372,7 +372,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=756e7c69768971436082c9b263257eba46fcf6f9#756e7c69768971436082c9b263257eba46fcf6f9"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=b8bb71eafabed067dff03820349db9e4df807a63#b8bb71eafabed067dff03820349db9e4df807a63"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",
@@ -391,7 +391,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-network"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=fb17837077b60a0e44181e6b7eefbaaa3d3262bf#fb17837077b60a0e44181e6b7eefbaaa3d3262bf"
+source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=5aea92a32b77a950d13982597a5d611be2574924#5aea92a32b77a950d13982597a5d611be2574924"
 dependencies = [
  "arcrelay-peer",
  "arcrelay-transport",
@@ -433,7 +433,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-print"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=60247dea1c8470c9d6710f520d82d55ed523b8ab#60247dea1c8470c9d6710f520d82d55ed523b8ab"
+source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=95548ad3771af8859349c71a22f0e41c2c81a588#95548ad3771af8859349c71a22f0e41c2c81a588"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -463,7 +463,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=c444d4cade8789b56ca24f60a43a0794838a8077#c444d4cade8789b56ca24f60a43a0794838a8077"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=874e51d119e9d85d54e13f929b29ba0fc6b9619e#874e51d119e9d85d54e13f929b29ba0fc6b9619e"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -490,7 +490,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=cd2f19716f4a8363576bdc5c36972db3cae1bedf#cd2f19716f4a8363576bdc5c36972db3cae1bedf"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=713309c13e6739e2f6cd51f33c9052fc83c4e23c#713309c13e6739e2f6cd51f33c9052fc83c4e23c"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -530,7 +530,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-web-gateway"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-web-gateway.git?rev=455aeb7d44b01b81b9c48019c1efbe980fe4a33f#455aeb7d44b01b81b9c48019c1efbe980fe4a33f"
+source = "git+https://github.com/ArcRelayProject/arcrelay-web-gateway.git?rev=3cb7802caf61d722e638d9f797e5b34dd4a6d4cf#3cb7802caf61d722e638d9f797e5b34dd4a6d4cf"
 dependencies = [
  "arcrelay-files",
  "axum",
@@ -555,7 +555,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-wire"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=84492d4ee1486f532e98e11aadcd6b09f414e6c0#84492d4ee1486f532e98e11aadcd6b09f414e6c0"
+source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=486cb5336779e8652e9f991d523bd62d06995cea#486cb5336779e8652e9f991d523bd62d06995cea"
 dependencies = [
  "bytes",
  "prost",

@@ -18,17 +18,17 @@ ts-rs = { version = "12", features = ["serde-json-impl", "chrono-impl", "uuid-im
 notify = "8"
 notify-rust = "4.18.0"
 rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
-arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "7bc7be44e0aca2630b5edd3af201f7bd5bf4b1ea" }
-arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "6e3a8d27476b14e04b407c9033be18c78465b0aa" }
-arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "756e7c69768971436082c9b263257eba46fcf6f9" }
-arcrelay-network = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-network.git", rev = "fb17837077b60a0e44181e6b7eefbaaa3d3262bf" }
+arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "8fb7e2289725490ff492a10e01e3336924d53a2b" }
+arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "b9e94d7eb91a5c6ca3995783759e96241b5b00dc" }
+arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "b8bb71eafabed067dff03820349db9e4df807a63" }
+arcrelay-network = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-network.git", rev = "5aea92a32b77a950d13982597a5d611be2574924" }
 arcrelay-peer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-peer.git", rev = "739e41c49020cf19f0d490c64143e68e995aef83" }
-arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "c444d4cade8789b56ca24f60a43a0794838a8077" }
-arcrelay-print = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-print.git", rev = "60247dea1c8470c9d6710f520d82d55ed523b8ab" }
-arcrelay-transfer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transfer.git", rev = "cd2f19716f4a8363576bdc5c36972db3cae1bedf" }
+arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "874e51d119e9d85d54e13f929b29ba0fc6b9619e" }
+arcrelay-print = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-print.git", rev = "95548ad3771af8859349c71a22f0e41c2c81a588" }
+arcrelay-transfer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transfer.git", rev = "713309c13e6739e2f6cd51f33c9052fc83c4e23c" }
 arcrelay-transport = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transport.git", rev = "16305821fea3778e3fc544f0e57eb3b5b51fec11" }
-arcrelay-wire = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-wire.git", rev = "84492d4ee1486f532e98e11aadcd6b09f414e6c0" }
-arcrelay-web-gateway = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-web-gateway.git", rev = "455aeb7d44b01b81b9c48019c1efbe980fe4a33f" }
+arcrelay-wire = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-wire.git", rev = "486cb5336779e8652e9f991d523bd62d06995cea" }
+arcrelay-web-gateway = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-web-gateway.git", rev = "3cb7802caf61d722e638d9f797e5b34dd4a6d4cf" }
 async-trait = "0.1"
 tauri = { version = "2.11.5", features = ["tray-icon", "image-png", "macos-private-api", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2.3.2"
