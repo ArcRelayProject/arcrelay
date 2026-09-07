@@ -35,6 +35,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: npm run version:check
       - name: Compile macOS Share Extension
         run: >-
