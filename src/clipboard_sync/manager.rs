@@ -115,6 +115,45 @@ impl ClipboardSyncManager {
         devices
     }
 
+    pub async fn upload_system_file(
+        &self,
+        peer_id: &str,
+        request: RemoteFileRequest,
+        source: PathBuf,
+    ) -> RemoteFileResult<RemoteFileResponse> {
+        match self
+            .remote_file_route(peer_id)
+            .await
+            .map_err(|error| RemoteFileError::new(RemoteFileErrorCode::Unavailable, error))?
+        {
+            RemoteFileRoute::Managed(sender) => {
+                let (response, receiver) = oneshot::channel();
+                sender
+                    .send(ConnectionCommand::SystemUpload {
+                        request,
+                        source,
+                        response,
+                    })
+                    .await
+                    .map_err(|_| {
+                        RemoteFileError::new(
+                            RemoteFileErrorCode::Unavailable,
+                            "remote device disconnected",
+                        )
+                    })?;
+                receiver.await.map_err(|_| {
+                    RemoteFileError::new(
+                        RemoteFileErrorCode::Unavailable,
+                        "remote save interrupted",
+                    )
+                })?
+            }
+            RemoteFileRoute::Incoming(connection) => {
+                remote_files::upload_system_file(&connection, request, &source).await
+            }
+        }
+    }
+
     pub async fn remote_file_request(
         &self,
         peer_id: &str,
@@ -890,6 +929,13 @@ impl ClipboardSyncManager {
                 command = command_rx.recv() => {
                     let Some(command) = command else { break Ok(()) };
                     match command {
+                        ConnectionCommand::SystemUpload { request, source, response } => {
+                            let connection = connection.clone();
+                            tokio::spawn(async move {
+                                let result = remote_files::upload_system_file(&connection, request, &source).await;
+                                let _ = response.send(result);
+                            });
+                        }
                         ConnectionCommand::Merge(response) => {
                             let result = if self.clipboard.sync_preferences().enabled {
                                 self.merge_peer(

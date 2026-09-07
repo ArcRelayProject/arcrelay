@@ -138,6 +138,18 @@ pub(super) async fn run_backend(
         Some(state.remote_files.clone()),
     ));
     state.clipboard_sync.start();
+    #[cfg(target_os = "macos")]
+    match crate::system_folders::SystemFolders::start(
+        state.clipboard_sync.clone(),
+        config_dir.join("system-folders"),
+    )
+    .await
+    {
+        Ok(folders) => {
+            let _ = state.system_folders.set(folders);
+        }
+        Err(error) => tracing::warn!(%error, "native system folders could not start"),
+    }
 
     let print_notification_state = state.clone();
     let print_notification_app = app.clone();
@@ -818,6 +830,9 @@ pub(super) async fn handle_backend_command(
             state.modules.shutdown().await;
             service.clipboard.shutdown().await;
             state.remote_file_service.shutdown();
+            if let Some(folders) = state.system_folders.get() {
+                folders.shutdown();
+            }
             state.text_selection.clear();
             let _ = service.input_control.release_all().await;
             for peer_id in network.connected_peers().await {

@@ -383,6 +383,11 @@ export const bridge = {
     async setTransferReceivePolicy(peerId: string, automatic: boolean): Promise<TransferSnapshot> {
         return transfersMock.setTransferReceivePolicy(peerId, automatic);
     },
+    async listSystemFolders(): Promise<import('./ipc/generated').SystemFolder[]> { return []; },
+    async addSystemFolder(_peerId: string, _shareId: string): Promise<import('./ipc/generated').SystemFolder> { throw new Error("Finder integration requires the installed macOS app."); },
+    async openSystemFolder(_id: string): Promise<void> {},
+    async removeSystemFolder(_id: string): Promise<void> {},
+    async openSystemFolderRecovery(): Promise<void> {},
     async getRemoteFileState(): Promise<RemoteFileState> {
         return {
             devices: [{ id: "chen-windows", name: "Chen 的 Windows 工作站" }],

@@ -92,6 +92,11 @@ enum ConnectionIntent {
 }
 
 enum ConnectionCommand {
+    SystemUpload {
+        request: RemoteFileRequest,
+        source: PathBuf,
+        response: oneshot::Sender<RemoteFileResult<RemoteFileResponse>>,
+    },
     Merge(oneshot::Sender<Result<usize, String>>),
     RemoteRequest(
         RemoteFileRequest,

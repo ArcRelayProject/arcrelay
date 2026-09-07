@@ -46,6 +46,16 @@ jobs:
           -quiet
           CODE_SIGNING_ALLOWED=NO
           CODE_SIGNING_REQUIRED=NO
+      - name: Compile macOS File Provider Extension
+        run: >-
+          xcodebuild
+          -project gen/apple-macos/ArcRelay.xcodeproj
+          -target ArcRelayFiles
+          -configuration Debug
+          -sdk macosx
+          -quiet
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
 
   windows-share-target:
     runs-on: windows-latest

@@ -35,6 +35,13 @@ assert.equal(
   'binaries/macos-share/ArcRelayShare.appex',
   'The macOS Share Extension must be copied into the application PlugIns directory',
 );
+assert.equal(config.bundle.macOS.files['PlugIns/ArcRelayFiles.appex'], 'binaries/macos-share/ArcRelayFiles.appex');
+const fileProviderInfo = read('gen/apple-macos/ArcRelayFiles/Info.plist').toString('utf8');
+assert.match(fileProviderInfo, /com\.apple\.fileprovider-nonui/);
+assert.match(fileProviderInfo, /FileProviderExtension/);
+const fileProviderEntitlements = read('gen/apple-macos/ArcRelayFiles/ArcRelayFiles.entitlements').toString('utf8');
+assert.match(fileProviderEntitlements, /group\.com\.arcrelay\.shared/);
+assert.match(fileProviderEntitlements, /com\.apple\.security\.network\.client/);
 assert.equal(nsis.installMode, 'currentUser', 'Changing install scope requires an upgrade/migration review');
 assert.equal(config.identifier, 'com.arcrelay.desktop', 'Keep the existing application/data identity');
 

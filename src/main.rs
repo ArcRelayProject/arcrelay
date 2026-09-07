@@ -27,6 +27,7 @@ mod screenshot;
 mod settings;
 mod sound;
 mod startup;
+mod system_folders;
 mod system_share;
 mod windowing;
 
@@ -83,6 +84,11 @@ fn main() {
         .manage(app_update::AppUpdateState::default())
         .manage(Arc::new(gesture_debug::GestureDebugState::default()))
         .invoke_handler(tauri::generate_handler![
+            commands::list_system_folders,
+            commands::add_system_folder,
+            commands::open_system_folder,
+            commands::remove_system_folder,
+            commands::open_system_folder_recovery,
             gesture_debug::get_gesture_debug_snapshot,
             gesture_debug::get_gesture_debug_report,
             gesture_debug::start_gesture_debug_capture,

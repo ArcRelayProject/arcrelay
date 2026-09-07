@@ -1,5 +1,52 @@
 use super::*;
 
+pub(super) async fn upload_system_file(
+    connection: &quinn::Connection,
+    request: RemoteFileRequest,
+    source: &Path,
+) -> RemoteFileResult<RemoteFileResponse> {
+    let RemoteFileRequest::ConditionalUpload { size, .. } = &request else {
+        return Err(RemoteFileError::new(
+            RemoteFileErrorCode::InvalidArgument,
+            "expected a conditional upload",
+        ));
+    };
+    let expected_size = *size;
+    let (mut send, mut recv) = connection
+        .open_bi()
+        .await
+        .map_err(|e| remote_file_unavailable("failed to start save", e))?;
+    send.write_u8(STREAM_KIND_REMOTE_FILES)
+        .await
+        .map_err(|e| remote_file_unavailable("save stream failed", e))?;
+    write_remote_message(&mut send, &request)
+        .await
+        .map_err(|e| remote_file_unavailable("save request failed", e))?;
+    let ready = read_remote_message(&mut recv)
+        .await
+        .map_err(|e| remote_file_unavailable("save rejected", e))?;
+    ensure_remote_file_response(ready)?;
+    let mut input = tokio::fs::File::open(source)
+        .await
+        .map_err(|e| remote_file_unavailable("local save unavailable", e))?;
+    let count = tokio::io::copy(&mut input, &mut send)
+        .await
+        .map_err(|e| remote_file_unavailable("save interrupted", e))?;
+    if count != expected_size {
+        return Err(RemoteFileError::new(
+            RemoteFileErrorCode::Conflict,
+            "local file changed while saving",
+        ));
+    }
+    send.finish()
+        .map_err(|e| remote_file_unavailable("save interrupted", e))?;
+    ensure_remote_file_response(
+        read_remote_message(&mut recv)
+            .await
+            .map_err(|e| remote_file_unavailable("save acknowledgment unavailable", e))?,
+    )
+}
+
 #[derive(Debug)]
 enum LocalUploadItem {
     Directory {

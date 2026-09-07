@@ -60,6 +60,75 @@ impl RemoteFileManager {
 
 #[async_trait::async_trait]
 impl RemoteFileProvider for RemoteFileManager {
+    async fn stat(
+        &self,
+        share_id: &str,
+        path: &str,
+    ) -> RemoteFileResult<(RemoteFileEntry, String)> {
+        self.service
+            .stat(share_id, path)
+            .await
+            .map(|stat| (protocol_entry(stat.entry), stat.revision))
+            .map_err(remote_file_error)
+    }
+
+    async fn move_entry(
+        &self,
+        share_id: &str,
+        source: &str,
+        destination: &str,
+        overwrite: bool,
+        expected: &str,
+    ) -> RemoteFileResult<RemoteFileEntry> {
+        self.service
+            .move_entry(share_id, source, destination, overwrite, expected)
+            .await
+            .map(protocol_entry)
+            .map_err(remote_file_error)
+    }
+
+    async fn conditional_delete(
+        &self,
+        share_id: &str,
+        path: &str,
+        expected: &str,
+        recursive: bool,
+    ) -> RemoteFileResult<()> {
+        self.service
+            .conditional_delete(share_id, path, expected, recursive)
+            .await
+            .map_err(remote_file_error)
+    }
+
+    async fn read_range(
+        &self,
+        share_id: &str,
+        path: &str,
+        offset: u64,
+        length: u32,
+        revision: &str,
+    ) -> RemoteFileResult<Vec<u8>> {
+        self.service
+            .read_range(share_id, path, offset, length, revision)
+            .await
+            .map_err(remote_file_error)
+    }
+
+    async fn commit_system_upload(
+        &self,
+        share_id: &str,
+        path: &str,
+        name: &str,
+        temporary: &Path,
+        expected: &str,
+    ) -> RemoteFileResult<(RemoteFileEntry, String)> {
+        self.service
+            .commit_system_upload(share_id, path, name, temporary, expected)
+            .await
+            .map(|stat| (protocol_entry(stat.entry), stat.revision))
+            .map_err(remote_file_error)
+    }
+
     async fn list_shares(&self) -> RemoteFileResult<Vec<RemoteFileShare>> {
         Ok(self
             .service

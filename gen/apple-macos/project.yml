@@ -63,6 +63,8 @@ targets:
     dependencies:
       - target: ArcRelayShare
         embed: true
+      - target: ArcRelayFiles
+        embed: true
       - sdk: AppKit.framework
       - sdk: CoreGraphics.framework
       - sdk: Metal.framework
@@ -123,6 +125,54 @@ targets:
           ARCHS: [arm64, x86_64]
     dependencies:
       - sdk: AppKit.framework
+  ArcRelayFiles:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: ArcRelayFiles
+        excludes: [Info.plist, ArcRelayFiles.entitlements]
+    info:
+      path: ArcRelayFiles/Info.plist
+      properties:
+        CFBundleDisplayName: ArcRelay Files
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            "127.0.0.1":
+              NSExceptionAllowsInsecureHTTPLoads: true
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleSymbolName: externaldrive.connected.to.line.below
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.fileprovider-nonui
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).FileProviderExtension"
+          NSExtensionFileProviderSupportsEnumeration: true
+          NSExtensionFileProviderDocumentGroup: group.com.arcrelay.shared
+    entitlements:
+      path: ArcRelayFiles/ArcRelayFiles.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups: [group.com.arcrelay.shared]
+    settings:
+      base:
+        PRODUCT_NAME: ArcRelayFiles
+        PRODUCT_BUNDLE_IDENTIFIER: com.arcrelay.desktop.files
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        MARKETING_VERSION: 0.1.2
+        CURRENT_PROJECT_VERSION: 0.1.2
+      configs:
+        Release:
+          ONLY_ACTIVE_ARCH: NO
+          ARCHS: [arm64, x86_64]
+    dependencies:
+      - sdk: FileProvider.framework
+      - sdk: UniformTypeIdentifiers.framework
 schemes:
   ArcRelay:
     build:

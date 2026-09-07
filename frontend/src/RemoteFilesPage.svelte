@@ -15,6 +15,7 @@
   } from "phosphor-svelte";
   import { SubscriptionScope } from "./subscriptions";
   import { bridge } from "./bridge";
+  import SystemFolders from './SystemFolders.svelte';
   import { translate } from "./i18n";
   import {
     showRemoteFileBackgroundMenu,
@@ -886,6 +887,7 @@
     </div>
   </div>
 
+  <SystemFolders peerId={selectedPeerId} shareId={selectedShareId} {language} {notify} />
   {#if pageError}<div class="remote-error" role="alert">{pageError}</div>{/if}
 
   <div class="remote-files-body">
