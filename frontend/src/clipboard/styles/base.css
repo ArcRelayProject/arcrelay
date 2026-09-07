@@ -82,6 +82,21 @@ body {
   user-select: none;
 }
 
+body.clipboard-browser-preview {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--surface);
+}
+
+.clipboard-browser-preview #clipboard-root {
+  /* Keep these in sync with CLIPBOARD_WINDOW_WIDTH/HEIGHT in windowing.rs. */
+  width: min(540px, calc(100vw - 48px));
+  height: min(820px, calc(100dvh - 48px));
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(24, 27, 38, 0.08);
+}
+
 button,
 input,
 textarea {
