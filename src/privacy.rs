@@ -1,4 +1,4 @@
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -140,7 +140,7 @@ struct RuntimeState {
 
 #[derive(Default)]
 struct WindowScanCache {
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(target_os = "macos")]
     identifiers: HashMap<i64, Option<String>>,
 }
 
