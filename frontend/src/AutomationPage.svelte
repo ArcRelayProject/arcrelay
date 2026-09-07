@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "./dismissibleDropdown";
   import AppSelect from "./components/AppSelect.svelte";
   import { translate as uiTranslate, language as uiLanguage } from "./i18n";
   import { onMount, onDestroy, tick } from "svelte";
@@ -641,18 +642,11 @@
 
 <svelte:window
   on:focus={() => !loading && scheduleRefresh()}
-  on:click={(e) => {
-    if (menu && !(e.target as HTMLElement)?.closest(".au-row-menu"))
-      menu = null;
-  }}
   on:beforeunload={(e) => {
     if (dirty) {
       e.preventDefault();
       e.returnValue = "";
     }
-  }}
-  on:keydown={(e) => {
-    if (e.key === "Escape") menu = null;
   }}
 />
 <main
@@ -814,7 +808,7 @@
                         : "停用", $uiLanguage)}</small
                   ></button
                 >
-                <div class="au-row-menu">
+                <div class="au-row-menu" use:dismissibleDropdown={{ open: menu === d.id, close: () => (menu = null) }}>
                   <button
                     class="au-icon"
                     aria-label={uiTranslate(`${d.name} 更多操作`, $uiLanguage)}

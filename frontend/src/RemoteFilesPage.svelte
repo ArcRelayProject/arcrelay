@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "./dismissibleDropdown";
   import { t } from "./localization";
   import { localeFor } from "./localization.ts";
   import { isCommandError } from "./ipc/client";
@@ -807,8 +808,8 @@
   <header class="remote-title-row">
     <div class="remote-title-cluster">
       <h1>{uiTranslate("远程文件", $uiLanguage)}</h1>
-      <div class="device-selector-wrap">
-        <button class:open={deviceMenuOpen} class="device-selector" disabled={devices.length === 0} on:click={() => (deviceMenuOpen = !deviceMenuOpen)}>
+      <div class="device-selector-wrap" use:dismissibleDropdown={{ open: deviceMenuOpen, close: () => (deviceMenuOpen = false) }}>
+        <button class:open={deviceMenuOpen} class="device-selector" aria-expanded={deviceMenuOpen} disabled={devices.length === 0} on:click={() => (deviceMenuOpen = !deviceMenuOpen)}>
           <Monitor size={17} /><span>{uiTranslate(selectedDevice?.name ?? (loading ? "正在查找设备…" : "没有已连接桌面"), $uiLanguage)}</span>
           {#if selectedDevice}<i></i><small>{uiTranslate("在线", $uiLanguage)}</small>{/if}<CaretDown size={13} />
         </button>
@@ -842,9 +843,9 @@
 
     <div class="command-actions">
       <SystemFolders peerId={selectedPeerId} shareId={selectedShareId} {devices} {shares} {language} {notify} />
-      <div class="upload-action-wrap">
+      <div class="upload-action-wrap" use:dismissibleDropdown={{ open: uploadMenuOpen, close: () => (uploadMenuOpen = false) }}>
         <button class="command-button primary-command" disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => pickUpload(false)}><UploadSimple size={17} /><span>{uiTranslate("上传", $uiLanguage)}</span></button>
-        <button class="upload-caret" aria-label={uiTranslate("上传选项", $uiLanguage)} disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => (uploadMenuOpen = !uploadMenuOpen)}><CaretDown size={12} /></button>
+        <button class="upload-caret" aria-expanded={uploadMenuOpen} aria-label={uiTranslate("上传选项", $uiLanguage)} disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => (uploadMenuOpen = !uploadMenuOpen)}><CaretDown size={12} /></button>
         {#if uploadMenuOpen}<div class="compact-menu upload-menu"><button on:click={() => pickUpload(false)}><FileIcon size={16} />{uiTranslate("上传文件", $uiLanguage)}</button><button on:click={() => pickUpload(true)}><FolderOpen size={16} />{uiTranslate("上传文件夹", $uiLanguage)}</button></div>{/if}
       </div>
       <button class="command-button" disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => openFolderDialog()}><FolderSimplePlus size={17} /><span>{uiTranslate("新建文件夹", $uiLanguage)}</span></button>
@@ -853,8 +854,8 @@
         <button class="command-button selection-command" disabled={Boolean(operation)} on:click={downloadSelected}><DownloadSimple size={17} /><span>{uiTranslate("下载", $uiLanguage)}</span></button>
         <button class="command-button selection-command" disabled={selectedEntries.length !== 1 || !selectedShare?.writable || Boolean(operation)} on:click={openRename}><PencilSimple size={17} /><span>{uiTranslate("重命名", $uiLanguage)}</span></button>
       {/if}
-      <div class="more-menu-wrap">
-        <button class="command-icon-button" aria-label={uiTranslate("更多操作", $uiLanguage)} on:click={() => (moreMenuOpen = !moreMenuOpen)}><DotsThree size={20} weight="bold" /></button>
+      <div class="more-menu-wrap" use:dismissibleDropdown={{ open: moreMenuOpen, close: () => (moreMenuOpen = false) }}>
+        <button class="command-icon-button" aria-expanded={moreMenuOpen} aria-label={uiTranslate("更多操作", $uiLanguage)} on:click={() => (moreMenuOpen = !moreMenuOpen)}><DotsThree size={20} weight="bold" /></button>
         {#if moreMenuOpen}
           <div class="compact-menu more-menu">
             <button disabled={!selectedEntries.length} on:click={downloadSelected}><DownloadSimple size={16} />{uiTranslate("下载所选项目", $uiLanguage)}</button>
@@ -867,8 +868,8 @@
     </div>
 
     <div class="display-actions">
-      <div class="sort-wrap">
-        <button class:open={sortMenuOpen} class="sort-button" on:click={() => (sortMenuOpen = !sortMenuOpen)}>
+      <div class="sort-wrap" use:dismissibleDropdown={{ open: sortMenuOpen, close: () => (sortMenuOpen = false) }}>
+        <button class:open={sortMenuOpen} class="sort-button" aria-label={uiTranslate("排序", $uiLanguage)} aria-expanded={sortMenuOpen} on:click={() => (sortMenuOpen = !sortMenuOpen)}>
           {#if sortDirection === "ascending"}<SortAscending size={17} />{:else}<SortDescending size={17} />{/if}<span>{uiTranslate("排序：", $uiLanguage)}{uiTranslate(sortLabel(), $uiLanguage)}</span><CaretDown size={12} />
         </button>
         {#if sortMenuOpen}

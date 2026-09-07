@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "../dismissibleDropdown";
   import { t } from "../localization";
   import { translate as uiTranslate, language as uiLanguage, setLanguage } from "../i18n";
   import { SubscriptionScope } from "../subscriptions";
@@ -1110,11 +1111,6 @@
     event.preventDefault();
   }
 
-  function handleWindowPointerDown(event: PointerEvent) {
-    const target = event.target as HTMLElement;
-    if (labelFilterOpen && !target.closest(".label-filter-control")) labelFilterOpen = false;
-  }
-
   function selectLabelFilter(labelId: string | null) {
     abandonNearby();
     selectedLabelFilter = labelId;
@@ -1129,7 +1125,7 @@
   }
 </script>
 
-<svelte:window oncontextmenu={suppressWebviewContextMenu} on:pointerdown={handleWindowPointerDown} />
+<svelte:window oncontextmenu={suppressWebviewContextMenu} />
 
 <main class="clipboard-window">
   <header class="clipboard-header drag-region" use:windowDrag>
@@ -1152,7 +1148,7 @@
         </button>
       {/each}
     </div>
-    <div class:open={labelFilterOpen} class="label-filter-control">
+    <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: () => (labelFilterOpen = false) }}>
       <button
         class="label-filter-button"
         type="button"
