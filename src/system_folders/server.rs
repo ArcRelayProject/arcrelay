@@ -254,6 +254,20 @@ async fn content(
         .unwrap())
 }
 
+struct ActiveRecovery {
+    service: Arc<SystemFolders>,
+    path: PathBuf,
+}
+impl Drop for ActiveRecovery {
+    fn drop(&mut self) {
+        self.service
+            .active_recoveries
+            .lock()
+            .unwrap()
+            .remove(&self.path);
+    }
+}
+
 async fn upload(
     State(bridge): State<Bridge>,
     Query(query): Query<ContentQuery>,
@@ -283,6 +297,16 @@ async fn upload(
         }
     }
     let recovery = recovery_root.join(uuid::Uuid::new_v4().to_string());
+    bridge
+        .service
+        .active_recoveries
+        .lock()
+        .unwrap()
+        .insert(recovery.clone());
+    let _active_recovery = ActiveRecovery {
+        service: bridge.service.clone(),
+        path: recovery.clone(),
+    };
     tokio::fs::create_dir_all(&recovery).await?;
     let metadata = recovery.join("save.json");
     let manifest = |phase: &str| {

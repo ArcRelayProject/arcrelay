@@ -402,7 +402,7 @@ export type StepResult = { exitCode: number | null, stdout: string, stderr: stri
 
 export type StepRun = { index: number, step: AutomationStep, action: ActionSnapshot | null, status: ActivityStatus, startedAt: string | null, finishedAt: string | null, result: StepResult, };
 
-export type SystemFolder = { id: string, peerId: string, shareId: string, name: string, online: boolean, registered: boolean, error: string | null, };
+export type SystemFolder = { id: string, peerId: string, shareId: string, name: string, online: boolean, registered: boolean, error: string | null, recoveryCount: number, };
 
 export type SystemOperation = "lock_screen" | "sleep" | "display_sleep" | "shutdown" | "restart" | "screenshot_full" | "screenshot_region";
 
