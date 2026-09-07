@@ -192,7 +192,7 @@
     },
   };
   let settingsSaving = false;
-  let appUpdateStatus: AppUpdateCheckResult = { currentVersion: "0.1.1", channel: "stable", update: null };
+  let appUpdateStatus: AppUpdateCheckResult = { currentVersion: "0.1.2", channel: "stable", update: null };
   let appUpdateProgress: AppUpdateProgress | null = null;
   let appUpdateChecking = false;
   let appUpdateInstalling = false;

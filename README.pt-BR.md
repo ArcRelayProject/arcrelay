@@ -60,7 +60,7 @@ O ArcRelay encontra dispositivos na rede local e estabelece conexões autenticad
 | **Stable** | Uso diário | Publicado quando um mantenedor cria uma tag `vMAJOR.MINOR.PATCH`. |
 | **Test** | Testes antecipados | Publicado após cada CI bem-sucedida em `main` e pode incluir mudanças ainda incompletas. |
 
-Baixe o ArcRelay em **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Os alvos oficiais atuais são macOS em Apple Silicon e Windows x86-64. O aplicativo móvel oficial é distribuído separadamente e seu código-fonte não faz parte deste repositório.
+Baixe o ArcRelay em **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Os alvos oficiais atuais são macOS em Apple Silicon e Intel, além de Windows em x86-64 e ARM64. O aplicativo móvel oficial é distribuído separadamente e seu código-fonte não faz parte deste repositório.
 
 Escolha Stable ou Test em **Configurações → Geral → Canal de atualização**. Os dois canais usam manifestos HTTPS e a mesma chave pública embutida. Uma versão de teste não altera o canal Stable.
 

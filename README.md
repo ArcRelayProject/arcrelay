@@ -17,8 +17,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS Apple Silicon">
-  <img src="https://img.shields.io/badge/Windows-x86__64-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Windows x86-64">
+  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS Apple Silicon and Intel">
+  <img src="https://img.shields.io/badge/Windows-x86__64%20%7C%20ARM64-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Windows x86-64 and ARM64">
 </p>
 
 <p align="center">
@@ -82,7 +82,7 @@ ArcRelay is local-first rather than offline-only. Features that cross devices st
 | **Stable** | Daily use | Published from a maintainer-created `vMAJOR.MINOR.PATCH` tag and marked as the latest GitHub release. |
 | **Test** | Early testing | Published automatically after every successful `main` CI run. It may contain unfinished changes. |
 
-Download available packages from **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Current official targets are macOS on Apple Silicon (`.dmg`) and Windows x86-64 (`-setup.exe`). Linux packaging will follow when the native process and system-monitor services are available on Linux.
+Download available packages from **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Current official targets are macOS on Apple Silicon and Intel (`.dmg`), plus Windows on x86-64 and ARM64 (`-setup.exe`). Linux packaging will follow when the native process and system-monitor services are available on Linux.
 
 The official ArcRelay mobile application is distributed separately. Its source code is not part of this repository.
 
