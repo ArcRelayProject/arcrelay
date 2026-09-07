@@ -60,7 +60,7 @@ ArcRelay는 로컬 네트워크에서 기기를 찾고 인증된 암호화 연�
 | **Stable** | 일상 사용 | 관리자가 `vMAJOR.MINOR.PATCH` 태그를 만들면 배포합니다. |
 | **Test** | 사전 테스트 | `main` CI가 성공할 때마다 자동 배포하며 완성되지 않은 변경이 포함될 수 있습니다. |
 
-**[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** 에서 다운로드하세요. 현재 공식 대상은 Apple Silicon용 macOS와 x86-64용 Windows입니다. 공식 모바일 앱은 별도로 배포되며 소스 코드는 이 저장소에 포함되지 않습니다.
+**[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** 에서 다운로드하세요. 현재 공식 대상은 Apple Silicon 및 Intel용 macOS와 x86-64 및 ARM64용 Windows입니다. 공식 모바일 앱은 별도로 배포되며 소스 코드는 이 저장소에 포함되지 않습니다.
 
 **설정 → 일반 → 업데이트 채널**에서 Stable 또는 Test를 선택할 수 있습니다. 두 채널 모두 HTTPS 매니페스트와 앱에 내장된 동일한 공개 키를 사용합니다. Test 배포는 Stable 채널을 변경하지 않습니다.
 

@@ -60,7 +60,7 @@ ArcRelay findet Geräte im lokalen Netzwerk und stellt authentifizierte, verschl
 | **Stable** | Tägliche Nutzung | Wird durch ein `vMAJOR.MINOR.PATCH`-Tag eines Maintainers veröffentlicht. |
 | **Test** | Frühes Testen | Wird nach jedem erfolgreichen CI-Lauf auf `main` automatisch veröffentlicht und kann unfertige Änderungen enthalten. |
 
-Downloads findest du unter **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Aktuell werden macOS auf Apple Silicon und Windows x86-64 offiziell unterstützt. Die offizielle mobile App wird separat vertrieben; ihr Quellcode gehört nicht zu diesem Repository.
+Downloads findest du unter **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)**. Aktuell werden macOS auf Apple Silicon und Intel sowie Windows auf x86-64 und ARM64 offiziell unterstützt. Die offizielle mobile App wird separat vertrieben; ihr Quellcode gehört nicht zu diesem Repository.
 
 Unter **Einstellungen → Allgemein → Update-Kanal** kannst du Stable oder Test wählen. Beide Kanäle verwenden HTTPS-Manifeste und denselben eingebetteten öffentlichen Schlüssel. Eine Test-Veröffentlichung verändert den Stable-Kanal nicht.
 

@@ -60,7 +60,7 @@ ArcRelay は LAN 上のデバイスを検出し、認証済みの暗号化接続
 | **Stable** | 日常利用 | 管理者が `vMAJOR.MINOR.PATCH` タグを作成したときに公開。 |
 | **Test** | 先行評価 | `main` の CI が成功するたびに自動公開。未完成の変更を含む場合があります。 |
 
-**[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** からダウンロードできます。現在の公式対象は Apple Silicon 版 macOS と x86-64 版 Windows です。公式モバイルアプリは別途配布され、そのソースコードはこのリポジトリに含まれません。
+**[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** からダウンロードできます。現在の公式対象は Apple Silicon／Intel 版 macOS と x86-64／ARM64 版 Windows です。公式モバイルアプリは別途配布され、そのソースコードはこのリポジトリに含まれません。
 
 **設定 → 一般 → 更新チャンネル** で Stable と Test を切り替えられます。両チャンネルは HTTPS マニフェストとアプリ内蔵の同じ公開鍵を使用し、テスト版の公開が Stable の配信先を変更することはありません。
 

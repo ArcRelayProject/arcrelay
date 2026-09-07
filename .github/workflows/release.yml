@@ -61,14 +61,31 @@ jobs:
 
   build:
     needs: prepare
+    name: build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-15
-            args: --bundles app,dmg
-          - platform: windows-latest
-            args: --bundles nsis
+          - name: macOS Apple Silicon
+            platform: macos-15
+            os: macos
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          - name: macOS Intel
+            platform: macos-15-intel
+            os: macos
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
+          - name: Windows x86-64
+            platform: windows-latest
+            os: windows
+            target: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis
+          - name: Windows ARM64
+            platform: windows-11-arm
+            os: windows
+            target: aarch64-pc-windows-msvc
+            args: --target aarch64-pc-windows-msvc --bundles nsis
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,10 +94,12 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: npm ci
       - name: Import Apple signing certificate
-        if: matrix.platform == 'macos-15'
+        if: matrix.os == 'macos'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -100,10 +119,11 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
+          uploadUpdaterJson: false
           updaterJsonPreferNsis: true
           args: --config tauri.github.conf.json ${{ matrix.args }}
       - name: Verify signed and notarized macOS package
-        if: matrix.platform == 'macos-15'
+        if: matrix.os == 'macos'
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
         run: |
@@ -125,7 +145,7 @@ jobs:
           xcrun stapler validate "$app_path"
           spctl --assess --type execute --verbose=4 "$app_path"
       - name: Remove temporary Apple signing keychain
-        if: always() && matrix.platform == 'macos-15'
+        if: always() && matrix.os == 'macos'
         run: scripts/cleanup-apple-signing-certificate.sh
 
   publish:
@@ -138,14 +158,32 @@ jobs:
       RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Generate one updater manifest after every build succeeds
+        env:
+          EXPECTED_VERSION: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${EXPECTED_VERSION#v}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > release.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" > release-assets.json
+          mkdir updater-signatures
+          while IFS=$'\t' read -r asset_url asset_name; do
+            case "$asset_name" in
+              */*|*\\*|.|..)
+                echo "::error::Invalid release asset name: $asset_name"
+                exit 1
+                ;;
+            esac
+            gh api -H 'Accept: application/octet-stream' "$asset_url" > "updater-signatures/$asset_name"
+          done < <(jq -r '.[] | select(.name | endswith(".sig")) | [.url, .name] | @tsv' release-assets.json)
+          node scripts/generate-updater-manifest.mjs \
+            release.json release-assets.json updater-signatures latest.json "$version"
+          gh release upload "$RELEASE_TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
       - name: Validate signed updater manifest
         run: |
-          asset_api="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --jq '.[] | select(.name == "latest.json") | .url')"
-          test -n "$asset_api"
-          gh api -H 'Accept: application/octet-stream' "$asset_api" > latest.json
-          node scripts/release-channel.mjs validate-manifest latest.json "${GITHUB_REF_NAME#v}" 'darwin-aarch64,windows-x86_64'
+          node scripts/release-channel.mjs validate-manifest latest.json "${GITHUB_REF_NAME#v}" 'darwin-aarch64,darwin-x86_64,windows-x86_64,windows-aarch64'
       - name: Cryptographically verify updater packages
-        run: scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,windows-x86_64'
+        run: scripts/verify-updater-assets.sh latest.json 'darwin-aarch64,darwin-x86_64,windows-x86_64,windows-aarch64'
       - name: Publish stable release after every platform succeeds
         run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -F prerelease=false -f make_latest=true
 

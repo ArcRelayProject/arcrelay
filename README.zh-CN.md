@@ -17,8 +17,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS Apple Silicon">
-  <img src="https://img.shields.io/badge/Windows-x86__64-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Windows x86-64">
+  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS Apple Silicon 与 Intel">
+  <img src="https://img.shields.io/badge/Windows-x86__64%20%7C%20ARM64-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Windows x86-64 与 ARM64">
 </p>
 
 <p align="center">
@@ -76,7 +76,7 @@ ArcRelay 让日常设备协同贴近操作系统，也让数据尽量留在你�
 | **稳定版** | 日常使用 | 维护者创建 `v主版本.次版本.修订版本` 标签后发布，并成为 GitHub 最新正式版。 |
 | **测试版** | 提前体验和反馈 | `main` 每次成功通过 CI 后自动发布，可能包含尚未完全稳定的功能。 |
 
-请从 **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** 下载。当前官方目标为 macOS Apple Silicon（`.dmg`）和 Windows x86-64（`-setup.exe`）。Linux 将在原生进程与系统监控服务完成后提供。
+请从 **[GitHub Releases](https://github.com/ArcRelayProject/arcrelay/releases)** 下载。当前官方目标为 macOS Apple Silicon 与 Intel（`.dmg`），以及 Windows x86-64 与 ARM64（`-setup.exe`）。Linux 将在原生进程与系统监控服务完成后提供。
 
 打开 **设置 → 通用 → 更新通道** 即可切换稳定版和测试版。启用自动检查后，ArcRelay 会在启动后及每六小时检查所选线路，也可随时手动检查并安装。
 
