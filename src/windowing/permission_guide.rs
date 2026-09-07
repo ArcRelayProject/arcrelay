@@ -103,7 +103,7 @@ fn ensure_permission_guide_window_on_main(app: &AppHandle) -> tauri::Result<()> 
     PERMISSION_GUIDE_WINDOW_READY.store(false, Ordering::SeqCst);
     PERMISSION_GUIDE_WINDOW_CREATED_AT_MS.store(current_unix_time_millis(), Ordering::SeqCst);
 
-    let mut builder = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         PERMISSION_GUIDE_WINDOW_LABEL,
         WebviewUrl::App("permission-guide.html".into()),
@@ -121,12 +121,10 @@ fn ensure_permission_guide_window_on_main(app: &AppHandle) -> tauri::Result<()> 
     .center();
 
     #[cfg(target_os = "macos")]
-    {
-        builder = builder
-            .decorations(true)
-            .hidden_title(true)
-            .title_bar_style(tauri::TitleBarStyle::Overlay);
-    }
+    let builder = builder
+        .decorations(true)
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay);
 
     let result = builder.build().map(|window| {
         position_permission_guide_at_screen_edge(&window);

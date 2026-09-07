@@ -1504,7 +1504,6 @@ async fn open_with_default_application(path: &Path) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
     command
@@ -1723,9 +1722,13 @@ mod remote_open_tests {
         build_remote_drag_promise_preview(RemoteFileKind::Folder, &promised_folder_preview)
             .unwrap();
 
-        let mut previews = vec![image_preview, file_preview, folder_preview];
+        let previews = vec![image_preview, file_preview, folder_preview];
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        previews.extend([promised_file_preview, promised_folder_preview]);
+        let previews = [
+            previews,
+            vec![promised_file_preview, promised_folder_preview],
+        ]
+        .concat();
         for preview in previews {
             assert_eq!(image::image_dimensions(preview).unwrap(), (160, 160));
         }
