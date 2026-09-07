@@ -1,6 +1,12 @@
 name: Release desktop
 
 on:
+  workflow_dispatch:
+    inputs:
+      sniptra_release:
+        description: "Optional exact Sniptra release tag (run against a stable tag)"
+        type: string
+        required: false
   push:
     tags:
       - "v*"
@@ -16,9 +22,19 @@ jobs:
   prepare:
     runs-on: ubuntu-22.04
     outputs:
+      sniptra_lock: ${{ steps.sniptra.outputs.lock }}
       release_id: ${{ steps.draft.outputs.release_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - id: sniptra
+        name: Lock latest compatible Sniptra release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNIPTRA_RELEASE_TAG: ${{ inputs.sniptra_release || vars.SNIPTRA_RELEASE_TAG }}
+        run: node scripts/sniptra-release.mjs resolve sniptra-lock.json
       - name: Require release signing credentials
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -97,6 +113,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Download and verify locked Sniptra component
+        env:
+          SNIPTRA_LOCK: ${{ needs.prepare.outputs.sniptra_lock }}
+        shell: bash
+        run: |
+          printf '%s\n' "$SNIPTRA_LOCK" > sniptra-lock.json
+          node scripts/sniptra-release.mjs download sniptra-lock.json "${{ matrix.target }}"
       - run: npm ci
       - name: Import Apple signing certificate
         if: matrix.os == 'macos'
@@ -158,6 +181,12 @@ jobs:
       RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Preserve exact Sniptra dependency manifest
+        env:
+          SNIPTRA_LOCK: ${{ needs.prepare.outputs.sniptra_lock }}
+        run: |
+          printf '%s\n' "$SNIPTRA_LOCK" > sniptra-lock.json
+          gh release upload "${{ github.ref_name }}" sniptra-lock.json --repo "$GITHUB_REPOSITORY"
       - name: Generate one updater manifest after every build succeeds
         env:
           EXPECTED_VERSION: ${{ github.ref_name }}
