@@ -165,7 +165,10 @@ if (artifactDirectory) {
   const notices = path.join(binariesDirectory, "sniptra-notices");
   mkdirSync(notices, { recursive: true });
   for (const name of ["BINARY-LICENSE.txt", "README.md"]) {
-    copyFileSync(path.join(artifactDirectory, name), path.join(notices, name));
+    // Older Jenkins integration directories predate bundled notices. The official
+    // GitHub downloader separately requires these entries in its verified ZIP.
+    const notice = path.join(artifactDirectory, name);
+    if (existsSync(notice)) copyFileSync(notice, path.join(notices, name));
   }
   const archivedInfo = JSON.parse(readFileSync(integrationInfo, "utf8").replace(/^\uFEFF/, ""));
   if (JSON.stringify(executableInfo) !== JSON.stringify(archivedInfo)) {

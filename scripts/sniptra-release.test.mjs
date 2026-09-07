@@ -6,7 +6,7 @@ function manifest() {
   return { schema_version: 1, protocol_version: 1, release: tag, assets: Object.fromEntries(
     ['macos-universal', 'windows-x86_64'].map(p => {
       const name = `sniptra-${tag}-integration-${p}.zip`;
-      return [p, { name, url: `https://github.com/ArcRelayProject/sniptra-releases/releases/download/${tag}/${name}`, sha256: 'a'.repeat(64) }];
+      return [p, { name, url: `https://github.com/ArcRelayProject/sniptra/releases/download/${tag}/${name}`, sha256: 'a'.repeat(64) }];
     })) };
 }
 test('requires both compatible platforms and exact release URLs', () => {

@@ -146,7 +146,7 @@ The source code is licensed under [GNU AGPL v3.0 only](LICENSE). The ArcRelay na
 ## Embedded Sniptra screenshots
 
 Official stable and Test installers include the closed-source Sniptra screenshot
-component from [binary releases](https://github.com/ArcRelayProject/sniptra-releases).
+component from [binary releases](https://github.com/ArcRelayProject/sniptra).
 The release preparation job resolves protocol 1 once, then every platform downloads
 the same release using the locked archive SHA-256. File checksums, executable
 metadata and OCR startup must pass before packaging. Missing components fail the

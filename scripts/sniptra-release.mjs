@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repository = 'ArcRelayProject/sniptra-releases';
+const repository = 'ArcRelayProject/sniptra';
 const api = `https://api.github.com/repos/${repository}`;
 const platforms = ['macos-universal', 'windows-x86_64'];
 export function validateManifest(m, tag) {
