@@ -17,8 +17,13 @@ jobs:
           CLA_LABEL: "cla: signed"
         run: |
           author="$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")"
-          case "$author" in
-            dependabot\[bot\]|github-actions\[bot\])
+          author_id="$(jq -r '.pull_request.user.id' "$GITHUB_EVENT_PATH")"
+          case "$author:$author_id" in
+            zibo-chen:58510061|chenzibo:18285974)
+              echo "Repository policy exempts allowlisted maintainers from manual CLA labeling."
+              exit 0
+              ;;
+            dependabot\[bot\]:*|github-actions\[bot\]:*)
               echo "Automated dependency and workflow updates are exempt."
               exit 0
               ;;
