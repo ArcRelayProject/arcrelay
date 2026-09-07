@@ -107,13 +107,13 @@ function setVersion(next) {
     "gen/apple-macos/project.yml",
     /(^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION):\s+)[^\s]+$/gm,
     (whole, prefix) => `${prefix}${next}`,
-    4,
+    6,
   );
   replace(
     "gen/apple-macos/ArcRelay.xcodeproj/project.pbxproj",
     /(^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION) = )[^;]+;/gm,
     (whole, prefix) => `${prefix}${next};`,
-    8,
+    12,
   );
   for (const path of ["frontend/src/App.svelte", "frontend/src/bridge.mock.ts"]) {
     replace(
