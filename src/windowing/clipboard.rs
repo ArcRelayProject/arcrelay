@@ -742,3 +742,44 @@ fn clamp_window_axis(desired: f64, origin: f64, span: f64, window_span: f64) -> 
     let maximum = (origin + span - window_span - CLIPBOARD_WINDOW_EDGE_MARGIN).max(minimum);
     desired.clamp(minimum, maximum)
 }
+
+// A nonactivating panel leaves the invoking application frontmost. Snapshot it
+// with the clipboard generation so a focus/content change cancels the request.
+#[cfg(target_os = "macos")]
+pub fn clipboard_paste_target(app: &AppHandle) -> tauri::Result<(i32, isize)> {
+    dispatch_appkit(app, "capture clipboard paste target", |_| {
+        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|app| app.processIdentifier())
+            .unwrap_or(0);
+        if pid <= 0 || pid as u32 == std::process::id() {
+            return Err(tauri::Error::Io(std::io::Error::other(
+                "no external paste target; content remains on clipboard",
+            )));
+        }
+        Ok((
+            pid,
+            objc2_app_kit::NSPasteboard::generalPasteboard().changeCount(),
+        ))
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn clipboard_paste_target_ready(app: &AppHandle, target: (i32, isize)) -> tauri::Result<bool> {
+    dispatch_appkit(app, "check clipboard paste target", move |app| {
+        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|app| app.processIdentifier());
+        if pid != Some(target.0)
+            || objc2_app_kit::NSPasteboard::generalPasteboard().changeCount() != target.1
+        {
+            return Err(tauri::Error::Io(std::io::Error::other(
+                "paste target or clipboard changed; paste cancelled",
+            )));
+        }
+        match app.get_webview_window(CLIPBOARD_WINDOW_LABEL) {
+            Some(window) => Ok(!window.is_focused()?),
+            None => Ok(true),
+        }
+    })
+}

@@ -3,6 +3,16 @@ use arcrelay_core::domain::clipboard::{
     ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition, ClipboardTimelineQuery,
 };
 
+// Reject overlapping clipboard actions instead of queueing a stale paste to
+// whichever application happens to be focused later.
+static CLIPBOARD_ACTION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
+    CLIPBOARD_ACTION
+        .try_lock()
+        .map_err(|_| "clipboard action already in progress".to_string())
+}
+
 static CLIPBOARD_THUMBNAILS: OnceLock<Mutex<ClipboardThumbnailCache>> = OnceLock::new();
 static CLIPBOARD_IMAGE_PREVIEWS: OnceLock<Mutex<ClipboardImagePreviewCache>> = OnceLock::new();
 static CONTINUOUS_PASTE: OnceLock<Mutex<ContinuousPasteQueue>> = OnceLock::new();
@@ -568,6 +578,14 @@ mod clipboard_image_preview_tests {
     }
 
     #[test]
+    fn overlapping_clipboard_actions_are_rejected_and_guard_releases() {
+        let first = begin_clipboard_action().expect("first action");
+        assert!(begin_clipboard_action().is_err());
+        drop(first);
+        assert!(begin_clipboard_action().is_ok());
+    }
+
+    #[test]
     fn high_resolution_preview_keeps_source_resolution_below_limit() {
         let png = source_png(1_600, 900);
         let thumbnail = build_clipboard_thumbnail(&png).expect("build thumbnail");
@@ -590,6 +608,7 @@ mod clipboard_image_preview_tests {
 
 #[arcrelay_desktop_ipc::command]
 pub async fn clipboard_copy_record(state: State<'_, DesktopState>, id: u64) -> Result<(), String> {
+    let _action = begin_clipboard_action()?;
     state
         .clipboard
         .copy_record(id)
@@ -604,6 +623,7 @@ pub async fn clipboard_copy_text(
     state: State<'_, DesktopState>,
     content: String,
 ) -> Result<(), String> {
+    let _action = begin_clipboard_action()?;
     if content.is_empty() {
         return Err("cannot copy empty text".to_string());
     }
@@ -622,6 +642,7 @@ pub async fn clipboard_paste_text(
     app: AppHandle,
     content: String,
 ) -> Result<(), String> {
+    let _action = begin_clipboard_action()?;
     if content.is_empty() {
         return Err("cannot paste empty text".to_string());
     }
@@ -672,6 +693,7 @@ async fn paste_clipboard_record(
     id: u64,
     mode: arcrelay_core::domain::clipboard::ClipboardPasteMode,
 ) -> Result<(), String> {
+    let _action = begin_clipboard_action()?;
     require_input_permission(state, app).await?;
     // Resolve conversions such as image OCR before hiding the panel. If
     // preparation fails, the caller can keep the error visible in the window.
@@ -691,12 +713,33 @@ async fn paste_clipboard_record(
 }
 
 async fn prepare_window_and_wait_for_paste(app: &AppHandle) -> Result<(), String> {
-    crate::windowing::prepare_clipboard_window_for_paste(app).map_err(|error| error.to_string())?;
-    // On macOS the NSPanel may have become key after a click into the search
-    // field. Give AppKit time to resign it and restore the previous app before
-    // emitting the synthetic paste shortcut. A pinned panel stays visible.
     #[cfg(target_os = "macos")]
-    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    let target =
+        crate::windowing::clipboard_paste_target(app).map_err(|error| error.to_string())?;
+    crate::windowing::prepare_clipboard_window_for_paste(app).map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        let started = std::time::Instant::now();
+        // Yield to AppKit before observing resignation of the panel's key status.
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            if crate::windowing::clipboard_paste_target_ready(app, target)
+                .map_err(|error| error.to_string())?
+            {
+                tracing::debug!(
+                    target_pid = target.0,
+                    wait_ms = started.elapsed().as_millis() as u64,
+                    "clipboard paste target ready"
+                );
+                break;
+            }
+            if started.elapsed() >= std::time::Duration::from_millis(500) {
+                return Err(
+                    "paste target did not regain focus; content remains on clipboard".into(),
+                );
+            }
+        }
+    }
     #[cfg(not(target_os = "macos"))]
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     Ok(())
@@ -708,6 +751,7 @@ pub async fn clipboard_paste_records(
     app: AppHandle,
     ids: Vec<u64>,
 ) -> Result<usize, String> {
+    let _action = begin_clipboard_action()?;
     if ids.is_empty() {
         return Ok(0);
     }
@@ -722,6 +766,9 @@ pub async fn clipboard_paste_records(
         .await
         .map_err(|error| error.to_string())?;
     prepare_window_and_wait_for_paste(&app).await?;
+    #[cfg(target_os = "macos")]
+    let mut batch_target =
+        crate::windowing::clipboard_paste_target(&app).map_err(|error| error.to_string())?;
     state
         .clipboard
         .paste_prepared(first_kind)
@@ -730,6 +777,12 @@ pub async fn clipboard_paste_records(
 
     for id in ids.iter().skip(1) {
         tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+        #[cfg(target_os = "macos")]
+        if !crate::windowing::clipboard_paste_target_ready(&app, batch_target)
+            .map_err(|error| error.to_string())?
+        {
+            return Err("paste target lost focus; remaining entries cancelled".into());
+        }
         let kind = state
             .clipboard
             .prepare_record_as(
@@ -738,7 +791,22 @@ pub async fn clipboard_paste_records(
             )
             .await
             .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "macos")]
+        {
+            let next = crate::windowing::clipboard_paste_target(&app)
+                .map_err(|error| error.to_string())?;
+            if next.0 != batch_target.0 {
+                return Err("paste target changed; remaining entries cancelled".into());
+            }
+            batch_target = next;
+        }
         tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        #[cfg(target_os = "macos")]
+        if !crate::windowing::clipboard_paste_target_ready(&app, batch_target)
+            .map_err(|error| error.to_string())?
+        {
+            return Err("paste target lost focus; remaining entries cancelled".into());
+        }
         state
             .clipboard
             .paste_prepared(kind)
