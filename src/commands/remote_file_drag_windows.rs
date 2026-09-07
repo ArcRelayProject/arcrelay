@@ -236,7 +236,7 @@ impl RemoteFileDataObject {
         FORMATETC {
             cfFormat: self.descriptor_format,
             ptd: std::ptr::null_mut(),
-            dwAspect: DVASPECT_CONTENT.0 as u32,
+            dwAspect: DVASPECT_CONTENT.0,
             lindex: -1,
             tymed: TYMED_HGLOBAL.0 as u32,
         }
@@ -246,7 +246,7 @@ impl RemoteFileDataObject {
         FORMATETC {
             cfFormat: self.contents_format,
             ptd: std::ptr::null_mut(),
-            dwAspect: DVASPECT_CONTENT.0 as u32,
+            dwAspect: DVASPECT_CONTENT.0,
             lindex: -1,
             tymed: TYMED_ISTREAM.0 as u32,
         }
@@ -254,13 +254,13 @@ impl RemoteFileDataObject {
 
     fn supports_descriptor(&self, format: &FORMATETC) -> bool {
         format.cfFormat == self.descriptor_format
-            && format.dwAspect == DVASPECT_CONTENT.0 as u32
+            && format.dwAspect == DVASPECT_CONTENT.0
             && format.tymed & TYMED_HGLOBAL.0 as u32 != 0
     }
 
     fn content_entry(&self, format: &FORMATETC) -> Option<&VirtualEntry> {
         if format.cfFormat != self.contents_format
-            || format.dwAspect != DVASPECT_CONTENT.0 as u32
+            || format.dwAspect != DVASPECT_CONTENT.0
             || format.tymed & TYMED_ISTREAM.0 as u32 == 0
             || format.lindex < 0
         {
@@ -462,6 +462,7 @@ impl IDataObjectAsyncCapability_Impl for RemoteFileDataObject_Impl {
     }
 }
 
+#[derive(Default)]
 struct RemoteStreamState {
     receiver: Option<RemoteFileStreamReceiver>,
     cache: Option<File>,
@@ -473,23 +474,6 @@ struct RemoteStreamState {
     complete: bool,
     reported: bool,
     error: Option<String>,
-}
-
-impl Default for RemoteStreamState {
-    fn default() -> Self {
-        Self {
-            receiver: None,
-            cache: None,
-            cache_path: None,
-            progress: None,
-            session_id: None,
-            position: 0,
-            cached: 0,
-            complete: false,
-            reported: false,
-            error: None,
-        }
-    }
 }
 
 #[implement(IStream)]

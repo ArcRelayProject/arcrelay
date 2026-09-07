@@ -5,8 +5,11 @@ use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(target_os = "macos")]
 pub const LABEL: &str = "tray-transfer";
+#[cfg(target_os = "macos")]
 const EVENT: &str = "tray-transfer-drop-changed";
+#[cfg(target_os = "macos")]
 const WIDTH: f64 = 440.0;
 
 #[derive(Default, Clone, serde::Serialize, ts_rs::TS)]
@@ -25,11 +28,13 @@ struct Session {
 }
 
 impl Session {
+    #[cfg(any(target_os = "macos", test))]
     fn enter(&mut self) {
         self.drop.revision += 1;
         self.drop.hovering = true;
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn receive(&mut self, paths: Vec<String>) {
         self.drop.revision += 1;
         self.drop.hovering = false;
@@ -45,6 +50,7 @@ impl Session {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn leave(&mut self, revision: u64) -> bool {
         if self.drop.revision != revision {
             return false;

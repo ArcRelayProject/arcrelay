@@ -5,6 +5,10 @@ mod index;
 #[cfg(target_os = "macos")]
 mod macos;
 mod server;
+#[cfg(any(target_os = "windows", test))]
+mod webdav;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use crate::clipboard_sync::ClipboardSyncManager;
 use arcrelay_protocol::remote_files::{
@@ -224,7 +228,13 @@ impl SystemFolders {
                 }),
             );
         }
+        #[cfg(target_os = "macos")]
         server::start(service.clone()).await?;
+        #[cfg(target_os = "windows")]
+        webdav::start(service.clone()).await?;
+        // Windows locations and their loopback endpoint are persistent. Do not
+        // re-register on startup: a temporarily offline peer must not disconnect
+        // an existing Explorer location or delay the desktop runtime.
         let poller = service.clone();
         tokio::spawn(async move {
             poller.poll().await;
@@ -335,12 +345,14 @@ impl SystemFolders {
     async fn register(self: &Arc<Self>, view: &SystemFolder) -> Result<(), Error> {
         #[cfg(target_os = "macos")]
         return macos::register(view).await;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return windows::register(&self.root, view).await;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = view;
             Err(Error {
                 code: "unsupported".into(),
-                message: "native cloud folders currently require macOS 13 or later".into(),
+                message: "system folders require macOS 13+ or Windows with WebClient".into(),
             })
         }
     }
@@ -349,7 +361,9 @@ impl SystemFolders {
         let view = self.domain(id).await?.view.lock().await.clone();
         #[cfg(target_os = "macos")]
         return macos::open(&view).await;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return windows::open(&self.root, &view).await;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = view;
             Err(Error::unavailable(
@@ -363,6 +377,8 @@ impl SystemFolders {
         let view = self.domain(id).await?.view.lock().await.clone();
         #[cfg(target_os = "macos")]
         macos::remove(&view).await?;
+        #[cfg(target_os = "windows")]
+        windows::remove(&view).await?;
         self.domains.lock().await.remove(id);
         self.persist_folders().await
     }

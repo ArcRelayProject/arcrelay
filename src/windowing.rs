@@ -62,6 +62,7 @@ const CLIPBOARD_WINDOW_WIDTH: f64 = 540.0;
 const CLIPBOARD_WINDOW_HEIGHT: f64 = 820.0;
 const CLIPBOARD_WINDOW_MIN_WIDTH: f64 = 420.0;
 const CLIPBOARD_WINDOW_MIN_HEIGHT: f64 = 560.0;
+#[cfg(target_os = "macos")]
 const CLIPBOARD_WINDOW_CORNER_RADIUS: f64 = 14.0;
 const CLIPBOARD_WINDOW_CURSOR_OFFSET: f64 = 12.0;
 const CLIPBOARD_WINDOW_EDGE_MARGIN: f64 = 12.0;
@@ -118,6 +119,7 @@ pub fn set_main_window_exists(exists: bool) {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn main_window_exists() -> bool {
     MAIN_WINDOW_EXISTS.load(Ordering::SeqCst)
 }

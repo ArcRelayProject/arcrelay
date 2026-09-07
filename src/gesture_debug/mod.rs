@@ -136,6 +136,7 @@ impl GestureDebugTrigger {
         Ok(())
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn motion_and_progress(&self) -> (i64, f64) {
         let (motion, sign) = match self.action {
             GestureDebugAction::SwipeLeft => (1, -1.0),
@@ -303,6 +304,7 @@ impl Shared {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn finish_capture(&self, reason: &str) {
         let mut data = lock(&self.data);
         self.capturing.store(false, Ordering::Release);
@@ -311,6 +313,7 @@ impl Shared {
     }
 
     // Never block WindowServer's event callback on a UI snapshot or export.
+    #[cfg(any(target_os = "macos", test))]
     fn record(&self, mut sample: GestureDebugSample) {
         let Ok(mut data) = self.data.try_lock() else {
             self.dropped.fetch_add(1, Ordering::Relaxed);

@@ -1,4 +1,6 @@
-use std::collections::{HashMap, HashSet};
+#[cfg(target_os = "macos")]
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -138,6 +140,7 @@ struct RuntimeState {
 
 #[derive(Default)]
 struct WindowScanCache {
+    #[cfg(target_os = "macos")]
     identifiers: HashMap<i64, Option<String>>,
 }
 

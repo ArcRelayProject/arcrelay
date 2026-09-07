@@ -138,7 +138,7 @@ pub(super) async fn run_backend(
         Some(state.remote_files.clone()),
     ));
     state.clipboard_sync.start();
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     match crate::system_folders::SystemFolders::start(
         state.clipboard_sync.clone(),
         config_dir.join("system-folders"),

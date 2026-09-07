@@ -384,7 +384,7 @@ export const bridge = {
         return transfersMock.setTransferReceivePolicy(peerId, automatic);
     },
     async listSystemFolders(): Promise<import('./ipc/generated').SystemFolder[]> { return []; },
-    async addSystemFolder(_peerId: string, _shareId: string): Promise<import('./ipc/generated').SystemFolder> { throw new Error("Finder integration requires the installed macOS app."); },
+    async addSystemFolder(_peerId: string, _shareId: string): Promise<import('./ipc/generated').SystemFolder> { throw new Error("System folder integration requires the installed desktop app."); },
     async openSystemFolder(_id: string): Promise<void> {},
     async removeSystemFolder(_id: string): Promise<void> {},
     async openSystemFolderRecovery(): Promise<void> {},
