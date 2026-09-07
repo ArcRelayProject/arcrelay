@@ -9,6 +9,9 @@
     "macOS": {
       "hardenedRuntime": true,
       "entitlements": "gen/apple-macos/ArcRelay/ArcRelay.entitlements"
+    },
+    "resources": {
+      "binaries/sniptra-notices/": "sniptra-notices/"
     }
   }
 }

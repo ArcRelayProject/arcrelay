@@ -25,7 +25,8 @@ async function request(url) {
   if (!response.ok) throw new Error(`Sniptra download failed (${response.status}): ${url}`);
   return response;
 }
-export async function resolveRelease(tag = '') {
+export async function resolveRelease(tag = '', build = '') {
+  if (build && !/^\d+$/.test(build)) throw new Error('Invalid legacy Sniptra build number');
   if (tag && !/^v\d+\.\d+\.\d+-ci\.\d+$/.test(tag)) throw new Error('Invalid Sniptra release tag');
   for (let page = 1; page <= 20; page++) {
     const result = await (await request(tag ? `${api}/releases/tags/${tag}` : `${api}/releases?per_page=100&page=${page}`)).json();
@@ -37,6 +38,7 @@ export async function resolveRelease(tag = '') {
       if (!a) { if (tag) throw new Error('Pinned release has no manifest'); else continue; }
       const m = await (await request(a.browser_download_url)).json();
       if (m.protocol_version !== 1) { if (tag) throw new Error('Pinned release is incompatible'); else continue; }
+      if (build && m.jenkins_build !== Number(build)) continue;
       return validateManifest(m, r.tag_name);
     }
     if (tag || releases.length < 100) break;
@@ -44,9 +46,9 @@ export async function resolveRelease(tag = '') {
   throw new Error('No compatible published Sniptra release');
 }
 async function main() {
-  const [command, lockFile, target] = process.argv.slice(2);
+  const [command, lockFile, target, outputDirectory] = process.argv.slice(2);
   if (command === 'resolve') {
-    const m = await resolveRelease(process.env.SNIPTRA_RELEASE_TAG || '');
+    const m = await resolveRelease(process.env.SNIPTRA_RELEASE_TAG || '', process.env.SNIPTRA_BUILD_NUMBER || '');
     const lock = JSON.stringify(m);
     writeFileSync(lockFile, `${lock}\n`);
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lock=${lock}\nrelease=${m.release}\n`);
@@ -60,7 +62,7 @@ async function main() {
     const asset = m.assets[platform];
     const bytes = Buffer.from(await (await request(asset.url)).arrayBuffer());
     if (createHash('sha256').update(bytes).digest('hex') !== asset.sha256) throw new Error('Sniptra archive checksum mismatch');
-    const directory = path.resolve('.sniptra', m.release, platform);
+    const directory = outputDirectory ? path.resolve(outputDirectory) : path.resolve('.sniptra', m.release, platform);
     mkdirSync(directory, { recursive: true });
     const archive = path.join(directory, 'component.zip');
     writeFileSync(archive, bytes);
@@ -70,6 +72,7 @@ async function main() {
     execFileSync('tar', ['-xf', archive, '-C', directory, ...names], { stdio: 'inherit' });
     if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV,
       `SNIPTRA_ARTIFACT_DIR=${directory}\nSNIPTRA_SIDECAR_TARGET=${target}\nARCRELAY_REQUIRE_SNIPTRA=1\n`);
+    console.log(`Component directory: ${directory}`);
     console.log(`Verified ${m.release}: ${platform} for ${target}${target.startsWith('aarch64-pc-windows') ? ' (Windows 11 x64 emulation)' : ''}`);
   } else throw new Error('Usage: sniptra-release.mjs resolve LOCK | download LOCK TARGET');
 }
