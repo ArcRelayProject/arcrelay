@@ -27,6 +27,7 @@ mod screenshot;
 mod settings;
 mod sound;
 mod startup;
+mod system_folders;
 mod system_share;
 mod windowing;
 
@@ -83,6 +84,11 @@ fn main() {
         .manage(app_update::AppUpdateState::default())
         .manage(Arc::new(gesture_debug::GestureDebugState::default()))
         .invoke_handler(tauri::generate_handler![
+            commands::list_system_folders,
+            commands::add_system_folder,
+            commands::open_system_folder,
+            commands::remove_system_folder,
+            commands::open_system_folder_recovery,
             gesture_debug::get_gesture_debug_snapshot,
             gesture_debug::get_gesture_debug_report,
             gesture_debug::start_gesture_debug_capture,
@@ -327,7 +333,12 @@ fn main() {
             if let Err(error) = system_share::install_linux_user_integrations() {
                 tracing::warn!(%error, "Could not install Linux file-manager share integrations");
             }
-            windowing::ensure_clipboard_window(app.handle())?;
+            let clipboard_enabled = app
+                .state::<backend::DesktopState>()
+                .settings
+                .snapshot()
+                .clipboard_enabled;
+            windowing::sync_clipboard_window(app.handle(), clipboard_enabled)?;
             observability::start_health_reporter();
             hang_watchdog::start(app.handle().clone());
             if let Err(error) = app.global_shortcut().on_shortcut(

@@ -9,19 +9,30 @@
 /* Begin PBXBuildFile section */
 		0162FFE78650A2190404E5D5 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC096C675770AEC5112C9603 /* Metal.framework */; };
 		10EC2DEA3DAB40ABB54692C2 /* ArcRelayShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 19E71569B4B453C8248BAB3A /* ArcRelayShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4141492D16EAEE76F219E138 /* FileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = F175ACEA057F7F60407E2256 /* FileProviderExtension.swift */; };
 		4B076A42F5BEDF8903B2A77C /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF709FDE5942560B5DA7582 /* AppKit.framework */; };
 		5960586B6551E877A6C7EFD8 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3404EF0DA22F8AC8ABD214ED /* AppIcon.icon */; };
 		615C241C320FFA86BF2B69D8 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04C4E184AC84EE19B8620490 /* QuartzCore.framework */; };
 		62E17B01FD96F30A998B0504 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6553FA422E0CFFB25B4877F3 /* WebKit.framework */; };
 		6673626098B4392D522BF5DE /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10CEC1DF712D8E1FD41D0755 /* MetalKit.framework */; };
+		66BB860F38F3A7DB8719AD56 /* ArcRelayFiles.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1560C12E01F12D2E73BBF59 /* ArcRelayFiles.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		71660FA73F50EF1E8D503F8C /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 18EE0CA699B21C437E3286B7 /* UniformTypeIdentifiers.framework */; };
 		786C1C3A5D264C7A3FF2C4B2 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1907DA516BD79D8412FC30 /* ShareViewController.swift */; };
 		A8832BFE6D3262C3C5B60B82 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AF709FDE5942560B5DA7582 /* AppKit.framework */; };
 		CF4D7A196F9B5DE9AB3D2CE6 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D35BC05CCDDF798E5D6C57C0 /* Security.framework */; };
 		D349A9480722335244442499 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8E2432116E9C654609D4C783 /* Localizable.strings */; };
 		E79E6E4797DE283966FAB60B /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 744749AF3C1622C0C99A4B44 /* CoreGraphics.framework */; };
+		EB3FB7EF8327C4AD08079334 /* FileProvider.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 892A9334051B33833815C5A5 /* FileProvider.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		5828932BC791D5AB5E9492A9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EDD75F533EAA89F5485D12BE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9CDD12881C920E4F458EA700;
+			remoteInfo = ArcRelayFiles;
+		};
 		582D2613ABC3EC0E9B0C268D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = EDD75F533EAA89F5485D12BE /* Project object */;
@@ -39,6 +50,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				10EC2DEA3DAB40ABB54692C2 /* ArcRelayShare.appex in Embed Foundation Extensions */,
+				66BB860F38F3A7DB8719AD56 /* ArcRelayFiles.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -49,16 +61,20 @@
 		04C4E184AC84EE19B8620490 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		076B9A811030D71D4BEA6C91 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		10CEC1DF712D8E1FD41D0755 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		18EE0CA699B21C437E3286B7 /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
 		19E71569B4B453C8248BAB3A /* ArcRelayShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ArcRelayShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3404EF0DA22F8AC8ABD214ED /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		6553FA422E0CFFB25B4877F3 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		744749AF3C1622C0C99A4B44 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		892A9334051B33833815C5A5 /* FileProvider.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FileProvider.framework; path = System/Library/Frameworks/FileProvider.framework; sourceTree = SDKROOT; };
 		9AF709FDE5942560B5DA7582 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		9F1907DA516BD79D8412FC30 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		CC4D9588E570FD455225CE0E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D35BC05CCDDF798E5D6C57C0 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		DC096C675770AEC5112C9603 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		E1560C12E01F12D2E73BBF59 /* ArcRelayFiles.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ArcRelayFiles.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		E515878C7DC820AFBCD35C99 /* ArcRelay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArcRelay.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F175ACEA057F7F60407E2256 /* FileProviderExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderExtension.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +92,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3ECE1C74339B77D659408D33 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EB3FB7EF8327C4AD08079334 /* FileProvider.framework in Frameworks */,
+				71660FA73F50EF1E8D503F8C /* UniformTypeIdentifiers.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EEA40906991A988B1C2F9B3A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -87,15 +112,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		07CB1B182E39B125FFC6F55A /* ArcRelayFiles */ = {
+			isa = PBXGroup;
+			children = (
+				F175ACEA057F7F60407E2256 /* FileProviderExtension.swift */,
+			);
+			path = ArcRelayFiles;
+			sourceTree = "<group>";
+		};
 		44C79990611C30E8650797C6 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				9AF709FDE5942560B5DA7582 /* AppKit.framework */,
 				744749AF3C1622C0C99A4B44 /* CoreGraphics.framework */,
+				892A9334051B33833815C5A5 /* FileProvider.framework */,
 				DC096C675770AEC5112C9603 /* Metal.framework */,
 				10CEC1DF712D8E1FD41D0755 /* MetalKit.framework */,
 				04C4E184AC84EE19B8620490 /* QuartzCore.framework */,
 				D35BC05CCDDF798E5D6C57C0 /* Security.framework */,
+				18EE0CA699B21C437E3286B7 /* UniformTypeIdentifiers.framework */,
 				6553FA422E0CFFB25B4877F3 /* WebKit.framework */,
 			);
 			name = Frameworks;
@@ -113,6 +148,7 @@
 			children = (
 				3404EF0DA22F8AC8ABD214ED /* AppIcon.icon */,
 				524D30413FE8B129499D287B /* ArcRelay */,
+				07CB1B182E39B125FFC6F55A /* ArcRelayFiles */,
 				C1C0A2DF5916F4FC43FCCB18 /* ArcRelayShare */,
 				44C79990611C30E8650797C6 /* Frameworks */,
 				BF522F712596E43B92CAA956 /* Products */,
@@ -123,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				E515878C7DC820AFBCD35C99 /* ArcRelay.app */,
+				E1560C12E01F12D2E73BBF59 /* ArcRelayFiles.appex */,
 				19E71569B4B453C8248BAB3A /* ArcRelayShare.appex */,
 			);
 			name = Products;
@@ -140,6 +177,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		9CDD12881C920E4F458EA700 /* ArcRelayFiles */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 32CD14641F8F854228CF3E90 /* Build configuration list for PBXNativeTarget "ArcRelayFiles" */;
+			buildPhases = (
+				3DBAB74608C5C6059941F867 /* Sources */,
+				3ECE1C74339B77D659408D33 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ArcRelayFiles;
+			packageProductDependencies = (
+			);
+			productName = ArcRelayFiles;
+			productReference = E1560C12E01F12D2E73BBF59 /* ArcRelayFiles.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		D8EF449418D6C7CE05E4A50C /* ArcRelay */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 04CB8AC11D3C0215CA578F43 /* Build configuration list for PBXNativeTarget "ArcRelay" */;
@@ -154,6 +209,7 @@
 			);
 			dependencies = (
 				C9F48B5A782E67241DD2BFDE /* PBXTargetDependency */,
+				833E149B14317BAC502980D1 /* PBXTargetDependency */,
 			);
 			name = ArcRelay;
 			packageProductDependencies = (
@@ -190,6 +246,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					9CDD12881C920E4F458EA700 = {
+						ProvisioningStyle = Automatic;
+					};
 					D8EF449418D6C7CE05E4A50C = {
 						ProvisioningStyle = Automatic;
 					};
@@ -215,6 +274,7 @@
 			targets = (
 				D8EF449418D6C7CE05E4A50C /* ArcRelay */,
 				E88F739FEE29F15AE2C1B470 /* ArcRelayShare */,
+				9CDD12881C920E4F458EA700 /* ArcRelayFiles */,
 			);
 		};
 /* End PBXProject section */
@@ -269,6 +329,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3DBAB74608C5C6059941F867 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4141492D16EAEE76F219E138 /* FileProviderExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		493F3FBB6B0FCD787A00ACDD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -279,6 +347,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		833E149B14317BAC502980D1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9CDD12881C920E4F458EA700 /* ArcRelayFiles */;
+			targetProxy = 5828932BC791D5AB5E9492A9 /* PBXContainerItemProxy */;
+		};
 		C9F48B5A782E67241DD2BFDE /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E88F739FEE29F15AE2C1B470 /* ArcRelayShare */;
@@ -377,6 +450,36 @@
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		435B81AF691951575FD7B071 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ARCHS = (
+					arm64,
+					x86_64,
+				);
+				CODE_SIGN_ENTITLEMENTS = ArcRelayFiles/ArcRelayFiles.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 0.1.2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArcRelayFiles/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.2;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.files;
+				PRODUCT_NAME = ArcRelayFiles;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -526,6 +629,31 @@
 			};
 			name = Release;
 		};
+		C08B45DFDFE4D8DCF11CC34C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ArcRelayFiles/ArcRelayFiles.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 0.1.2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArcRelayFiles/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.files;
+				PRODUCT_NAME = ArcRelayFiles;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -534,6 +662,15 @@
 			buildConfigurations = (
 				1BE491DD8724499071CC5B67 /* Debug */,
 				9F8DD92FD91ACE7A99CCE842 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		32CD14641F8F854228CF3E90 /* Build configuration list for PBXNativeTarget "ArcRelayFiles" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C08B45DFDFE4D8DCF11CC34C /* Debug */,
+				435B81AF691951575FD7B071 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

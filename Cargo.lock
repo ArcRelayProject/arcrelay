@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=e708265e40fc48ae452153ae972b814095952a01#e708265e40fc48ae452153ae972b814095952a01"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=8fb7e2289725490ff492a10e01e3336924d53a2b#8fb7e2289725490ff492a10e01e3336924d53a2b"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -276,6 +276,7 @@ dependencies = [
  "core-graphics 0.24.0",
  "dirs 6.0.0",
  "fs2",
+ "futures-util",
  "gdk",
  "gtk",
  "heck 0.5.0",
@@ -349,7 +350,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-files"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=16422055d7db4e2b3ae6fad55ed41fb8e982e5a7#16422055d7db4e2b3ae6fad55ed41fb8e982e5a7"
+source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=b9e94d7eb91a5c6ca3995783759e96241b5b00dc#b9e94d7eb91a5c6ca3995783759e96241b5b00dc"
 dependencies = [
  "argon2",
  "fs2",
@@ -357,18 +358,21 @@ dependencies = [
  "infer",
  "mime_guess",
  "rand_core 0.6.4",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.20",
  "tokio",
  "ts-rs",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=4b792e690b77475a6f1aede4b21824a486d1044d#4b792e690b77475a6f1aede4b21824a486d1044d"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=b8bb71eafabed067dff03820349db9e4df807a63#b8bb71eafabed067dff03820349db9e4df807a63"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",
@@ -387,7 +391,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-network"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=9985521be8473cd23cf6abe5597dace3e6d90e9f#9985521be8473cd23cf6abe5597dace3e6d90e9f"
+source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=5aea92a32b77a950d13982597a5d611be2574924#5aea92a32b77a950d13982597a5d611be2574924"
 dependencies = [
  "arcrelay-peer",
  "arcrelay-transport",
@@ -429,7 +433,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-print"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=e1f33840ed23cd5a0213d1eb84db881442ed2a9c#e1f33840ed23cd5a0213d1eb84db881442ed2a9c"
+source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=95548ad3771af8859349c71a22f0e41c2c81a588#95548ad3771af8859349c71a22f0e41c2c81a588"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -459,7 +463,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=c48fd113ac7698b250684c7e8e51e9fad0ac8739#c48fd113ac7698b250684c7e8e51e9fad0ac8739"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=874e51d119e9d85d54e13f929b29ba0fc6b9619e#874e51d119e9d85d54e13f929b29ba0fc6b9619e"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -486,7 +490,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=27167e1e34d044eed0d9a1ac44ecaf93c9e0f2b7#27167e1e34d044eed0d9a1ac44ecaf93c9e0f2b7"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=713309c13e6739e2f6cd51f33c9052fc83c4e23c#713309c13e6739e2f6cd51f33c9052fc83c4e23c"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -526,7 +530,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-web-gateway"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-web-gateway.git?rev=f92ef540f324fdd05aca0e1f0ef1352fc3f6ccad#f92ef540f324fdd05aca0e1f0ef1352fc3f6ccad"
+source = "git+https://github.com/ArcRelayProject/arcrelay-web-gateway.git?rev=3cb7802caf61d722e638d9f797e5b34dd4a6d4cf#3cb7802caf61d722e638d9f797e5b34dd4a6d4cf"
 dependencies = [
  "arcrelay-files",
  "axum",
@@ -551,7 +555,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-wire"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=ac143db0e09039d7eeaf211f1399141086716533#ac143db0e09039d7eeaf211f1399141086716533"
+source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=486cb5336779e8652e9f991d523bd62d06995cea#486cb5336779e8652e9f991d523bd62d06995cea"
 dependencies = [
  "bytes",
  "prost",

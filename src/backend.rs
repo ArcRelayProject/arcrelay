@@ -382,6 +382,7 @@ pub struct DesktopState {
     pub network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
     snapshot_revision: Arc<Mutex<u64>>,
     pub remote_file_service: Arc<crate::application::remote_file_service::RemoteFileService>,
+    pub system_folders: Arc<tokio::sync::OnceCell<Arc<crate::system_folders::SystemFolders>>>,
     pub text_selection: Arc<crate::application::text_selection::TextSelectionService>,
     runtime: Arc<RwLock<RuntimeViewState>>,
     pairing_response: Arc<Mutex<Option<PendingPairingResponse>>>,
@@ -469,6 +470,7 @@ impl DesktopState {
             print_job_revision: Arc::default(),
             text_selection: Arc::default(),
             remote_file_service: Arc::default(),
+            system_folders: crate::system_folders::empty_slot(),
             runtime: Arc::new(RwLock::new(RuntimeViewState::new(port))),
             pairing_response: Arc::new(Mutex::new(None)),
         }

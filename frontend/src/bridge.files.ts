@@ -3,6 +3,11 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { PrinterSharingSnapshot, RemoteFileEntry, RemoteFileDirectoryPage, RemoteFileDragPreparation, RemoteFileOpenResult, RemoteFileShare, RemoteFileState, RemoteFileTransferSession, LocalSharedDirectory, WebAccessMode, WebGatewayStatus } from "./types";
 import { type RemoteFileSortDirection, type RemoteFileSortKey } from "./remoteFileSort";
 export const filesBridge = {
+    listSystemFolders: () => invoke("list_system_folders"),
+    addSystemFolder: (peerId: string, shareId: string) => invoke("add_system_folder", { peerId, shareId }),
+    openSystemFolder: (id: string) => invoke("open_system_folder", { id }),
+    removeSystemFolder: (id: string) => invoke("remove_system_folder", { id }),
+    openSystemFolderRecovery: () => invoke("open_system_folder_recovery"),
     async stopRemoteEdit(peerId: string, shareId: string, relativePath: string): Promise<void> {
         await invoke("stop_remote_edit", { peerId, shareId, relativePath });
     },

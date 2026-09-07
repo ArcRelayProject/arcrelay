@@ -1,5 +1,61 @@
 use super::*;
 use crate::application::remote_file_service as service;
+use crate::system_folders::SystemFolder;
+
+fn system_folders(
+    state: &DesktopState,
+) -> Result<&std::sync::Arc<crate::system_folders::SystemFolders>, String> {
+    state.system_folders.get().ok_or_else(|| "Native system folders are not ready. This feature requires the installed macOS 13+ app.".into())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn list_system_folders(
+    state: State<'_, DesktopState>,
+) -> Result<Vec<SystemFolder>, String> {
+    match state.system_folders.get() {
+        Some(folders) => Ok(folders.list().await),
+        None => Ok(Vec::new()),
+    }
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn add_system_folder(
+    state: State<'_, DesktopState>,
+    peer_id: String,
+    share_id: String,
+) -> Result<SystemFolder, String> {
+    system_folders(&state)?
+        .add(peer_id, share_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn open_system_folder(state: State<'_, DesktopState>, id: String) -> Result<(), String> {
+    system_folders(&state)?
+        .open(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn remove_system_folder(
+    state: State<'_, DesktopState>,
+    id: String,
+) -> Result<(), String> {
+    system_folders(&state)?
+        .remove(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn open_system_folder_recovery(state: State<'_, DesktopState>) -> Result<(), String> {
+    system_folders(&state)?
+        .open_recovery()
+        .await
+        .map_err(|e| e.to_string())
+}
 pub use service::{
     RemoteDeleteResult, RemoteFileDragPreparation, RemoteFileOpenResult, RemoteFileState,
     RemoteFileTransferSession,

@@ -402,6 +402,8 @@ export type StepResult = { exitCode: number | null, stdout: string, stderr: stri
 
 export type StepRun = { index: number, step: AutomationStep, action: ActionSnapshot | null, status: ActivityStatus, startedAt: string | null, finishedAt: string | null, result: StepResult, };
 
+export type SystemFolder = { id: string, peerId: string, shareId: string, name: string, online: boolean, registered: boolean, error: string | null, };
+
 export type SystemOperation = "lock_screen" | "sleep" | "display_sleep" | "shutdown" | "restart" | "screenshot_full" | "screenshot_region";
 
 export type SystemQueueId = string;
@@ -470,6 +472,7 @@ export type WorkspaceLayout = { workspaceId: WorkspaceId, revision: TopologyRevi
 
 export interface CommandMap {
   add_remote_file_share: { args: { }; result: LocalSharedDirectory | null };
+  add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   automation_capabilities: { args: { }; result: Array<Capability> };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
@@ -571,6 +574,7 @@ export interface CommandMap {
   list_remote_directory: { args: { cursor: string | null; peerId: string; relativePath: string; search: string | null; shareId: string; sortDirection: RemoteFileSortDirection; sortKey: RemoteFileSortKey; }; result: RemoteFileDirectoryPage };
   list_remote_file_shares: { args: { peerId: string; }; result: Array<RemoteFileShare> };
   list_remote_file_transfers: { args: { }; result: Array<RemoteFileTransferSession> };
+  list_system_folders: { args: { }; result: Array<SystemFolder> };
   list_system_share_requests: { args: { }; result: Array<SystemShareRequest> };
   mark_notification_read: { args: { notificationId: string; }; result: Array<NotificationView> };
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
@@ -581,6 +585,8 @@ export interface CommandMap {
   open_log_directory: { args: { }; result: null };
   open_remote_entry: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileOpenResult };
   open_sniptra_settings: { args: { }; result: string };
+  open_system_folder: { args: { id: string; }; result: null };
+  open_system_folder_recovery: { args: { }; result: null };
   open_transfer_receive_directory: { args: { }; result: null };
   open_tray_transfer_history: { args: { }; result: null };
   open_web_gateway_url: { args: { url: string; }; result: null };
@@ -601,6 +607,7 @@ export interface CommandMap {
   release_input_control: { args: { }; result: RuntimeSnapshot };
   remove_remote_file_share: { args: { shareId: string; }; result: Array<LocalSharedDirectory> };
   remove_remote_printer: { args: { bindingId: string; }; result: PrinterSharingSnapshot };
+  remove_system_folder: { args: { id: string; }; result: null };
   rename_remote_entry: { args: { newName: string; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileEntry };
   reset_sound_preferences: { args: { }; result: AppSettings };
   respond_pairing: { args: { accepted: boolean; approvedGrantIds: Array<string> | null; }; result: null };

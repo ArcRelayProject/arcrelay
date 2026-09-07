@@ -89,7 +89,8 @@
     },
     "macOS": {
       "files": {
-        "PlugIns/ArcRelayShare.appex": "binaries/macos-share/ArcRelayShare.appex"
+        "PlugIns/ArcRelayShare.appex": "binaries/macos-share/ArcRelayShare.appex",
+        "PlugIns/ArcRelayFiles.appex": "binaries/macos-share/ArcRelayFiles.appex"
       },
       "dmg": {
         "background": "installer/assets/dmg-background.png",
