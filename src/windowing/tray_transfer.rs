@@ -67,7 +67,15 @@ struct Runtime(Mutex<Session>);
 #[cfg(target_os = "macos")]
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     app.manage(Runtime::default());
-    // Prewarm the webview so a drop before its JS listeners attach is queued.
+    // The native drop target queues paths even before the WebView exists.
+    macos::install(app)
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(LABEL).is_some() {
+        return Ok(());
+    }
     let window =
         WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray-transfer.html".into()))
             .title("ArcRelay")
@@ -103,7 +111,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         }
         _ => {}
     });
-    macos::install(app)
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -183,6 +191,7 @@ pub fn reopen(app: &AppHandle) -> bool {
 fn show(app: &AppHandle, focus: bool) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     return dispatch_appkit(app, "show tray transfer", move |app| {
+        ensure_window(&app)?;
         macos::position(&app)?;
         macos::show(&app, focus)
     });

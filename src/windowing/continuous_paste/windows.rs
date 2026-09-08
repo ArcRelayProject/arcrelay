@@ -88,7 +88,7 @@ pub fn update(window: &Window, model: &HudModel) -> Result<(), String> {
             .ok_or("native Windows HUD is not installed")?;
         let mut model = model.clone();
         if model.theme == crate::settings::ThemePreference::System {
-            model.theme = if window.theme() == Ok(Theme::Dark) {
+            model.theme = if matches!(window.theme(), Ok(Theme::Dark)) {
                 crate::settings::ThemePreference::Dark
             } else {
                 crate::settings::ThemePreference::Light

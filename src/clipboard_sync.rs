@@ -45,6 +45,7 @@ pub struct ClipboardSyncManager {
     commands: Arc<tokio::sync::Mutex<HashMap<String, mpsc::Sender<ConnectionCommand>>>>,
     remote_file_peers: Arc<tokio::sync::Mutex<HashSet<String>>>,
     active: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    retries: Arc<tokio::sync::Mutex<HashMap<String, crate::retry::RetryBackoff>>>,
     connecting: Arc<tokio::sync::Mutex<HashSet<String>>>,
     discovered: Arc<tokio::sync::Mutex<HashMap<String, PeerAdvertisement>>>,
     incoming_connections: Arc<tokio::sync::OnceCell<ConnectionRegistry>>,

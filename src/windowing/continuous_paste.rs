@@ -28,6 +28,7 @@ pub(super) struct HudModel {
     pub title: String,
     pub position: String,
     pub preview: String,
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub stop_label: String,
     pub current: usize,
     pub total: usize,

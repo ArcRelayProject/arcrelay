@@ -234,6 +234,7 @@ export const clipboardBridge = {
     pasteRecords: (ids: number[]) => Promise.resolve(ids.length),
     startContinuousPaste: (items: ContinuousPasteItemInput[]) => Promise.resolve({ current: 0, total: items.length, active: items.length > 0, nextPreview: items[0]?.preview ?? null, triggerShortcut: "Ctrl+V" }),
     hide: () => Promise.resolve(),
+    visible: () => Promise.resolve(true),
     pinned: () => Promise.resolve(false),
     setPinnedWindow: (pinned: boolean) => Promise.resolve(),
     startDragging: () => Promise.resolve(),
