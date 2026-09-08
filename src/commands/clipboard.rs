@@ -17,13 +17,13 @@ fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, Stri
 #[cfg(target_os = "macos")]
 type PasteTarget = (i32, isize);
 #[cfg(not(target_os = "macos"))]
-type PasteTarget = ();
+struct PasteTarget;
 
 fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
     #[cfg(target_os = "macos")]
     return crate::windowing::clipboard_paste_target(_app).map_err(|error| error.to_string());
     #[cfg(not(target_os = "macos"))]
-    Ok(())
+    Ok(PasteTarget)
 }
 
 fn paste_failure(stage: &'static str, error: impl std::fmt::Display) -> String {
