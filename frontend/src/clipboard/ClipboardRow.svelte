@@ -31,6 +31,8 @@
   }
 
   function handleDoubleClick(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
     onPaste(event.shiftKey);
   }
 
@@ -113,3 +115,11 @@
     <span>{formatTime(timestamp, exactTime)}</span>
   </div>
 </div>
+
+<style>
+  /* Keep the row as the hit target while asynchronous HTML/image previews
+     replace their children between the first and second click. */
+  .clipboard-content {
+    pointer-events: none;
+  }
+</style>

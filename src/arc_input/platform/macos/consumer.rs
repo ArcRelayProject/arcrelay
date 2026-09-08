@@ -166,6 +166,7 @@ mod tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(0)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
