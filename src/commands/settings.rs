@@ -216,7 +216,7 @@ fn register_clipboard_shortcut(app: &AppHandle, settings: &AppSettings) -> Resul
                         crate::commands::paste_next_continuous_record(app.clone()).await
                     {
                         tracing::warn!(%error, "Failed to execute continuous clipboard paste");
-                        let _ = crate::commands::clipboard_stop_continuous_paste().await;
+                        let _ = crate::commands::clipboard_stop_continuous_paste(app.clone()).await;
                         let _ = app.emit("clipboard-continuous-paste-error", error);
                     }
                 });

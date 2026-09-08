@@ -1,9 +1,10 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { invoke, listen } from '../ipc/client';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { ClipboardSortPreference } from '../types';
 import type { ClipboardTimelinePosition } from './types';
-import type { ClipboardCursor, ClipboardHistory, ClipboardItem, ClipboardImageOcr, ClipboardKind, ClipboardLabel, NearbyClipboardPeer, ClipboardPasteMode, ContinuousPasteProgress } from "./types";
+import type { ClipboardCursor, ClipboardHistory, ClipboardItem, ClipboardImageOcr, ClipboardKind, ClipboardLabel, NearbyClipboardPeer, ClipboardPasteMode, ContinuousPasteItemInput } from "./types";
 async function imageSource(command: "clipboard_thumbnail" | "clipboard_image_preview", id: number) {
     const path = await invoke(command, { id });
     return path ? convertFileSrc(path) : null;
@@ -29,6 +30,7 @@ export const clipboardBridge = {
     paste: (id: number) => invoke("clipboard_paste_record", { id }),
     pasteAs: (id: number, mode: ClipboardPasteMode) => invoke("clipboard_paste_record_as", { id, mode }),
     remove: (id: number) => invoke("clipboard_delete_record", { id }),
+    removeMany: (ids: number[]) => invoke("clipboard_delete_records", { ids }),
     setFavorite: (id: number, favorite: boolean) => invoke("clipboard_set_favorite", { id, favorite }),
     labels: () => invoke("clipboard_labels"),
     createLabel: (name: string, color: string) => invoke("clipboard_create_label", { name, color }),
@@ -53,9 +55,9 @@ export const clipboardBridge = {
     sendFiles: (id: number, peerId: string) => invoke("clipboard_send_files", { id, peerId }),
     clear: () => invoke("clipboard_clear_history"),
     pasteRecords: (ids: number[]) => invoke("clipboard_paste_records", { ids }),
-    startContinuousPaste: (ids: number[]) => invoke("clipboard_start_continuous_paste", { ids }),
-    stopContinuousPaste: () => invoke("clipboard_stop_continuous_paste"),
+    startContinuousPaste: (items: ContinuousPasteItemInput[]) => invoke("clipboard_start_continuous_paste", { items }),
     hide: () => invoke("hide_clipboard_window"),
+    visible: () => getCurrentWindow().isVisible(),
     pinned: () => invoke("get_clipboard_window_pinned"),
     setPinnedWindow: (pinned: boolean) => invoke("set_clipboard_window_pinned", { pinned }),
     startDragging: () => invoke("start_clipboard_window_drag"),
@@ -64,6 +66,5 @@ export const clipboardBridge = {
     onShown: async (handler: () => void): Promise<UnlistenFn> => listen("clipboard-window-shown", handler),
     onHidden: async (handler: () => void): Promise<UnlistenFn> => listen("clipboard-window-hidden", handler),
     onPinChanged: async (handler: (pinned: boolean) => void): Promise<UnlistenFn> => listen("clipboard-window-pin-changed", (event) => handler(event.payload)),
-    onContinuousPasteProgress: async (handler: (progress: ContinuousPasteProgress) => void): Promise<UnlistenFn> => listen("clipboard-continuous-paste-progress", (event) => handler(event.payload)),
     onContinuousPasteError: async (handler: (error: string) => void): Promise<UnlistenFn> => listen("clipboard-continuous-paste-error", (event) => handler(event.payload))
 };

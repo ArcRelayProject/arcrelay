@@ -14,6 +14,7 @@ impl ClipboardSyncManager {
             commands: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             remote_file_peers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             active: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            retries: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             connecting: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             discovered: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             incoming_connections: Arc::new(tokio::sync::OnceCell::new()),
@@ -537,7 +538,11 @@ impl ClipboardSyncManager {
         loop {
             let _ = receiver.borrow_and_update();
             match self.connection_candidates(&network).await {
-                Ok((peers, _)) => {
+                Ok((peers, paired)) => {
+                    self.retries
+                        .lock()
+                        .await
+                        .retain(|peer, _| paired.contains(peer));
                     self.remember_discovered(network.device_id().as_str(), &peers)
                         .await;
                     let intent = if tokio::time::Instant::now() >= fallback_at {
@@ -650,15 +655,38 @@ impl ClipboardSyncManager {
                 return false;
             }
         }
-        if !self.active.lock().await.insert(peer_id.clone()) {
-            return false;
+        {
+            let mut active = self.active.lock().await;
+            if active.contains(&peer_id) {
+                return false;
+            }
+            let mut retries = self.retries.lock().await;
+            if intent == ConnectionIntent::UserInitiated {
+                retries.remove(&peer_id);
+            } else if retries
+                .get(&peer_id)
+                .is_some_and(|retry| !retry.ready(std::time::Instant::now()))
+            {
+                return false;
+            }
+            active.insert(peer_id.clone());
         }
         self.connecting.lock().await.insert(peer_id.clone());
         let manager = self.clone();
         tokio::spawn(async move {
             let peer_id = peer.device_id.to_string();
             if let Err(error) = manager.clone().run_connection(peer, !paired).await {
+                let now = std::time::Instant::now();
+                manager
+                    .retries
+                    .lock()
+                    .await
+                    .entry(peer_id.clone())
+                    .or_insert_with(|| crate::retry::RetryBackoff::new(now))
+                    .failed(now);
                 tracing::warn!(%peer_id, %error, "desktop connection ended");
+            } else {
+                manager.retries.lock().await.remove(&peer_id);
             }
             manager.connecting.lock().await.remove(&peer_id);
             let _ = manager
@@ -670,7 +698,6 @@ impl ClipboardSyncManager {
             manager.commands.lock().await.remove(&peer_id);
             manager.remote_file_peers.lock().await.remove(&peer_id);
             manager.active.lock().await.remove(&peer_id);
-            tokio::time::sleep(Duration::from_secs(2)).await;
         });
         true
     }
@@ -842,6 +869,7 @@ impl ClipboardSyncManager {
                 .await
                 .insert(peer.device_id.to_string());
         }
+        self.retries.lock().await.remove(peer.device_id.as_str());
         self.connecting.lock().await.remove(peer.device_id.as_str());
         let mut local_changes = self
             .clipboard

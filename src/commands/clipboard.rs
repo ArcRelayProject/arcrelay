@@ -2,6 +2,7 @@ use super::*;
 use arcrelay_core::domain::clipboard::{
     ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition, ClipboardTimelineQuery,
 };
+use image::ImageDecoder;
 
 // Reject overlapping clipboard actions instead of queueing a stale paste to
 // whichever application happens to be focused later.
@@ -24,12 +25,22 @@ const CLIPBOARD_IMAGE_PREVIEW_CACHE_BYTES: usize = 64 * 1024 * 1024;
 const CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION: u32 = 4_096;
 static CLIPBOARD_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
 static CLIPBOARD_PREVIEW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static CLIPBOARD_IMAGE_JOBS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+const MAX_CLIPBOARD_DECODE_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Default)]
 struct ContinuousPasteQueue {
-    ids: Vec<u64>,
+    items: Vec<ContinuousPasteItemInput>,
     index: usize,
     in_flight: bool,
+    trigger_shortcut: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinuousPasteItemInput {
+    pub id: u64,
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -38,6 +49,8 @@ pub struct ContinuousPasteProgress {
     pub current: usize,
     pub total: usize,
     pub active: bool,
+    pub next_preview: Option<String>,
+    pub trigger_shortcut: String,
 }
 
 fn continuous_paste_queue() -> &'static Mutex<ContinuousPasteQueue> {
@@ -425,6 +438,11 @@ pub async fn clipboard_thumbnail(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    // Admit work before loading the database BLOB, including non-UI callers.
+    let _slot = CLIPBOARD_IMAGE_JOBS
+        .acquire()
+        .await
+        .map_err(|e| e.to_string())?;
     let cache = CLIPBOARD_THUMBNAILS.get_or_init(|| Mutex::new(ClipboardThumbnailCache::default()));
     if let Some(value) = cache
         .lock()
@@ -443,7 +461,15 @@ pub async fn clipboard_thumbnail(
         return Ok(None);
     };
     let directory = clipboard_preview_directory(&app)?;
+    let work = state
+        .modules
+        .content_resources()
+        .work(clipboard_image_work_bytes(&png)?)
+        .await
+        .map_err(|error| error.to_string())?;
     let cached = tauri::async_runtime::spawn_blocking(move || {
+        let _slot = _slot;
+        let _work = work;
         let encoded = build_clipboard_thumbnail(&png)?;
         persist_clipboard_image(&directory, id, "thumbnail", encoded)
     })
@@ -465,6 +491,10 @@ pub async fn clipboard_image_preview(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    let _slot = CLIPBOARD_IMAGE_JOBS
+        .acquire()
+        .await
+        .map_err(|e| e.to_string())?;
     let cache =
         CLIPBOARD_IMAGE_PREVIEWS.get_or_init(|| Mutex::new(ClipboardImagePreviewCache::default()));
     if let Some(value) = cache
@@ -484,7 +514,15 @@ pub async fn clipboard_image_preview(
         return Ok(None);
     };
     let directory = clipboard_preview_directory(&app)?;
+    let work = state
+        .modules
+        .content_resources()
+        .work(clipboard_image_work_bytes(&png)?)
+        .await
+        .map_err(|error| error.to_string())?;
     let cached = tauri::async_runtime::spawn_blocking(move || {
+        let _slot = _slot;
+        let _work = work;
         let encoded = build_clipboard_image_preview(&png)?;
         persist_clipboard_image(&directory, id, "preview", encoded)
     })
@@ -526,14 +564,40 @@ pub async fn clipboard_html_preview(
         .map_err(|error| error.to_string())
 }
 
+fn clipboard_image_work_bytes(png: &[u8]) -> Result<u64, String> {
+    let decoder = image::codecs::png::PngDecoder::new(std::io::Cursor::new(png))
+        .map_err(|error| error.to_string())?;
+    let (width, height) = decoder.dimensions();
+    let decoded = decoder
+        .total_bytes()
+        .max(u64::from(width) * u64::from(height) * 4);
+    if width > 16_384 || height > 16_384 || decoded > MAX_CLIPBOARD_DECODE_BYTES {
+        return Err("clipboard image exceeds decoded image budget".into());
+    }
+    // Source, resize/conversion workspace and encoded output can overlap.
+    Ok(decoded * 3 + png.len() as u64 * 2 + 8 * 1024 * 1024)
+}
+
+fn decode_clipboard_image(png: &[u8]) -> Result<image::DynamicImage, String> {
+    clipboard_image_work_bytes(png)?;
+    let mut reader =
+        image::ImageReader::with_format(std::io::Cursor::new(png), image::ImageFormat::Png);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(MAX_CLIPBOARD_DECODE_BYTES);
+    reader.limits(limits);
+    reader.decode().map_err(|error| error.to_string())
+}
+
 fn build_clipboard_thumbnail(png: &[u8]) -> Result<Vec<u8>, String> {
-    let image = image::load_from_memory(png).map_err(|error| error.to_string())?;
-    let thumbnail = image.thumbnail(720, 360).to_rgba8();
+    let image = decode_clipboard_image(png)?;
+    let thumbnail = image.thumbnail(720, 360).into_rgba8();
     encode_png(thumbnail)
 }
 
 fn build_clipboard_image_preview(png: &[u8]) -> Result<Vec<u8>, String> {
-    let image = image::load_from_memory(png).map_err(|error| error.to_string())?;
+    let image = decode_clipboard_image(png)?;
     let preview = if image.width() > CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION
         || image.height() > CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION
     {
@@ -545,7 +609,7 @@ fn build_clipboard_image_preview(png: &[u8]) -> Result<Vec<u8>, String> {
     } else {
         image
     }
-    .to_rgba8();
+    .into_rgba8();
     encode_png(preview)
 }
 
@@ -603,6 +667,18 @@ mod clipboard_image_preview_tests {
 
         assert_eq!(width, CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION);
         assert!(height <= 410);
+    }
+
+    #[test]
+    fn image_admission_uses_decoded_size_and_rejects_invalid_dimensions() {
+        let png = source_png(1_600, 900);
+        let cost = clipboard_image_work_bytes(&png).unwrap();
+        assert!(cost >= 1_600 * 900 * 4 * 3);
+        assert!(cost > png.len() as u64);
+        let too_wide = source_png(16_385, 1);
+        assert!(clipboard_image_work_bytes(&too_wide).is_err());
+        assert!(build_clipboard_thumbnail(&too_wide).is_err());
+        assert!(clipboard_image_work_bytes(b"invalid png").is_err());
     }
 }
 
@@ -756,108 +832,97 @@ pub async fn clipboard_paste_records(
         return Ok(0);
     }
     require_input_permission(&state, &app).await?;
-
-    let first_kind = state
+    let mut parts = Vec::with_capacity(ids.len());
+    for id in &ids {
+        parts.push(
+            state
+                .clipboard
+                .text_content(*id)
+                .await
+                .map_err(|_| "combined paste supports text entries only".to_string())?,
+        );
+    }
+    let combined = join_clipboard_text(parts);
+    state
         .clipboard
-        .prepare_record_as(
-            ids[0],
-            arcrelay_core::domain::clipboard::ClipboardPasteMode::Source,
-        )
+        .set_text(&combined)
         .await
         .map_err(|error| error.to_string())?;
     prepare_window_and_wait_for_paste(&app).await?;
-    #[cfg(target_os = "macos")]
-    let mut batch_target =
-        crate::windowing::clipboard_paste_target(&app).map_err(|error| error.to_string())?;
     state
         .clipboard
-        .paste_prepared(first_kind)
+        .paste_prepared(ClipboardContentKind::Text)
         .await
         .map_err(|error| error.to_string())?;
-
-    for id in ids.iter().skip(1) {
-        tokio::time::sleep(std::time::Duration::from_millis(90)).await;
-        #[cfg(target_os = "macos")]
-        if !crate::windowing::clipboard_paste_target_ready(&app, batch_target)
-            .map_err(|error| error.to_string())?
-        {
-            return Err("paste target lost focus; remaining entries cancelled".into());
-        }
-        let kind = state
-            .clipboard
-            .prepare_record_as(
-                *id,
-                arcrelay_core::domain::clipboard::ClipboardPasteMode::Source,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-        #[cfg(target_os = "macos")]
-        {
-            let next = crate::windowing::clipboard_paste_target(&app)
-                .map_err(|error| error.to_string())?;
-            if next.0 != batch_target.0 {
-                return Err("paste target changed; remaining entries cancelled".into());
-            }
-            batch_target = next;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
-        #[cfg(target_os = "macos")]
-        if !crate::windowing::clipboard_paste_target_ready(&app, batch_target)
-            .map_err(|error| error.to_string())?
-        {
-            return Err("paste target lost focus; remaining entries cancelled".into());
-        }
-        state
-            .clipboard
-            .paste_prepared(kind)
-            .await
-            .map_err(|error| error.to_string())?;
-    }
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(ids.len())
 }
 
+fn join_clipboard_text(parts: Vec<String>) -> String {
+    parts.join("\n")
+}
+
 #[arcrelay_desktop_ipc::command]
 pub async fn clipboard_start_continuous_paste(
+    state: State<'_, DesktopState>,
     app: AppHandle,
-    ids: Vec<u64>,
+    items: Vec<ContinuousPasteItemInput>,
 ) -> Result<ContinuousPasteProgress, String> {
-    if ids.is_empty() {
+    if items.is_empty() {
         return Err("select at least one clipboard entry".to_string());
     }
+    require_input_permission(&state, &app).await?;
+    let fallback_shortcut = state.settings.snapshot().clipboard_shortcut;
+    let trigger_shortcut = crate::continuous_paste_trigger::start(app.clone(), &fallback_shortcut);
     {
         let mut queue = continuous_paste_queue()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        queue.ids = ids;
+        queue.items = items;
         queue.index = 0;
         queue.in_flight = false;
+        queue.trigger_shortcut = trigger_shortcut;
     }
-    crate::windowing::prepare_clipboard_window_for_paste(&app)
-        .map_err(|error| error.to_string())?;
-    Ok(continuous_paste_progress())
+    if let Err(error) = crate::windowing::prepare_clipboard_window_for_paste(&app) {
+        clipboard_stop_continuous_paste(app.clone()).await;
+        return Err(error.to_string());
+    }
+    let progress = continuous_paste_progress();
+    if let Err(error) = crate::windowing::show_continuous_paste_hud(&app, &progress) {
+        clipboard_stop_continuous_paste(app.clone()).await;
+        return Err(error.to_string());
+    }
+    Ok(progress)
 }
 
-#[arcrelay_desktop_ipc::command]
-pub async fn clipboard_stop_continuous_paste() -> ContinuousPasteProgress {
+pub async fn clipboard_stop_continuous_paste(app: AppHandle) -> ContinuousPasteProgress {
+    crate::continuous_paste_trigger::stop();
     let mut queue = continuous_paste_queue()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    queue.ids.clear();
+    queue.items.clear();
     queue.index = 0;
     queue.in_flight = false;
-    ContinuousPasteProgress {
+    queue.trigger_shortcut.clear();
+    let progress = ContinuousPasteProgress {
         current: 0,
         total: 0,
         active: false,
+        next_preview: None,
+        trigger_shortcut: String::new(),
+    };
+    drop(queue);
+    if let Err(error) = crate::windowing::hide_continuous_paste_hud(&app) {
+        tracing::warn!(%error, "Failed to hide continuous paste HUD");
     }
+    progress
 }
 
 pub fn clipboard_continuous_paste_active() -> bool {
     let queue = continuous_paste_queue()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    queue.index < queue.ids.len()
+    queue.index < queue.items.len()
 }
 
 fn continuous_paste_progress() -> ContinuousPasteProgress {
@@ -866,8 +931,13 @@ fn continuous_paste_progress() -> ContinuousPasteProgress {
         .unwrap_or_else(|error| error.into_inner());
     ContinuousPasteProgress {
         current: queue.index,
-        total: queue.ids.len(),
-        active: queue.index < queue.ids.len(),
+        total: queue.items.len(),
+        active: queue.index < queue.items.len(),
+        next_preview: queue
+            .items
+            .get(queue.index)
+            .map(|item| item.preview.chars().take(160).collect()),
+        trigger_shortcut: queue.trigger_shortcut.clone(),
     }
 }
 
@@ -881,7 +951,7 @@ pub async fn paste_next_continuous_record(
         if queue.in_flight {
             return Ok(None);
         }
-        let id = queue.ids.get(queue.index).copied();
+        let id = queue.items.get(queue.index).map(|item| item.id);
         queue.in_flight = id.is_some();
         id
     };
@@ -909,20 +979,32 @@ pub async fn paste_next_continuous_record(
         let mut queue = continuous_paste_queue()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        queue.index = queue.index.saturating_add(1).min(queue.ids.len());
+        queue.index = queue.index.saturating_add(1).min(queue.items.len());
         queue.in_flight = false;
         let progress = ContinuousPasteProgress {
             current: queue.index,
-            total: queue.ids.len(),
-            active: queue.index < queue.ids.len(),
+            total: queue.items.len(),
+            active: queue.index < queue.items.len(),
+            next_preview: queue
+                .items
+                .get(queue.index)
+                .map(|item| item.preview.chars().take(160).collect()),
+            trigger_shortcut: queue.trigger_shortcut.clone(),
         };
         if !progress.active {
-            queue.ids.clear();
+            queue.items.clear();
             queue.index = 0;
+            queue.trigger_shortcut.clear();
         }
         progress
     };
-    let _ = app.emit("clipboard-continuous-paste-progress", &progress);
+    if let Err(error) = crate::windowing::update_continuous_paste_hud(&app, &progress) {
+        tracing::warn!(%error, "Failed to update continuous paste HUD");
+    }
+    if !progress.active {
+        crate::continuous_paste_trigger::stop();
+        crate::windowing::schedule_continuous_paste_hud_hide(app.clone());
+    }
     Ok(Some(progress))
 }
 
@@ -954,6 +1036,23 @@ pub async fn clipboard_delete_record(
         .delete(id)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn clipboard_delete_records(
+    state: State<'_, DesktopState>,
+    ids: Vec<u64>,
+) -> Result<usize, String> {
+    let mut deleted = 0;
+    for id in ids {
+        state
+            .clipboard
+            .delete(id)
+            .await
+            .map_err(|error| error.to_string())?;
+        deleted += 1;
+    }
+    Ok(deleted)
 }
 
 #[arcrelay_desktop_ipc::command]
@@ -1169,6 +1268,22 @@ pub async fn clipboard_join_segments(
         .text_selection
         .join(id, &version, &text, &ids)
         .map_err(|error| error.into_ipc_error())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::join_clipboard_text;
+
+    #[test]
+    fn combined_paste_joins_in_order_with_one_newline_separator() {
+        let joined = join_clipboard_text(vec![
+            "first".to_string(),
+            "  second\n".to_string(),
+            "third".to_string(),
+        ]);
+
+        assert_eq!(joined, "first\n  second\n\nthird");
+    }
 }
 
 #[cfg(test)]

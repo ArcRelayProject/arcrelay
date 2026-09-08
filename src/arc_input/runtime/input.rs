@@ -575,16 +575,15 @@ impl ArcInputRuntime {
         let pending_scroll = Arc::new(Mutex::new(PendingScrollDelta::default()));
         let scroll_for_processing = pending_scroll.clone();
         let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(64);
+        let pointer_ready = Arc::new(tokio::sync::Notify::new());
+        let scroll_ready = Arc::new(tokio::sync::Notify::new());
+        let pointer_signal = pointer_ready.clone();
+        let scroll_signal = scroll_ready.clone();
         let processing_weak = Arc::downgrade(self);
         self.runtime_handle.spawn(async move {
-            let mut pointer_tick = tokio::time::interval(POINTER_DISPATCH_INTERVAL);
-            let mut scroll_tick = tokio::time::interval(SCROLL_DISPATCH_INTERVAL);
-            pointer_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            scroll_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            // Consume the immediate first tick so motion is dispatched at the
-            // configured cadence instead of once per native report.
-            pointer_tick.tick().await;
-            scroll_tick.tick().await;
+            let pointer_tick = coalesced_wakeup::next(pointer_ready.clone(), POINTER_DISPATCH_INTERVAL);
+            let scroll_tick = coalesced_wakeup::next(scroll_ready.clone(), SCROLL_DISPATCH_INTERVAL);
+            tokio::pin!(pointer_tick, scroll_tick);
             loop {
                 let event = tokio::select! {
                     biased;
@@ -592,13 +591,15 @@ impl ArcInputRuntime {
                         let Some(event) = event else { break; };
                         event
                     }
-                    _ = pointer_tick.tick() => {
+                    _ = &mut pointer_tick => {
+                        pointer_tick.set(coalesced_wakeup::next(pointer_ready.clone(), POINTER_DISPATCH_INTERVAL));
                         let Some((x, y)) = lock(&pointer_for_processing).take() else {
                             continue;
                         };
                         CapturedInputEvent::PointerDelta { x, y }
                     }
-                    _ = scroll_tick.tick() => {
+                    _ = &mut scroll_tick => {
+                        scroll_tick.set(coalesced_wakeup::next(scroll_ready.clone(), SCROLL_DISPATCH_INTERVAL));
                         let Some(event) = lock(&scroll_for_processing).take() else {
                             continue;
                         };
@@ -656,6 +657,7 @@ impl ArcInputRuntime {
                     match event {
                         CapturedInputEvent::PointerDelta { x, y } => {
                             lock(&pointer_for_capture).push(x, y);
+                            pointer_signal.notify_one();
                         }
                         CapturedInputEvent::Scroll {
                             event,
@@ -682,6 +684,7 @@ impl ArcInputRuntime {
                                 let pushed = lock(&scroll_for_capture).push(event);
                                 debug_assert!(pushed);
                             }
+                            scroll_signal.notify_one();
                         }
                         CapturedInputEvent::EmergencyRelease => {
                             // Emergency release must not wait behind a network
