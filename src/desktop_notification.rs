@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Mutex;
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
@@ -70,6 +71,40 @@ impl DesktopNotificationCategory {
         };
         localized(language, zh_cn, en_us)
     }
+
+    fn requires_foreground_feedback(self) -> bool {
+        matches!(
+            self,
+            Self::PairingRequest
+                | Self::TransferRequest
+                | Self::TransferFailed
+                | Self::RemoteFileFailed
+                | Self::PrintFailed
+                | Self::WorkflowActionRequired
+                | Self::WorkflowFailed
+                | Self::InputPermissionRequired
+                | Self::AgentNotification
+        )
+    }
+
+    fn is_error(self) -> bool {
+        matches!(
+            self,
+            Self::TransferFailed
+                | Self::RemoteFileFailed
+                | Self::PrintFailed
+                | Self::WorkflowFailed
+                | Self::InputPermissionRequired
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InAppNotification {
+    pub title: String,
+    pub body: String,
+    pub error: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +113,7 @@ pub struct DesktopNotification {
     pub title: String,
     pub body: String,
     pub action: Option<DesktopNotificationAction>,
+    pub error: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +132,7 @@ impl DesktopNotification {
             title: title.into(),
             body: body.into(),
             action: None,
+            error: false,
         }
     }
 
@@ -103,6 +140,11 @@ impl DesktopNotification {
         self.action = Some(DesktopNotificationAction::OpenTransferRequest(
             transfer_id.into(),
         ));
+        self
+    }
+
+    pub fn error(mut self) -> Self {
+        self.error = true;
         self
     }
 }
@@ -125,6 +167,21 @@ pub fn show(
         return Ok(DesktopNotificationDelivery::Disabled);
     }
     if preferences.only_when_inactive && crate::windowing::main_window_active() {
+        if notification.category.requires_foreground_feedback() {
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| "main window is active but unavailable for feedback".to_string())?;
+            window
+                .emit(
+                    "desktop-notification",
+                    InAppNotification {
+                        title: notification.title,
+                        body: notification.body,
+                        error: notification.error || notification.category.is_error(),
+                    },
+                )
+                .map_err(|error| format!("failed to show in-app notification: {error}"))?;
+        }
         return Ok(DesktopNotificationDelivery::MainWindowActive);
     }
     let (title, body) = if preferences.show_previews {
@@ -145,6 +202,34 @@ pub fn show(
         show_unfiltered(app, title, body)?;
     }
     Ok(DesktopNotificationDelivery::Shown)
+}
+
+/// Attention events deliver their visual feedback before playing audio.
+/// Passive events preserve the existing audio-first behavior.
+pub fn show_with_sound(
+    app: &AppHandle,
+    settings: &SettingsManager,
+    notification: DesktopNotification,
+    sound: crate::sound::SoundEvent,
+    automation_id: Option<&str>,
+) -> Result<DesktopNotificationDelivery, String> {
+    let play = || {
+        if let Some(id) = automation_id {
+            crate::sound::play_automation(sound, id);
+        } else {
+            crate::sound::play(sound);
+        }
+    };
+    if sound.requires_visible_feedback() {
+        let delivery = show(app, settings, notification)?;
+        if delivery != DesktopNotificationDelivery::Disabled {
+            play();
+        }
+        Ok(delivery)
+    } else {
+        play();
+        show(app, settings, notification)
+    }
 }
 
 static PENDING_TRANSFER_REQUEST: Mutex<Option<String>> = Mutex::new(None);
@@ -325,6 +410,26 @@ mod tests {
         assert!(DesktopNotificationCategory::WorkflowFailed.enabled(&settings));
         assert!(!DesktopNotificationCategory::WorkflowCompleted.enabled(&settings));
         assert!(!DesktopNotificationCategory::DeviceConnection.enabled(&settings));
+    }
+
+    #[test]
+    fn foreground_fallback_covers_attention_categories() {
+        use DesktopNotificationCategory as Category;
+        for category in [
+            Category::PairingRequest,
+            Category::TransferRequest,
+            Category::TransferFailed,
+            Category::RemoteFileFailed,
+            Category::PrintFailed,
+            Category::WorkflowActionRequired,
+            Category::WorkflowFailed,
+            Category::InputPermissionRequired,
+            Category::AgentNotification,
+        ] {
+            assert!(category.requires_foreground_feedback(), "{category:?}");
+        }
+        assert!(!Category::TransferCompleted.requires_foreground_feedback());
+        assert!(!Category::DeviceConnection.requires_foreground_feedback());
     }
 
     #[test]

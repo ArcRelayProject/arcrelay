@@ -86,6 +86,31 @@ fn preferences_are_independent_and_legacy_settings_remain_valid() {
 }
 
 #[test]
+fn attention_sounds_require_visible_feedback() {
+    for event in [
+        SoundEvent::TransferRequest,
+        SoundEvent::TransferFailed,
+        SoundEvent::ActionFailed,
+        SoundEvent::AutomationConfirmation,
+        SoundEvent::AutomationFailed,
+        SoundEvent::AutomationInterrupted,
+    ] {
+        assert!(event.requires_visible_feedback(), "{event:?}");
+    }
+    for event in [
+        SoundEvent::ClipboardAdded,
+        SoundEvent::ClipboardReceived,
+        SoundEvent::ClipboardUsed,
+        SoundEvent::TransferSent,
+        SoundEvent::TransferReceived,
+        SoundEvent::ActionSucceeded,
+        SoundEvent::AutomationSucceeded,
+    ] {
+        assert!(!event.requires_visible_feedback(), "{event:?}");
+    }
+}
+
+#[test]
 fn master_mute_privacy_and_automation_override_are_applied_before_queueing() {
     let service = service();
     service.mute(Some(Duration::from_secs(1)));
