@@ -73,6 +73,11 @@
   let loading = true;
   let loadingMore = false;
   let ocrPasting = false;
+  let pasteInFlight = false;
+  let pasteError = "";
+  let historyRefreshPending = false;
+  let interactionUntil = 0;
+  let historyRefreshTimer: number | undefined;
   let error = "";
   let labelFilterOpen = false;
   let labelSearch = "";
@@ -310,6 +315,8 @@
       // A newly created WebView may become visible before JS attaches.
       await scope.add(observeWindowVisibility(clipboardBridge, () => {
         windowVisible = true;
+        pasteError = "";
+        historyRefreshPending = false;
         const shouldFocusSearch = currentSettings?.clipboardAutoFocusSearch ?? true;
         resetRestoredFocus();
         keyboardMode = shouldFocusSearch ? "search" : "results";
@@ -322,6 +329,8 @@
         });
       }, () => {
         windowVisible = false;
+        window.clearTimeout(historyRefreshTimer);
+        historyRefreshPending = false;
         loadGeneration += 1;
         loading = false;
         loadingMore = false;
@@ -405,10 +414,10 @@
       await scope.add(clipboardBridge.onChanged(() => {
         historyChangeCount += 1;
         if (nearby) nearby = { ...nearby, updated: true };
-        else if (!locating) void load();
+        else if (!locating) requestHistoryRefresh();
       }));
       await scope.add(clipboardBridge.onOcrChanged(() => {
-        if (!nearby && !locating && debouncedSearch.trim()) void load();
+        if (!nearby && !locating && debouncedSearch.trim()) requestHistoryRefresh();
       }));
     })().catch((reason) => { if (!disposed) error = String(reason); });
 
@@ -419,6 +428,7 @@
     return () => {
       disposed = true;
       window.clearTimeout(debounceTimer);
+      window.clearTimeout(historyRefreshTimer);
       cancelAnimationFrame(scrollAnimationFrame);
       window.removeEventListener("keydown", handleKeyDown);
       scrollResizeObserver?.disconnect();
@@ -473,7 +483,29 @@
     return null;
   }
 
-  async function load({ append = false, cursor = null }: { append?: boolean; cursor?: ClipboardCursor | null } = {}) {
+  function deferHistoryRefresh() {
+    // A sync/last-used update must not move the row under the second click.
+    interactionUntil = Date.now() + 700;
+    if (historyRefreshPending) requestHistoryRefresh();
+  }
+
+  function requestHistoryRefresh() {
+    historyRefreshPending = true;
+    window.clearTimeout(historyRefreshTimer);
+    if (!windowVisible || pasteInFlight) return;
+    historyRefreshTimer = window.setTimeout(() => {
+      if (pasteInFlight) return;
+      historyRefreshPending = false;
+      void load({ preservePosition: true });
+    }, Math.max(0, interactionUntil - Date.now()));
+  }
+
+  function finishPaste() {
+    pasteInFlight = false;
+    if (windowVisible && historyRefreshPending) requestHistoryRefresh();
+  }
+
+  async function load({ append = false, cursor = null, preservePosition = false }: { append?: boolean; cursor?: ClipboardCursor | null; preservePosition?: boolean } = {}) {
     if (!windowVisible) return;
     if (nearby) return refreshNearby();
     const generation = append ? loadGeneration : ++loadGeneration;
@@ -493,6 +525,15 @@
         limit: FETCH_SIZE,
       });
       if (generation !== loadGeneration) return;
+      if (preservePosition && (pasteInFlight || Date.now() < interactionUntil)) {
+        requestHistoryRefresh();
+        return;
+      }
+      const anchor = preservePosition ? viewportAnchor() : null;
+      const previousSelection = selectedId;
+      // A first-page update cannot replace a user's paginated view when its
+      // anchor has fallen outside that page. Reopening loads the latest order.
+      if (preservePosition && [anchor?.id, previousSelection].some(id => id != null && !page.entries.some(item => item.id === id))) return;
       history = {
         revision: page.revision,
         entries: append ? [...history.entries, ...page.entries] : page.entries,
@@ -504,9 +545,13 @@
           const height = rowHeights.get(item.id);
           return height === undefined ? [] : [[item.id, height] as const];
         }));
-        selectedId = page.entries[0]?.id ?? null;
-        scrollElement?.scrollTo({ top: 0 });
-        scrollTop = 0;
+        selectedId = preservePosition ? previousSelection : (page.entries[0]?.id ?? null);
+        if (preservePosition) {
+          await restorePosition(anchor, scrollTop, generation);
+        } else {
+          scrollElement?.scrollTo({ top: 0 });
+          scrollTop = 0;
+        }
       }
       error = "";
     } catch (reason) {
@@ -752,20 +797,23 @@
   }
 
   async function pasteSelectedItems() {
-    if (selectedIds.length === 0 || multiPasting) return;
+    if (selectedIds.length === 0 || multiPasting || pasteInFlight) return;
     if (!combinedPasteAvailable) {
       error = uiTranslate("合并粘贴仅支持文本内容", $uiLanguage);
       return;
     }
     multiPasting = true;
+    pasteInFlight = true;
+    pasteError = "";
     error = "";
     try {
       await clipboardBridge.pasteRecords([...selectedIds]);
       clearMultiSelection();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      pasteError = reason instanceof Error ? reason.message : String(reason);
     } finally {
       multiPasting = false;
+      finishPaste();
     }
   }
 
@@ -800,12 +848,14 @@
   }
 
   async function pasteItem(item: ClipboardItem, mode: ClipboardPasteMode = "source") {
-    if (ocrPasting) return;
+    if (ocrPasting || pasteInFlight) return;
     if (mode === "plain_text" && item.kind === "files") {
       error = uiTranslate("文件条目不能粘贴为文本", $uiLanguage);
       return;
     }
     const recognizingImage = mode === "plain_text" && item.kind === "image";
+    pasteInFlight = true;
+    pasteError = "";
     if (recognizingImage) {
       ocrPasting = true;
       error = "";
@@ -813,9 +863,10 @@
     try {
       await clipboardBridge.pasteAs(item.id, mode);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      pasteError = reason instanceof Error ? reason.message : String(reason);
     } finally {
       if (recognizingImage) ocrPasting = false;
+      finishPaste();
     }
   }
 
@@ -1041,16 +1092,19 @@
   }
 
   async function pasteSegment(content: string) {
-    if (previewActionBusy) return;
+    if (previewActionBusy || pasteInFlight) return;
     previewActionBusy = true;
+    pasteInFlight = true;
+    pasteError = "";
     try {
       await clipboardBridge.pasteText(content);
       previewDialogOpen = false;
     } catch (reason) {
       previewError = reason instanceof Error ? reason.message : String(reason);
-      error = previewError;
+      pasteError = previewError;
     } finally {
       previewActionBusy = false;
+      finishPaste();
     }
   }
 
@@ -1372,9 +1426,15 @@
         <button type="button" class="icon-button" aria-label={tr("关闭提示", language)} on:click={() => (navigationError = "")}><X size={16} /></button>
       </div>
     {/if}
+    {#if pasteError}
+      <div class="navigation-message navigation-error" role="alert">
+        <span>{pasteError}</span>
+        <button type="button" class="icon-button" aria-label={tr("关闭提示", language)} on:click={() => (pasteError = "")}><X size={16} /></button>
+      </div>
+    {/if}
   </div>
 
-  <section class:keyboard-active={keyboardMode === "results"} class="clipboard-list" aria-label={tr("剪贴板记录", language)} bind:this={scrollElement} aria-busy={loading || loadingMore || locating} on:scroll={handleListScroll} on:wheel|passive={releasePositionAnchor} on:touchstart|passive={releasePositionAnchor} on:pointerdown={releasePositionAnchor}>
+  <section class:keyboard-active={keyboardMode === "results"} class="clipboard-list" aria-label={tr("剪贴板记录", language)} bind:this={scrollElement} aria-busy={loading || loadingMore || locating} on:scroll={handleListScroll} on:wheel|passive={releasePositionAnchor} on:touchstart|passive={releasePositionAnchor} on:pointerdown={() => { releasePositionAnchor(); deferHistoryRefresh(); }}>
     {#if loading && history.entries.length === 0}
       <div class="list-state loading-state">
         <span class="loading-spinner" aria-hidden="true"></span>

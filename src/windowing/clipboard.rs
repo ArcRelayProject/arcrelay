@@ -95,13 +95,17 @@ fn ensure_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     .always_on_top(false)
     .skip_taskbar(true)
     .accept_first_mouse(true)
+    .focused(false)
     .visible(false)
     .build()
-    .map(|window| {
+    .and_then(|window| {
         if let Err(error) = configure_platform_clipboard_window(&window) {
-            tracing::warn!(%error, "Failed to configure clipboard window");
+            // Do not leave an activating NSWindow behind after a failed panel
+            // conversion: a later shortcut would raise the entire application.
+            let _ = window.destroy();
+            return Err(error);
         }
-        let _ = window.hide();
+        window.hide()
     });
 
     CREATING_CLIPBOARD_WINDOW.store(false, Ordering::SeqCst);
@@ -427,6 +431,19 @@ fn configure_platform_clipboard_window(window: &tauri::WebviewWindow) -> tauri::
     // its WKWebView can receive keydown events without activating ArcRelay.
     panel.set_becomes_key_only_if_needed(false);
     panel.set_style_mask(StyleMask::empty().nonactivating_panel().resizable().value());
+    // to_panel changes the ObjC class of an existing NSWindow. NSPanel's
+    // initializer never ran, and setStyleMask alone does not update the
+    // WindowServer prevents-activation tag (AppKit FB16484811).
+    let native = unsafe { &*(window.ns_window()? as *const objc2_app_kit::NSWindow) };
+    use objc2_foundation::NSObjectProtocol;
+    if !native.respondsToSelector(objc2::sel!(_setPreventsActivation:)) {
+        return Err(tauri::Error::Io(std::io::Error::other(
+            "nonactivating clipboard panel is unavailable",
+        )));
+    }
+    unsafe {
+        let _: () = objc2::msg_send![native, _setPreventsActivation: true];
+    }
     panel.set_collection_behavior(
         CollectionBehavior::new()
             .can_join_all_spaces()
@@ -456,10 +473,9 @@ fn show_platform_clipboard_window(
         start_clipboard_outside_click_monitor(app.clone());
         return Ok(());
     }
-    window.show()?;
-    window.set_focus()?;
-    start_clipboard_outside_click_monitor(app.clone());
-    Ok(())
+    Err(tauri::Error::Io(std::io::Error::other(
+        "nonactivating clipboard panel is unavailable",
+    )))
 }
 
 #[cfg(not(target_os = "macos"))]
