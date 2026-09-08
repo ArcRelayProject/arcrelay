@@ -78,6 +78,20 @@ pub fn execute_by_id(
     execute_definition(service, action)
 }
 
+/// Execute an action without process-local feedback. Background callers use
+/// this so they can establish visible feedback before playing audio.
+pub fn execute_by_id_without_sound(
+    service: &Arc<Mutex<ActionService>>,
+    action_id: &str,
+) -> Result<String, String> {
+    let action = service
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .find_cloned(action_id)
+        .ok_or_else(|| format!("Action not found: {action_id}"))?;
+    execute_resolved_definition(service, action, true)
+}
+
 /// Execute the definition that was shown in a native confirmation dialog.
 pub fn execute_definition(
     service: &Arc<Mutex<ActionService>>,

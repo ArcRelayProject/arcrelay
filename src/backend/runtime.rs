@@ -370,7 +370,6 @@ pub(super) async fn run_backend(
                         }
                         let language = transfer_settings.snapshot().language;
                         for notification in notification_tracker.update(&snapshot, language) {
-                            crate::sound::play(notification.sound);
                             show_transfer_system_notification(
                                 &transfer_app,
                                 &transfer_settings,
@@ -412,15 +411,19 @@ pub(super) async fn run_backend(
                 .list(true, 500)
                 .unwrap_or_default();
             for notification in host_notification_tracker.update(&notifications) {
-                let desktop_notification = crate::desktop_notification::DesktopNotification::new(
-                    crate::desktop_notification::DesktopNotificationCategory::AgentNotification,
-                    notification.title,
-                    if notification.body.is_empty() {
-                        notification.source
-                    } else {
-                        notification.body
-                    },
-                );
+                let mut desktop_notification =
+                    crate::desktop_notification::DesktopNotification::new(
+                        crate::desktop_notification::DesktopNotificationCategory::AgentNotification,
+                        notification.title,
+                        if notification.body.is_empty() {
+                            notification.source
+                        } else {
+                            notification.body
+                        },
+                    );
+                if notification.kind == crate::notification::NotificationKind::ActionRequired {
+                    desktop_notification = desktop_notification.error();
+                }
                 if let Err(error) = crate::desktop_notification::show(
                     &notification_app,
                     &notification_state.settings,

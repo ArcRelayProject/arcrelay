@@ -197,6 +197,8 @@ export type HorizontalScrollBehavior = "NativeScroll" | "NavigateHistory";
 
 export type ImportActionsResponse = { result: ActionImportResult, state: BootstrapState, };
 
+export type InAppNotification = { title: string, body: string, error: boolean, };
+
 export type InputMetricsView = { receiveHz: number, quartzHz: number, averageGapUs: number, maximumGapUs: number, maximumSourceGapUs: number, maximumTransportStallUs: number, averageApplyUs: number, maximumApplyUs: number, };
 
 export type InputPermissionState = "Granted" | "Denied" | "Unsupported";
@@ -677,6 +679,7 @@ export interface EventMap {
   "clipboard-window-hidden": null;
   "clipboard-window-pin-changed": boolean;
   "clipboard-window-shown": null;
+  "desktop-notification": InAppNotification;
   "desktop-runtime": DesktopRuntimeState;
   "desktop-state": BootstrapState;
   "input-metrics": InputMetricsView | null;

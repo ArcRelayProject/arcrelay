@@ -54,6 +54,19 @@ macro_rules! catalogue {
             pub(super) fn priority(self) -> u8 {
                 match self { $(Self::$event => $priority,)* }
             }
+            /// Attention cues must never be emitted without a corresponding
+            /// visual surface. Passive feedback may remain audio-only.
+            pub(crate) fn requires_visible_feedback(self) -> bool {
+                matches!(
+                    self,
+                    Self::TransferRequest
+                        | Self::TransferFailed
+                        | Self::ActionFailed
+                        | Self::AutomationConfirmation
+                        | Self::AutomationFailed
+                        | Self::AutomationInterrupted
+                )
+            }
         }
     }
 }
