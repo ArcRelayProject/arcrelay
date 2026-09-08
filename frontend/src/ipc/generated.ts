@@ -62,7 +62,7 @@ export type AutomationStep = { "type": "quickAction", actionId: string, } | { "t
 
 export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, };
 
-export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
+export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
 export type Capability = { id: string, available: boolean, reason: string | null, remedy: string | null, };
 
@@ -133,7 +133,7 @@ export type ContinuousPasteProgress = { current: number, total: number, active: 
 
 export type DeskRectUm = { x: number, y: number, width: number, height: number, };
 
-export type DesktopRuntimeState = { revision: number, port: number, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
+export type DesktopRuntimeState = { revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
 export type DeviceId = string;
 

@@ -179,6 +179,8 @@ pub struct BootstrapState {
 pub struct DesktopRuntimeState {
     pub revision: u64,
     pub port: u16,
+    pub local_device_name: String,
+    pub local_platform: String,
     pub server_running: bool,
     pub connected_devices: Vec<ConnectedDeviceView>,
     pub paired_devices: Vec<ConnectedDeviceView>,
@@ -376,7 +378,7 @@ pub struct DesktopState {
     pub web_gateway: WebGatewaySupervisor,
     pub settings: SettingsManager,
     pub screenshot: Arc<ScreenshotService>,
-    pub server_name: Arc<tokio::sync::RwLock<String>>,
+    server_name: Arc<RwLock<String>>,
     pub command_tx: mpsc::Sender<BackendCommand>,
     pub quitting: Arc<AtomicBool>,
     pub network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
@@ -407,7 +409,7 @@ struct DesktopStateInit {
     web_gateway: WebGatewaySupervisor,
     settings: SettingsManager,
     screenshot: Arc<ScreenshotService>,
-    server_name: Arc<tokio::sync::RwLock<String>>,
+    server_name: Arc<RwLock<String>>,
     command_tx: mpsc::Sender<BackendCommand>,
     network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
 }
@@ -552,6 +554,8 @@ impl DesktopState {
         DesktopRuntimeState {
             revision,
             port: self.port,
+            local_device_name: self.local_device_name(),
+            local_platform: std::env::consts::OS.to_string(),
             server_running,
             connected_devices,
             paired_devices,
@@ -566,6 +570,14 @@ impl DesktopState {
             mcp_port: self.mcp_port,
             privacy: self.privacy.snapshot(),
         }
+    }
+
+    pub(crate) fn local_device_name(&self) -> String {
+        read_unpoison(&self.server_name).clone()
+    }
+
+    pub(crate) fn set_local_device_name(&self, name: String) {
+        *write_unpoison(&self.server_name) = name;
     }
 
     fn is_device_connected(&self, device_id: &str) -> bool {

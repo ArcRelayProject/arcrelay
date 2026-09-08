@@ -37,7 +37,7 @@ pub(super) async fn run_backend(
         }
     };
     let peer_repository: Arc<dyn PeerRepository> = repository.clone();
-    let device_name = state.server_name.read().await.clone();
+    let device_name = state.local_device_name();
     let mut network_config = NetworkRuntimeConfig::new(
         config_dir.join("identity"),
         DeviceMetadata {

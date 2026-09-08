@@ -24,6 +24,8 @@ export const mockData: BridgeMockData = {
   state: {
     revision: 0,
   port: 8765,
+  localDeviceName: "设计工作站",
+  localPlatform: "macos",
   serverRunning: true,
   actions: [
     {
