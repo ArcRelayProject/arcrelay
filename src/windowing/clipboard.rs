@@ -1,15 +1,7 @@
 use super::*;
 
-pub fn ensure_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        dispatch_appkit(app, "ensure clipboard window", |app| {
-            ensure_clipboard_window_on_main(&app)
-        })
-    }
-    #[cfg(not(target_os = "macos"))]
-    ensure_clipboard_window_on_main(app)
-}
+static CLIPBOARD_IDLE_REVISION: AtomicU64 = AtomicU64::new(0);
+const CLIPBOARD_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
@@ -23,6 +15,7 @@ pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     CREATING_CLIPBOARD_WINDOW.store(false, Ordering::SeqCst);
@@ -59,7 +52,9 @@ fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn sync_clipboard_window(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
     if enabled {
-        ensure_clipboard_window(app)
+        // The shortcut creates the surface on first use. Clipboard capture
+        // continues in the backend without a hidden WebView.
+        Ok(())
     } else {
         destroy_clipboard_window(app)
     }
@@ -125,6 +120,7 @@ pub fn show_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn show_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     if app
@@ -169,7 +165,26 @@ fn hide_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     if let Some(state) = app.try_state::<crate::backend::DesktopState>() {
         state.text_selection.clear();
     }
-    hide_platform_clipboard_window(app, &window)
+    hide_platform_clipboard_window(app, &window)?;
+    let revision = CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(CLIPBOARD_IDLE_TIMEOUT).await;
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let app = handle;
+            if CLIPBOARD_IDLE_REVISION.load(Ordering::SeqCst) == revision
+                && app
+                    .get_webview_window(CLIPBOARD_WINDOW_LABEL)
+                    .is_some_and(|window| !window.is_visible().unwrap_or(true))
+            {
+                if let Err(error) = destroy_clipboard_window_on_main(&app) {
+                    tracing::warn!(%error, "could not release idle clipboard window");
+                }
+            }
+        });
+    });
+    Ok(())
 }
 
 pub fn clipboard_window_pinned() -> bool {

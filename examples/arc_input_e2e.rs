@@ -9,6 +9,8 @@
 mod arc_input;
 #[path = "../src/ipc.rs"]
 mod ipc;
+#[path = "../src/retry.rs"]
+mod retry;
 
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;

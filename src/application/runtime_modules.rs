@@ -39,6 +39,9 @@ pub struct RuntimeModules {
     pub print_has_saved_state: bool,
 }
 impl RuntimeModules {
+    pub fn content_resources(&self) -> Arc<arcrelay_content::ContentResources> {
+        self.resources.clone()
+    }
     pub fn new(
         resources: Arc<arcrelay_content::ContentResources>,
         transfer_config: TransferConfig,

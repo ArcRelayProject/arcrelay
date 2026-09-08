@@ -598,6 +598,7 @@ pub struct ArcInputRuntime {
 }
 
 mod availability;
+mod coalesced_wakeup;
 mod external;
 mod input;
 mod lifecycle;
