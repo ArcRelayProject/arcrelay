@@ -22,6 +22,9 @@ const mockImageOcr: ClipboardImageOcr = {
 };
 const mockLabels: ClipboardLabel[] = [
     { id: "mock-work", name: "工作", color: "#3B82F6", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-project", name: "项目", color: "#22C55E", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-temporary", name: "临时", color: "#F59E0B", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-code", name: "代码", color: "#8B5CF6", revision: 1, updated_by_device_id: "mock", deleted: false },
 ];
 const mockItems: ClipboardItem[] = [
     {
@@ -84,7 +87,7 @@ const mockItems: ClipboardItem[] = [
         height: null,
         sensitive: false,
         favorite: true,
-        labels: mockLabels,
+        labels: [mockLabels[0]],
         available: true,
         textSyntax: "plain",
     },
@@ -152,10 +155,11 @@ const mockItems: ClipboardItem[] = [
         textSyntax: "plain",
     },
 ];
-function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: boolean): ClipboardHistory {
+function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: boolean, labelIds: string[] = []): ClipboardHistory {
     const query = search.trim().toLocaleLowerCase("zh-CN");
     const entries = mockItems.filter((item) => (!kind || item.kind === kind || (kind === "text" && item.kind === "html")) &&
         (!favoriteOnly || item.favorite) &&
+        (labelIds.length === 0 || labelIds.every((labelId) => item.labels.some((label) => label.id === labelId))) &&
         (!query || `${item.preview} ${item.sourceApp ?? ""}`.toLocaleLowerCase("zh-CN").includes(query)));
     return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
@@ -193,7 +197,7 @@ export const clipboardBridge = {
         labelIds?: string[];
         cursor: ClipboardCursor | null;
         limit?: number;
-    }) => mockHistory(options.search, options.kind, options.favoriteOnly),
+    }) => mockHistory(options.search, options.kind, options.favoriteOnly, options.labelIds),
     thumbnail: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imagePreview: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imageOcr: (id: number) => Promise.resolve(id === 101 ? mockImageOcr : null),
