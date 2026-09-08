@@ -817,46 +817,78 @@ input:focus-visible {
   z-index: 8;
   right: 14px;
   bottom: 58px;
-  left: 14px;
   display: flex;
-  min-height: 46px;
+  width: 56px;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 7px 8px 7px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border-color));
-  border-radius: 12px;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 17px;
   background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
   box-shadow: 0 10px 28px color-mix(in srgb, var(--text-primary) 16%, transparent);
   backdrop-filter: blur(16px);
 }
 
-.multi-select-actions strong {
-  margin-right: auto;
-  font-size: 12px;
+.multi-select-status {
+  position: absolute;
+  z-index: 7;
+  right: 82px;
+  bottom: 64px;
+  left: 14px;
+  width: fit-content;
+  max-width: calc(100% - 96px);
+  padding: 7px 11px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-color));
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--text-primary) 10%, transparent);
+  backdrop-filter: blur(14px);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.multi-select-actions button {
+.multi-select-actions button.multi-action {
+  position: relative;
   display: inline-flex;
-  min-height: 32px;
+  width: 40px;
+  height: 40px;
   align-items: center;
-  gap: 5px;
-  padding: 0 10px;
+  justify-content: center;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--text-inverse);
   background: var(--accent);
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 700;
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 .multi-select-actions button.continuous-action {
-  background: #238a58;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-color));
+  color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
-.multi-select-actions button:hover:not(:disabled) {
-  filter: brightness(1.06);
+.multi-select-actions button.delete-action {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.multi-select-actions button.clear-selection {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.multi-select-actions button:hover:not(:disabled),
+.multi-select-actions button:focus-visible:not(:disabled) {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px color-mix(in srgb, currentColor 18%, transparent);
 }
 
 .multi-select-actions button:disabled {
@@ -864,28 +896,39 @@ input:focus-visible {
   cursor: default;
 }
 
-.multi-select-actions button.clear-selection {
-  display: grid;
+.multi-action-divider {
   width: 30px;
-  min-width: 30px;
-  padding: 0;
-  place-items: center;
-  color: var(--text-secondary);
-  background: var(--surface-hover);
+  height: 1px;
+  margin: 1px 0;
+  background: var(--border-color);
 }
 
-.multi-select-actions.continuous-progress {
-  left: auto;
+.multi-action-label {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  max-width: 220px;
+  padding: 6px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   color: var(--text-primary);
-}
-
-.continuous-progress > svg {
-  color: #238a58;
-}
-
-.continuous-progress span {
-  color: var(--text-secondary);
+  background: var(--surface-overlay);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--text-primary) 14%, transparent);
   font-size: 11px;
+  font-weight: 650;
+  opacity: 0;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translate(4px, -50%);
+  transition: opacity 100ms ease, transform 100ms ease;
+  white-space: nowrap;
+}
+
+.multi-action:hover .multi-action-label,
+.multi-action:focus-visible .multi-action-label {
+  opacity: 1;
+  transform: translate(0, -50%);
 }
 
 .record-count {

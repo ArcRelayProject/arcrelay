@@ -125,7 +125,9 @@ export type ConsumerShortcut = { key: number,
  */
 modifiers: number, action: ConsumerKey, };
 
-export type ContinuousPasteProgress = { current: number, total: number, active: boolean, };
+export type ContinuousPasteItemInput = { id: number, preview: string, };
+
+export type ContinuousPasteProgress = { current: number, total: number, active: boolean, nextPreview: string | null, triggerShortcut: string, };
 
 export type DeskRectUm = { x: number, y: number, width: number, height: number, };
 
@@ -490,6 +492,7 @@ export interface CommandMap {
   clipboard_create_label: { args: { color: string; name: string; }; result: ClipboardLabel };
   clipboard_delete_label: { args: { labelId: string; }; result: null };
   clipboard_delete_record: { args: { id: number; }; result: null };
+  clipboard_delete_records: { args: { ids: Array<number>; }; result: number };
   clipboard_edit_text: { args: { content: string; id: number; }; result: null };
   clipboard_history: { args: { cursor: ClipboardCursorInput | null; favoriteOnly: boolean; kind: ClipboardContentKind | null; labelIds: Array<string> | null; limit: number | null; search: string | null; }; result: ClipboardHistoryView };
   clipboard_html_preview: { args: { id: number; }; result: string | null };
@@ -506,8 +509,7 @@ export interface CommandMap {
   clipboard_set_favorite: { args: { favorite: boolean; id: number; }; result: null };
   clipboard_set_label_membership: { args: { attached: boolean; id: number; labelId: string; }; result: null };
   clipboard_set_labels: { args: { id: number; labelIds: Array<string>; }; result: null };
-  clipboard_start_continuous_paste: { args: { ids: Array<number>; }; result: ContinuousPasteProgress };
-  clipboard_stop_continuous_paste: { args: { }; result: ContinuousPasteProgress };
+  clipboard_start_continuous_paste: { args: { items: Array<ContinuousPasteItemInput>; }; result: ContinuousPasteProgress };
   clipboard_text_content: { args: { id: number; }; result: string };
   clipboard_text_segments: { args: { id: number; }; result: TextSliceModel };
   clipboard_thumbnail: { args: { id: number; }; result: string | null };
@@ -674,7 +676,6 @@ export interface EventMap {
   "automation-configuration": null;
   "clipboard-changed": null;
   "clipboard-continuous-paste-error": string;
-  "clipboard-continuous-paste-progress": ContinuousPasteProgress;
   "clipboard-ocr-changed": number;
   "clipboard-window-hidden": null;
   "clipboard-window-pin-changed": boolean;
