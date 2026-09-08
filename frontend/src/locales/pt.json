@@ -2228,5 +2228,15 @@
   "稳定版适合日常使用；测试版会随 main 的每次成功构建更新。": "Estável é indicado para uso diário. Teste é atualizado após cada build bem-sucedido da main.",
   "已切换到稳定版通道": "Canal Estável selecionado",
   "已切换到测试版通道": "Canal de Teste selecionado",
-  "当前版本 {version}，更新通道为 {channel}。": "Versão atual: {version}; canal de atualização: {channel}."
+  "当前版本 {version}，更新通道为 {channel}。": "Versão atual: {version}; canal de atualização: {channel}.",
+  "标签筛选": "Filtro de etiquetas",
+  "更多标签": "Mais etiquetas",
+  "搜索标签": "Pesquisar etiquetas",
+  "没有匹配的标签": "Nenhuma etiqueta correspondente",
+  "输入其他名称试试": "Tente outro nome",
+  "创建或删除用于整理剪贴板记录的标签。": "Crie ou exclua etiquetas para organizar a área de transferência.",
+  "可以切换其他标签，或返回查看全部剪贴板记录。": "Troque de etiqueta ou volte a todos os itens da área de transferência.",
+  "清除标签筛选": "Limpar filtro de etiqueta",
+  "“{name}”标签下暂无内容": "Nenhum item com a etiqueta “{name}”",
+  "{name} · {count} 条": "{name} · {count} itens"
 }

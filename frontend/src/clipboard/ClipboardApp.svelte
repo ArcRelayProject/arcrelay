@@ -8,6 +8,7 @@
   import {
     Check,
     ArrowLeft,
+    CaretDown,
     ClockCounterClockwise,
     CopySimple,
     FileText,
@@ -29,6 +30,7 @@
   import SegmentPicker from "./SegmentPicker.svelte";
   import { clipboardBridge } from "./bridge";
   import { HeightIndex } from "./heightIndex";
+  import { filterClipboardLabels, parseRecentLabelIds, rememberRecentLabel, selectQuickLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
   import { clearHtmlPreviewCache } from "./htmlPreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
@@ -43,6 +45,7 @@
   const QUICK_PASTE_LIMIT = 5;
   const VIRTUAL_OVERSCAN_ROWS = 4;
   const ROW_GAP = 8;
+  const RECENT_LABELS_STORAGE_KEY = "arcrelay.clipboard.recent-labels";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
   const primaryShortcutLabel = isMacPlatform ? "⌘" : "Ctrl+";
   const filters: Array<{ id: ClipboardFilter; label: string; icon: typeof ClockCounterClockwise; size: number; weight?: "fill" }> = [
@@ -69,6 +72,11 @@
   let ocrPasting = false;
   let error = "";
   let labelFilterOpen = false;
+  let labelSearch = "";
+  let activeLabelOptionIndex = 0;
+  let labelSearchInput: HTMLInputElement;
+  let moreLabelsButton: HTMLButtonElement;
+  let recentLabelIds: string[] = [];
   let keyboardMode: ClipboardKeyboardMode = "search";
   let previewDialogOpen = false;
   let previewingItem: ClipboardItem | null = null;
@@ -83,6 +91,7 @@
   let editingItem: ClipboardItem | null = null;
   let editContent = "";
   let labelDialogOpen = false;
+  let managingLabels = false;
   let labelingItem: ClipboardItem | null = null;
   let labels: ClipboardLabel[] = [];
   let selectedLabelIds: string[] = [];
@@ -131,6 +140,9 @@
   $: shortcutNumbers = new Map((nearby ? [] : history.entries.slice(0, QUICK_PASTE_LIMIT)).map((_, index) => [index, index + 1]));
   $: rowShortcutModifier = keyboardMode === "search" ? primaryShortcutLabel : "";
   $: selectedLabel = labels.find((label) => label.id === selectedLabelFilter) ?? null;
+  $: quickLabels = selectQuickLabels(labels, recentLabelIds, selectedLabelFilter);
+  $: filteredLabels = filterClipboardLabels(labels, labelSearch);
+  $: showAllLabelOption = !labelSearch.trim();
   $: recalculateVisibleRange(history.entries, scrollTop, viewportHeight);
   $: {
     window.clearTimeout(debounceTimer);
@@ -284,6 +296,7 @@
     let disposed = false;
     const scope = new SubscriptionScope();
 
+    recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
       // This webview is created hidden and then reused. Register its visibility
       // lifecycle before settings and metadata I/O so an early shortcut cannot
@@ -317,6 +330,8 @@
         clearHtmlPreviewCache();
         keyboardMode = "search";
         labelFilterOpen = false;
+        labelSearch = "";
+        selectedLabelFilter = null;
         previewGeneration++;
         previewDialogOpen = false;
         previewingItem = null;
@@ -894,7 +909,7 @@
         return;
       }
       if (labelFilterOpen) {
-        labelFilterOpen = false;
+        closeLabelFilter({ restoreFocus: true });
         return;
       }
       if (nearby) {
@@ -910,6 +925,11 @@
 
     const target = event.target;
     const editingTarget = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
+    if (!editingTarget && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "#") {
+      event.preventDefault();
+      void toggleLabelFilter();
+      return;
+    }
     if (editingTarget && target !== searchInput) return;
     const element = target instanceof Element ? target : null;
     const rowTarget = element?.closest(".clipboard-row");
@@ -1016,6 +1036,7 @@
   }
 
   async function beginLabels(item: ClipboardItem) {
+    managingLabels = false;
     labelingItem = item;
     labels = await clipboardBridge.labels();
     selectedLabelIds = item.labels.map((label) => label.id);
@@ -1054,6 +1075,10 @@
   }
 
   async function saveLabels() {
+    if (managingLabels) {
+      labelDialogOpen = false;
+      return;
+    }
     if (!labelingItem) return;
     await clipboardBridge.setLabels(labelingItem.id, selectedLabelIds);
     labelDialogOpen = false;
@@ -1064,7 +1089,7 @@
     if (!newLabelName.trim()) return;
     const created = await clipboardBridge.createLabel(newLabelName.trim(), newLabelColor);
     labels = [...labels, created];
-    selectedLabelIds = [...selectedLabelIds, created.id];
+    if (!managingLabels) selectedLabelIds = [...selectedLabelIds, created.id];
     newLabelName = "";
     requestAnimationFrame(() => newLabelInput?.focus());
   }
@@ -1089,6 +1114,18 @@
       : [...selectedLabelIds, labelId];
   }
 
+  async function openLabelManager() {
+    labelFilterOpen = false;
+    labelSearch = "";
+    managingLabels = true;
+    labelingItem = null;
+    selectedLabelIds = [];
+    newLabelName = "";
+    newLabelColor = "#5B5FF0";
+    labels = await clipboardBridge.labels().catch(() => labels);
+    labelDialogOpen = true;
+  }
+
   async function toggleWindowPinned() {
     const pinned = !windowPinned;
     windowPinned = pinned;
@@ -1111,12 +1148,68 @@
     event.preventDefault();
   }
 
-  function selectLabelFilter(labelId: string | null) {
-    abandonNearby();
-    selectedLabelFilter = labelId;
+  function closeLabelFilter({ restoreFocus = false } = {}) {
     labelFilterOpen = false;
+    labelSearch = "";
+    activeLabelOptionIndex = 0;
+    if (restoreFocus) requestAnimationFrame(() => moreLabelsButton?.focus());
+  }
+
+  async function toggleLabelFilter() {
+    if (labelFilterOpen) {
+      closeLabelFilter();
+      return;
+    }
+    labelFilterOpen = true;
+    labelSearch = "";
+    const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
+    activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
+    await tick();
+    labelSearchInput?.focus();
+  }
+
+  function selectLabelFilter(labelId: string | null, toggle = false) {
+    abandonNearby();
+    const nextLabelId = toggle && selectedLabelFilter === labelId ? null : labelId;
+    selectedLabelFilter = nextLabelId;
+    if (nextLabelId) {
+      recentLabelIds = rememberRecentLabel(recentLabelIds, nextLabelId);
+      localStorage.setItem(RECENT_LABELS_STORAGE_KEY, JSON.stringify(recentLabelIds));
+    }
+    closeLabelFilter();
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
+  }
+
+  function updateActiveLabelOption() {
+    const selectedIndex = filteredLabels.findIndex((label) => label.id === selectedLabelFilter);
+    activeLabelOptionIndex = showAllLabelOption ? Math.max(0, selectedIndex + 1) : 0;
+  }
+
+  function handleLabelSearchKeyDown(event: KeyboardEvent) {
+    const optionOffset = showAllLabelOption ? 1 : 0;
+    const optionCount = filteredLabels.length + optionOffset;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (optionCount === 0) return;
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      activeLabelOptionIndex = (activeLabelOptionIndex + delta + optionCount) % optionCount;
+      return;
+    }
+    if (event.key === "Enter") {
+      if (optionCount === 0) return;
+      event.preventDefault();
+      const labelId = showAllLabelOption && activeLabelOptionIndex === 0
+        ? null
+        : filteredLabels[activeLabelOptionIndex - optionOffset]?.id ?? null;
+      selectLabelFilter(labelId);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeLabelFilter({ restoreFocus: true });
+    }
   }
 
   function windowDrag(node: HTMLElement) {
@@ -1148,33 +1241,84 @@
         </button>
       {/each}
     </div>
-    <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: () => (labelFilterOpen = false) }}>
-      <button
-        class="label-filter-button"
-        type="button"
-        aria-label={selectedLabel ? `${tr("管理标签", language)}：${selectedLabel.name}` : tr("管理标签", language)}
-        title={selectedLabel?.name ?? (uiTranslate("全部标签", $uiLanguage))}
-        aria-haspopup="listbox"
-        aria-expanded={labelFilterOpen}
-        on:click={() => (labelFilterOpen = !labelFilterOpen)}
-      >
-        <Tag size={19} weight={selectedLabel ? "fill" : "regular"} />
-        {#if selectedLabel}<span class="label-filter-selection-dot" style:--label-color={selectedLabel.color}></span>{/if}
-      </button>
-      {#if labelFilterOpen}
-        <div class="label-filter-menu" role="listbox" aria-label={tr("管理标签", language)}>
-          <button class:active={selectedLabelFilter === null} type="button" role="option" aria-selected={selectedLabelFilter === null} on:click={() => selectLabelFilter(null)}>
-            <Tag size={14} /><span>{uiTranslate("全部标签", $uiLanguage)}</span>
-            {#if selectedLabelFilter === null}<Check size={14} weight="bold" />{/if}
+    <div class="label-filter-toolbar" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+      <span class="label-filter-divider" aria-hidden="true"></span>
+      <div class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+        <button
+          class:active={selectedLabelFilter === null}
+          class="quick-label-button all-labels"
+          type="button"
+          aria-pressed={selectedLabelFilter === null}
+          on:click={() => selectLabelFilter(null)}
+        >{uiTranslate("全部", $uiLanguage)}</button>
+        {#each quickLabels as label (label.id)}
+          <button
+            class:active={selectedLabelFilter === label.id}
+            class="quick-label-button"
+            type="button"
+            aria-pressed={selectedLabelFilter === label.id}
+            title={label.name}
+            on:click={() => selectLabelFilter(label.id, true)}
+          >
+            <span class="label-filter-dot" style:--label-color={label.color}></span>
+            <span>{label.name}</span>
           </button>
-          {#each labels as label (label.id)}
-            <button class:active={selectedLabelFilter === label.id} type="button" role="option" aria-selected={selectedLabelFilter === label.id} on:click={() => selectLabelFilter(label.id)}>
-              <span class="label-filter-dot" style:--label-color={label.color}></span><span>{label.name}</span>
-              {#if selectedLabelFilter === label.id}<Check size={14} weight="bold" />{/if}
-            </button>
-          {/each}
+        {/each}
+      </div>
+      <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}>
+        <button
+          bind:this={moreLabelsButton}
+          class="label-filter-button"
+          type="button"
+          aria-label={uiTranslate("更多标签", $uiLanguage)}
+          title={uiTranslate("更多标签", $uiLanguage)}
+          aria-haspopup="dialog"
+          aria-expanded={labelFilterOpen}
+          on:click={() => void toggleLabelFilter()}
+        >
+          <span>{uiTranslate("更多", $uiLanguage)}</span>
+          <CaretDown size={13} weight="bold" />
+        </button>
+      {#if labelFilterOpen}
+        <div class="label-filter-menu" role="dialog" aria-label={uiTranslate("更多标签", $uiLanguage)}>
+          <strong class="label-filter-menu-title">{uiTranslate("全部标签", $uiLanguage)}</strong>
+          <label class="label-filter-search">
+            <MagnifyingGlass size={15} />
+            <input
+              bind:this={labelSearchInput}
+              bind:value={labelSearch}
+              placeholder={uiTranslate("搜索标签", $uiLanguage)}
+              on:input={updateActiveLabelOption}
+              on:keydown={handleLabelSearchKeyDown}
+            />
+            {#if labelSearch}
+              <button type="button" aria-label={tr("清除", language)} title={tr("清除", language)} on:click={() => { labelSearch = ""; updateActiveLabelOption(); labelSearchInput?.focus(); }}><X size={13} /></button>
+            {/if}
+          </label>
+          <div class="label-filter-options" role="listbox" aria-label={uiTranslate("全部标签", $uiLanguage)}>
+            {#if showAllLabelOption}
+              <button class:active={activeLabelOptionIndex === 0} type="button" role="option" aria-selected={selectedLabelFilter === null} on:mouseenter={() => (activeLabelOptionIndex = 0)} on:click={() => selectLabelFilter(null)}>
+                <Tag size={15} /><span>{uiTranslate("全部标签", $uiLanguage)}</span>
+                {#if selectedLabelFilter === null}<Check size={14} weight="bold" />{/if}
+              </button>
+            {/if}
+            {#each filteredLabels as label, index (label.id)}
+              <button class:active={activeLabelOptionIndex === index + (showAllLabelOption ? 1 : 0)} type="button" role="option" aria-selected={selectedLabelFilter === label.id} on:mouseenter={() => (activeLabelOptionIndex = index + (showAllLabelOption ? 1 : 0))} on:click={() => selectLabelFilter(label.id)}>
+                <span class="label-filter-dot" style:--label-color={label.color}></span><span>{label.name}</span>
+                {#if selectedLabelFilter === label.id}<Check size={14} weight="bold" />{/if}
+              </button>
+            {:else}
+              <div class="label-filter-no-results" role="status">
+                <strong>{uiTranslate("没有匹配的标签", $uiLanguage)}</strong>
+                <span>{uiTranslate("输入其他名称试试", $uiLanguage)}</span>
+              </div>
+            {/each}
+          </div>
+          <div class="label-filter-hint"><kbd>↑↓</kbd><span>{uiTranslate("选择", $uiLanguage)}</span><kbd>Enter</kbd><span>{uiTranslate("确认", $uiLanguage)}</span><kbd>Esc</kbd><span>{uiTranslate("关闭", $uiLanguage)}</span></div>
+          <button class="manage-labels-button" type="button" on:click={() => void openLabelManager()}>{uiTranslate("管理标签", $uiLanguage)}</button>
         </div>
       {/if}
+      </div>
     </div>
   </nav>
 
@@ -1212,6 +1356,13 @@
       </div>
     {:else if error}
       <div class="list-state error-state">{error}</div>
+    {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
+      <div class="list-state label-filter-empty-state">
+        <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}><Tag size={30} /></span>
+        <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
+        <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
+        <button type="button" on:click={() => selectLabelFilter(null)}>{uiTranslate("清除标签筛选", $uiLanguage)}</button>
+      </div>
     {:else if history.entries.length === 0}
       <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
     {:else}
@@ -1284,10 +1435,15 @@
           {uiTranslate("正在识别图片文字…", $uiLanguage)}
         {:else if loadingMore && nearby}
           {tr("正在读取附近记录…", language)}
+        {:else if selectedLabel}
+          {t("{name} · {count} 条", language, { name: selectedLabel.name, count: history.totalCount ?? history.entries.length })}
         {:else}
           {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
         {/if}
       </strong>
+      {#if selectedLabel && !ocrPasting}
+        <button class="clear-label-filter" type="button" aria-label={uiTranslate("清除标签筛选", $uiLanguage)} title={uiTranslate("清除标签筛选", $uiLanguage)} on:click={() => selectLabelFilter(null)}><X size={13} /></button>
+      {/if}
     </div>
     <div class="footer-actions">
       <button class:loading class="icon-button" type="button" aria-label={tr("刷新", language)} aria-busy={loading} title={tr("刷新", language)} on:click={() => load()}><ClockCounterClockwise size={22} /></button>
@@ -1399,6 +1555,7 @@
     bind:newLabelName
     bind:newLabelColor
     bind:newLabelInput
+    manageOnly={managingLabels}
     {language}
     onSave={saveLabels}
     onCreate={createLabel}

@@ -15,6 +15,7 @@
   export let newLabelColor = "#5B5FF0";
   export let newLabelInput: HTMLInputElement;
   export let language: LanguagePreference;
+  export let manageOnly = false;
   export let onSave: () => void | Promise<void>;
   export let onCreate: () => void | Promise<void>;
   export let onDelete: (labelId: string) => void | Promise<void>;
@@ -29,24 +30,33 @@
       <div class="label-dialog-header">
         <span class="label-dialog-icon"><Tag size={18} weight="fill" /></span>
         <div>
-          <Dialog.Title class="dialog-title">{tr("添加到标签", language)}</Dialog.Title>
+          <Dialog.Title class="dialog-title">{manageOnly ? uiTranslate("管理标签", $uiLanguage) : tr("添加到标签", language)}</Dialog.Title>
           <Dialog.Description class="label-dialog-description">
-            {uiTranslate("选择已有标签，或在这里直接新建。", $uiLanguage)}
+            {manageOnly
+              ? uiTranslate("创建或删除用于整理剪贴板记录的标签。", $uiLanguage)
+              : uiTranslate("选择已有标签，或在这里直接新建。", $uiLanguage)}
           </Dialog.Description>
         </div>
       </div>
       <div class="label-section-heading">
         <span>{uiTranslate("已有标签", $uiLanguage)}</span>
-        {#if labels.length}<span>{selectedLabelIds.length} / {labels.length}</span>{/if}
+        {#if labels.length}<span>{manageOnly ? labels.length : `${selectedLabelIds.length} / ${labels.length}`}</span>{/if}
       </div>
       <div class="label-list">
         {#each labels as label (label.id)}
-          <div class:selected={selectedLabelIds.includes(label.id)} class="label-option">
-            <label class="label-toggle">
-              <input class="label-checkbox" type="checkbox" checked={selectedLabelIds.includes(label.id)} on:change={() => onToggle(label.id)} />
-              <span class="label-dot" style:--label-color={label.color}></span>
-              <span class="label-name">{label.name}</span>
-            </label>
+          <div class:selected={!manageOnly && selectedLabelIds.includes(label.id)} class:manage-only={manageOnly} class="label-option">
+            {#if manageOnly}
+              <div class="label-toggle">
+                <span class="label-dot" style:--label-color={label.color}></span>
+                <span class="label-name">{label.name}</span>
+              </div>
+            {:else}
+              <label class="label-toggle">
+                <input class="label-checkbox" type="checkbox" checked={selectedLabelIds.includes(label.id)} on:change={() => onToggle(label.id)} />
+                <span class="label-dot" style:--label-color={label.color}></span>
+                <span class="label-name">{label.name}</span>
+              </label>
+            {/if}
             <button
               class="label-delete"
               type="button"
@@ -90,8 +100,12 @@
         </div>
       </div>
       <div class="dialog-actions label-dialog-actions">
-        <Dialog.Close class="dialog-button">{tr("取消", language)}</Dialog.Close>
-        <button class="dialog-button primary" type="button" on:click={onSave}><Check size={16} weight="bold" /> {tr("保存", language)}</button>
+        {#if manageOnly}
+          <button class="dialog-button primary" type="button" on:click={onSave}><Check size={16} weight="bold" /> {uiTranslate("完成", $uiLanguage)}</button>
+        {:else}
+          <Dialog.Close class="dialog-button">{tr("取消", language)}</Dialog.Close>
+          <button class="dialog-button primary" type="button" on:click={onSave}><Check size={16} weight="bold" /> {tr("保存", language)}</button>
+        {/if}
       </div>
     </Dialog.Content>
   </Dialog.Portal>

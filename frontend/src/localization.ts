@@ -163,6 +163,8 @@ const messageTemplates = [
   "{count} 台可用",
   "{count} 个文件",
   "共 {count} 条",
+  "“{name}”标签下暂无内容",
+  "{name} · {count} 条",
   "已选 {count} {unit}",
   "{count} 个字符",
   "已上传 {name}",
