@@ -310,8 +310,8 @@ export const bridge = {
     async startScreenshotCapture(): Promise<string> {
         return "Screenshot capture opened";
     },
-    async mergeClipboardDevices(): Promise<number> {
-        return 3;
+    async mergeClipboardDevices(): Promise<import("./ipc/generated").ClipboardMergeSummary> {
+      return { devices: 2, received: 3, sent: 0, labelsReceived: 0, labelsSent: 0, failed: 0, totalRecords: 3, complete: true, failures: [] };
     },
     async clearClipboardHistory(): Promise<void> {
     },

@@ -600,8 +600,8 @@
           <div class="settings-list settings-card-list">
             <button class="settings-row settings-action-row" disabled={clipboardMergeBusy || !appSettings.clipboardSyncEnabled} on:click={mergeClipboardDeviceHistory}>
               <span class="row-icon"><ClockCounterClockwise size={21} /></span>
-              <span class="row-copy"><strong>{uiTranslate("合并设备历史", $uiLanguage)}</strong><small>{uiTranslate("重新汇总已配对设备的剪贴板记录并去除重复项。", $uiLanguage)}</small></span>
-              <span class="row-action-label">{uiTranslate(clipboardMergeBusy ? "正在合并…" : "合并", $uiLanguage)}</span>
+              <span class="row-copy"><strong>{uiTranslate("同步并校对", $uiLanguage)}</strong><small>{uiTranslate("双向补齐在线设备的记录和标签，校验数量与版本。首次同步可能需要较长时间。", $uiLanguage)}</small></span>
+              <span class="row-action-label">{uiTranslate(clipboardMergeBusy ? "正在同步并校对…" : "同步", $uiLanguage)}</span>
             </button>
             <button class="settings-row settings-action-row clipboard-danger-row" on:click={confirmClearClipboardHistory}>
               <span class="row-icon"><Trash size={21} /></span>

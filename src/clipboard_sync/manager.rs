@@ -12,6 +12,9 @@ impl ClipboardSyncManager {
             clipboard,
             network,
             commands: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            replica_connections: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            replica_gates: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            manual_merge_gate: Arc::new(tokio::sync::Mutex::new(())),
             remote_file_peers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             active: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             retries: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -30,6 +33,8 @@ impl ClipboardSyncManager {
     pub fn start(self: &Arc<Self>) {
         let manager = self.clone();
         tokio::spawn(async move { manager.discovery_loop().await });
+        let manager = self.clone();
+        tokio::spawn(async move { manager.replication_loop().await });
     }
 
     async fn network(&self) -> Result<Arc<arcrelay_network::NetworkRuntime>, String> {
@@ -38,46 +43,6 @@ impl ClipboardSyncManager {
         })
         .await
         .ok_or_else(|| "unified network runtime startup timed out; try again later".to_string())
-    }
-
-    pub async fn merge_all(&self) -> Result<usize, String> {
-        if !self.clipboard.sync_preferences().enabled {
-            return Err("multi-device clipboard synchronization is disabled".into());
-        }
-        let peers = self
-            .commands
-            .lock()
-            .await
-            .iter()
-            .map(|(id, sender)| (id.clone(), sender.clone()))
-            .collect::<Vec<_>>();
-        if peers.is_empty() {
-            return Err("no paired desktop device is currently online".into());
-        }
-        let mut merged = 0;
-        let mut failures = Vec::new();
-        for (peer_id, sender) in peers {
-            let (result_tx, result_rx) = oneshot::channel();
-            if sender
-                .send(ConnectionCommand::Merge(result_tx))
-                .await
-                .is_err()
-            {
-                failures.push(format!("{peer_id}: connection closed"));
-                continue;
-            }
-            match tokio::time::timeout(Duration::from_secs(120), result_rx).await {
-                Ok(Ok(Ok(count))) => merged += count,
-                Ok(Ok(Err(error))) => failures.push(format!("{peer_id}: {error}")),
-                Ok(Err(_)) => failures.push(format!("{peer_id}: merge task was cancelled")),
-                Err(_) => failures.push(format!("{peer_id}: merge timed out")),
-            }
-        }
-        if merged == 0 && !failures.is_empty() {
-            Err(failures.join("；"))
-        } else {
-            Ok(merged)
-        }
     }
 
     /// Only established feature sessions, excluding discovery probes and pairing attempts.
@@ -779,6 +744,7 @@ impl ClipboardSyncManager {
         let mut send = stream.send;
         let mut recv = stream.receive;
         let connection = session.transport_handle();
+        let _connection_guard = CloseConnectionOnDrop(connection.clone());
         send_client_frame(&mut send, control_hello()).await?;
         let welcome = recv_server_frame(&mut recv, CONTROL_STREAM_OPEN_TIMEOUT).await?;
         let welcome = match welcome.body {
@@ -787,11 +753,16 @@ impl ClipboardSyncManager {
         };
         if !welcome.features.iter().any(|feature| {
             feature.feature == proto::Feature::ClipboardSync as i32
-                && feature.min_version == 1
-                && feature.max_version == 1
+                && matches!(feature.min_version, 1 | 2)
+                && feature.max_version == feature.min_version
         }) {
-            return Err("remote peer does not support clipboard synchronization v1".into());
+            return Err("remote peer does not support clipboard synchronization".into());
         }
+        let replica_supported = welcome.features.iter().any(|feature| {
+            feature.feature == proto::Feature::ClipboardSync as i32
+                && feature.min_version == arcrelay_protocol::clipboard_replication::VERSION
+                && feature.max_version == arcrelay_protocol::clipboard_replication::VERSION
+        });
         let remote_files_supported = welcome.features.iter().any(|feature| {
             feature.feature == proto::Feature::RemoteFiles as i32
                 && feature.min_version
@@ -803,7 +774,7 @@ impl ClipboardSyncManager {
             .grants(&peer.device_id)
             .await
             .map_err(|error| error.to_string())?;
-        let _reverse_file_server = if remote_files_supported {
+        let _reverse_file_server = if remote_files_supported || replica_supported {
             let reverse_file_access =
                 RemoteFileAccess::from_grants(&grants, GrantDirection::Inbound);
             Some(AbortTaskOnDrop(tokio::spawn(
@@ -811,12 +782,24 @@ impl ClipboardSyncManager {
                     connection.clone(),
                     self.remote_file_provider.clone(),
                     reverse_file_access,
+                    (replica_supported
+                        && grants.iter().any(|grant| {
+                            grant.direction == GrantDirection::Inbound
+                                && grant.capability == CapabilityId::ClipboardSync
+                        }))
+                    .then(|| self.clipboard.clone()),
                 ),
             )))
         } else {
             None
         };
-        let sync_enabled = self.clipboard.sync_preferences().enabled;
+        if replica_supported {
+            self.replica_connections
+                .lock()
+                .await
+                .insert(peer.device_id.to_string(), connection.clone());
+        }
+        let sync_enabled = self.clipboard.sync_preferences().enabled && !replica_supported;
         let mut next_request_id = 1_u64;
         if sync_enabled {
             let subscription_request_id = take_request_id(&mut next_request_id);
@@ -857,6 +840,7 @@ impl ClipboardSyncManager {
                 }
             }
         });
+        let _reader = AbortTaskOnDrop(reader);
 
         let (command_tx, mut command_rx) = mpsc::channel(8);
         self.commands
@@ -964,21 +948,6 @@ impl ClipboardSyncManager {
                                 let _ = response.send(result);
                             });
                         }
-                        ConnectionCommand::Merge(response) => {
-                            let result = if self.clipboard.sync_preferences().enabled {
-                                self.merge_peer(
-                                    &connection,
-                                    &mut send,
-                                    &mut next_request_id,
-                                    &mut pending,
-                                    &mut responses,
-                                    &mut incoming_rx,
-                                ).await.map(|result| result.merged)
-                            } else {
-                                Err("multi-device clipboard synchronization is disabled".into())
-                            };
-                            let _ = response.send(result);
-                        }
                         ConnectionCommand::RemoteRequest(request, response) => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
@@ -1081,7 +1050,7 @@ impl ClipboardSyncManager {
                 change = local_changes.recv() => {
                     match change {
                         Ok(record) => {
-                            if self.clipboard.should_send_sync_record(&record) {
+                            if !replica_supported && self.clipboard.should_send_sync_record(&record) {
                                 let mut sync = ClipboardDownloadSession {
                                     connection: &connection,
                                     send: &mut send,
@@ -1103,7 +1072,6 @@ impl ClipboardSyncManager {
                 }
             }
         };
-        reader.abort();
         session.close("clipboard sync connection ended");
         let _ = self
             .event_tx
@@ -1316,7 +1284,9 @@ pub(super) async fn serve_reverse_remote_file_streams(
     connection: quinn::Connection,
     provider: Arc<dyn RemoteFileProvider>,
     access: RemoteFileAccess,
+    clipboard: Option<Arc<ClipboardApplicationService>>,
 ) {
+    let replica_limit = Arc::new(tokio::sync::Semaphore::new(4));
     loop {
         let (mut send, mut recv) = match connection.accept_bi().await {
             Ok(stream) => stream,
@@ -1324,9 +1294,25 @@ pub(super) async fn serve_reverse_remote_file_streams(
         };
         let provider = provider.clone();
         let access = access.clone();
+        let clipboard = clipboard.clone();
+        let replica_limit = replica_limit.clone();
         tokio::spawn(async move {
             let kind = tokio::time::timeout(Duration::from_secs(5), recv.read_u8()).await;
             match kind {
+                Ok(Ok(arcrelay_wire::STREAM_KIND_CLIPBOARD_REPLICA)) => {
+                    if let (Some(clipboard), Ok(_permit)) =
+                        (clipboard, replica_limit.try_acquire_owned())
+                    {
+                        if let Err(error) = arcrelay_protocol::clipboard_replication::serve_stream(
+                            &mut send, &mut recv, &clipboard,
+                        )
+                        .await
+                        {
+                            tracing::warn!(event = "clipboard.replica.stream_failed", %error, "clipboard replication stream failed");
+                        }
+                    }
+                    let _ = send.finish();
+                }
                 Ok(Ok(STREAM_KIND_REMOTE_FILES)) => {
                     if let Err(error) =
                         serve_remote_file_stream(&mut send, &mut recv, Some(provider), access).await
@@ -1346,5 +1332,12 @@ pub(super) async fn serve_reverse_remote_file_streams(
                 }
             }
         });
+    }
+}
+
+struct CloseConnectionOnDrop(quinn::Connection);
+impl Drop for CloseConnectionOnDrop {
+    fn drop(&mut self) {
+        self.0.close(0_u32.into(), b"desktop control session ended");
     }
 }

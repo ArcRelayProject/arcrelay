@@ -367,6 +367,7 @@ async fn responder_can_browse_initiator_files_over_the_same_control_connection()
             }],
             arcrelay_peer::GrantDirection::Inbound,
         ),
+        None,
     ));
     let registry = ConnectionRegistry::new();
     let negotiated_features = HashMap::from([(
@@ -524,4 +525,143 @@ async fn rejected_clipboard_record_preserves_stream_for_next_record_and_ping() {
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn manual_replication_uses_incoming_transport_and_reports_actual_changes() {
+    use arcrelay_core::domain::clipboard::{ClipboardQuery, ClipboardReplicaRecord};
+    use arcrelay_core::infrastructure::clipboard_test_support::TestClipboardRepository;
+    let root = tempfile::tempdir().unwrap();
+    let left = test_network_runtime(&root.path().join("left"), "Left").await;
+    let right = test_network_runtime(&root.path().join("right"), "Right").await;
+    let mut incoming = right.subscribe();
+    let pair = left
+        .connect(&test_advertisement(&right), SessionKind::Pairing)
+        .await
+        .unwrap();
+    let responder = incoming.recv().await.unwrap();
+    left.confirm_pairing(&pair).await.unwrap();
+    right.confirm_pairing(&responder).await.unwrap();
+    pair.close("paired");
+    let outgoing = left
+        .connect(&test_advertisement(&right), SessionKind::Control)
+        .await
+        .unwrap();
+    let incoming = incoming.recv().await.unwrap();
+    let a = TestClipboardRepository::open(None).await.unwrap().service();
+    let b = TestClipboardRepository::open(None).await.unwrap().service();
+    for service in [&a, &b] {
+        let mut policy = service.policy().await.unwrap();
+        policy.retention_days = 0;
+        service.update_policy(policy).await.unwrap();
+    }
+    let row = ClipboardReplicaRecord {
+        first_captured_at_ms: 1_700_000_000_000,
+        copy_count: 3,
+        record: ClipboardSyncRecord {
+            sync_id: format!("{:064x}", 1),
+            kind: ClipboardContentKind::Text,
+            text: Some("manual fixture".into()),
+            html: None,
+            rtf: None,
+            image_png: None,
+            width: None,
+            height: None,
+            preview: "manual fixture".into(),
+            source_app: None,
+            source_device_id: "a".into(),
+            source_device_name: "A".into(),
+            captured_at_ms: 1_700_000_000_100,
+            revision: 3,
+            updated_by_device_id: "a".into(),
+            favorite: false,
+            favorite_revision: 1,
+            favorite_updated_by_device_id: "a".into(),
+            labels: vec![],
+            label_memberships: vec![],
+            deleted: false,
+            change_kind: ClipboardSyncChangeKind::Snapshot,
+            live: false,
+            text_syntax: Default::default(),
+        },
+    };
+    a.apply_replica_record(row.clone()).await.unwrap();
+    let access = || RemoteFileAccess::from_grants(&[], GrantDirection::Inbound);
+    let _left_server = AbortTaskOnDrop(tokio::spawn(manager::serve_reverse_remote_file_streams(
+        outgoing.transport_handle(),
+        Arc::new(ReverseFileProvider),
+        access(),
+        Some(a.clone()),
+    )));
+    let _right_server = AbortTaskOnDrop(tokio::spawn(manager::serve_reverse_remote_file_streams(
+        incoming.transport_handle(),
+        Arc::new(ReverseFileProvider),
+        access(),
+        Some(b.clone()),
+    )));
+    let registry = ConnectionRegistry::new();
+    let _disconnect = registry
+        .register_transport_with_features(
+            left.device_id().as_str(),
+            incoming.transport_handle(),
+            HashMap::from([(proto::Feature::ClipboardSync as i32, 2)]),
+        )
+        .await;
+    let (events, _rx) = mpsc::channel(16);
+    let manager = ClipboardSyncManager::new(
+        b.clone(),
+        Arc::new(tokio::sync::OnceCell::new()),
+        Arc::new(ReverseFileProvider),
+        root.path(),
+        events,
+    );
+    manager.attach_connection_registry(registry).await;
+    assert!(
+        manager.commands.lock().await.is_empty(),
+        "there is deliberately no outgoing command route"
+    );
+    let result = manager.merge_all().await.unwrap();
+    assert!(result.complete, "{result:?}");
+    assert_eq!(result.devices, 1);
+    assert_eq!(result.received, 1);
+    assert_eq!(result.sent, 0);
+    assert_eq!(result.total_records, 1);
+    let result = manager.merge_all().await.unwrap();
+    assert!(result.complete);
+    assert_eq!(result.received + result.sent, 0);
+    assert_eq!(result.total_records, 1);
+    assert_eq!(
+        b.history(ClipboardQuery::recent(1)).await.unwrap().entries[0].copy_count,
+        3
+    );
+    let _busy = manager.manual_merge_gate.lock().await;
+    assert!(manager
+        .merge_all()
+        .await
+        .unwrap_err()
+        .contains("already running"));
+    drop(_busy);
+    let mut offline_copy = row;
+    offline_copy.record.sync_id = format!("{:064x}", 2);
+    offline_copy.record.text = Some("copied before connection worker started".into());
+    offline_copy.record.captured_at_ms += 1_000;
+    offline_copy.record.live = true;
+    offline_copy.record.change_kind = ClipboardSyncChangeKind::Copy;
+    b.apply_replica_record(offline_copy.clone()).await.unwrap();
+    let _worker = AbortTaskOnDrop(tokio::spawn(manager.replication_loop()));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if a.replica_selection()
+                .await
+                .unwrap()
+                .is_some_and(|selection| selection.sync_id == offline_copy.record.sync_id)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("a new worker must recover the durable copy without another notification");
+    outgoing.close("test complete");
 }

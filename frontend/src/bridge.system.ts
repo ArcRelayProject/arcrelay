@@ -77,7 +77,7 @@ export const systemBridge = {
     async startScreenshotCapture(): Promise<string> {
         return invoke("start_screenshot_capture");
     },
-    async mergeClipboardDevices(): Promise<number> {
+    async mergeClipboardDevices(): Promise<import("./ipc/generated").ClipboardMergeSummary> {
         return invoke("clipboard_merge_devices");
     },
     async clearClipboardHistory(): Promise<void> {
