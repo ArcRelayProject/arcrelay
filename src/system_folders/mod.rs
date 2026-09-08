@@ -5,6 +5,10 @@ mod index;
 #[cfg(target_os = "macos")]
 mod macos;
 mod server;
+#[cfg(any(target_os = "windows", test))]
+mod webdav;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use crate::clipboard_sync::ClipboardSyncManager;
 use arcrelay_protocol::remote_files::{
@@ -32,6 +36,8 @@ pub struct SystemFolder {
     #[serde(default)]
     pub registered: bool,
     pub error: Option<String>,
+    #[serde(default)]
+    pub recovery_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +121,7 @@ pub struct SystemFolders {
     root: PathBuf,
     domains: Mutex<HashMap<String, Arc<Domain>>>,
     registration: Mutex<()>,
+    active_recoveries: std::sync::Mutex<HashSet<PathBuf>>,
     stopped: tokio_util::sync::CancellationToken,
 }
 
@@ -147,6 +154,40 @@ fn validate_name(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
+// Staging copies become actionable after the upload ends; interrupted copies
+// from a previous process are discoverable after restarting.
+async fn pending_recoveries(
+    root: &Path,
+    active: &std::sync::Mutex<HashSet<PathBuf>>,
+) -> HashMap<String, u32> {
+    let mut counts = HashMap::new();
+    let Ok(mut entries) = tokio::fs::read_dir(root).await else {
+        return counts;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let Ok(bytes) = tokio::fs::read(path.join("save.json")).await else {
+            continue;
+        };
+        if active.lock().unwrap().contains(&path) {
+            continue;
+        }
+        let Ok(manifest) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            continue;
+        };
+        if !matches!(
+            manifest["phase"].as_str(),
+            Some("incomplete" | "complete-pending-remote-acknowledgement")
+        ) {
+            continue;
+        }
+        if let Some(domain) = manifest["request"]["domain"].as_str() {
+            *counts.entry(domain.to_owned()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 impl SystemFolders {
     pub async fn start(
         manager: Arc<ClipboardSyncManager>,
@@ -158,6 +199,7 @@ impl SystemFolders {
             root,
             domains: Mutex::new(HashMap::new()),
             registration: Mutex::new(()),
+            active_recoveries: std::sync::Mutex::new(HashSet::new()),
             stopped: tokio_util::sync::CancellationToken::new(),
         });
         let saved = service.root.join("folders.json");
@@ -186,7 +228,13 @@ impl SystemFolders {
                 }),
             );
         }
+        #[cfg(target_os = "macos")]
         server::start(service.clone()).await?;
+        #[cfg(target_os = "windows")]
+        webdav::start(service.clone()).await?;
+        // Windows locations and their loopback endpoint are persistent. Do not
+        // re-register on startup: a temporarily offline peer must not disconnect
+        // an existing Explorer location or delay the desktop runtime.
         let poller = service.clone();
         tokio::spawn(async move {
             poller.poll().await;
@@ -199,6 +247,11 @@ impl SystemFolders {
         let mut views = Vec::new();
         for domain in domains {
             views.push(domain.view.lock().await.clone());
+        }
+        let recoveries =
+            pending_recoveries(&self.root.join("recovery"), &self.active_recoveries).await;
+        for view in &mut views {
+            view.recovery_count = recoveries.get(&view.id).copied().unwrap_or(0);
         }
         views.sort_by(|a, b| a.name.cmp(&b.name));
         views
@@ -265,6 +318,7 @@ impl SystemFolders {
             online: true,
             registered: false,
             error: None,
+            recovery_count: 0,
         };
         let domain = Arc::new(Domain {
             view: Mutex::new(view.clone()),
@@ -291,12 +345,14 @@ impl SystemFolders {
     async fn register(self: &Arc<Self>, view: &SystemFolder) -> Result<(), Error> {
         #[cfg(target_os = "macos")]
         return macos::register(view).await;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return windows::register(&self.root, view).await;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = view;
             Err(Error {
                 code: "unsupported".into(),
-                message: "native cloud folders currently require macOS 13 or later".into(),
+                message: "system folders require macOS 13+ or Windows with WebClient".into(),
             })
         }
     }
@@ -305,7 +361,9 @@ impl SystemFolders {
         let view = self.domain(id).await?.view.lock().await.clone();
         #[cfg(target_os = "macos")]
         return macos::open(&view).await;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        return windows::open(&self.root, &view).await;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = view;
             Err(Error::unavailable(
@@ -319,6 +377,8 @@ impl SystemFolders {
         let view = self.domain(id).await?.view.lock().await.clone();
         #[cfg(target_os = "macos")]
         macos::remove(&view).await?;
+        #[cfg(target_os = "windows")]
+        windows::remove(&view).await?;
         self.domains.lock().await.remove(id);
         self.persist_folders().await
     }
@@ -762,5 +822,45 @@ mod construction_tests {
     fn system_folder_slot_constructs_without_tokio() {
         assert!(tokio::runtime::Handle::try_current().is_err());
         assert!(super::empty_slot().get().is_none());
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn recovery_status_excludes_active_and_committed_uploads() {
+        let root =
+            std::env::temp_dir().join(format!("arcrelay-recovery-test-{}", uuid::Uuid::new_v4()));
+        let active = std::sync::Mutex::new(HashSet::new());
+        assert!(pending_recoveries(&root, &active).await.is_empty());
+        for (name, phase, domain) in [
+            ("failed", "complete-pending-remote-acknowledgement", "a"),
+            ("interrupted", "incomplete", "a"),
+            ("active", "incomplete", "a"),
+            ("committed", "committed", "a"),
+            ("other", "incomplete", "b"),
+        ] {
+            let path = root.join(name);
+            tokio::fs::create_dir_all(&path).await.unwrap();
+            tokio::fs::write(
+                path.join("save.json"),
+                serde_json::to_vec(
+                    &serde_json::json!({"phase": phase, "request": {"domain": domain}}),
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+        active.lock().unwrap().insert(root.join("active"));
+        let counts = pending_recoveries(&root, &active).await;
+        assert_eq!(counts.get("a"), Some(&2));
+        assert_eq!(counts.get("b"), Some(&1));
+        // A canceled upload or a process restart releases the active guard.
+        active.lock().unwrap().clear();
+        assert_eq!(pending_recoveries(&root, &active).await.get("a"), Some(&3));
+        tokio::fs::remove_dir_all(root).await.unwrap();
     }
 }

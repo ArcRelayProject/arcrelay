@@ -1,15 +1,7 @@
 use super::*;
 
-pub fn ensure_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        dispatch_appkit(app, "ensure clipboard window", |app| {
-            ensure_clipboard_window_on_main(&app)
-        })
-    }
-    #[cfg(not(target_os = "macos"))]
-    ensure_clipboard_window_on_main(app)
-}
+static CLIPBOARD_IDLE_REVISION: AtomicU64 = AtomicU64::new(0);
+const CLIPBOARD_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
@@ -23,6 +15,7 @@ pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     CREATING_CLIPBOARD_WINDOW.store(false, Ordering::SeqCst);
@@ -59,7 +52,9 @@ fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn sync_clipboard_window(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
     if enabled {
-        ensure_clipboard_window(app)
+        // The shortcut creates the surface on first use. Clipboard capture
+        // continues in the backend without a hidden WebView.
+        Ok(())
     } else {
         destroy_clipboard_window(app)
     }
@@ -125,6 +120,7 @@ pub fn show_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn show_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     if app
@@ -169,7 +165,26 @@ fn hide_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     if let Some(state) = app.try_state::<crate::backend::DesktopState>() {
         state.text_selection.clear();
     }
-    hide_platform_clipboard_window(app, &window)
+    hide_platform_clipboard_window(app, &window)?;
+    let revision = CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(CLIPBOARD_IDLE_TIMEOUT).await;
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let app = handle;
+            if CLIPBOARD_IDLE_REVISION.load(Ordering::SeqCst) == revision
+                && app
+                    .get_webview_window(CLIPBOARD_WINDOW_LABEL)
+                    .is_some_and(|window| !window.is_visible().unwrap_or(true))
+            {
+                if let Err(error) = destroy_clipboard_window_on_main(&app) {
+                    tracing::warn!(%error, "could not release idle clipboard window");
+                }
+            }
+        });
+    });
+    Ok(())
 }
 
 pub fn clipboard_window_pinned() -> bool {
@@ -741,4 +756,45 @@ fn clamp_window_axis(desired: f64, origin: f64, span: f64, window_span: f64) -> 
     let minimum = origin + CLIPBOARD_WINDOW_EDGE_MARGIN;
     let maximum = (origin + span - window_span - CLIPBOARD_WINDOW_EDGE_MARGIN).max(minimum);
     desired.clamp(minimum, maximum)
+}
+
+// A nonactivating panel leaves the invoking application frontmost. Snapshot it
+// with the clipboard generation so a focus/content change cancels the request.
+#[cfg(target_os = "macos")]
+pub fn clipboard_paste_target(app: &AppHandle) -> tauri::Result<(i32, isize)> {
+    dispatch_appkit(app, "capture clipboard paste target", |_| {
+        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|app| app.processIdentifier())
+            .unwrap_or(0);
+        if pid <= 0 || pid as u32 == std::process::id() {
+            return Err(tauri::Error::Io(std::io::Error::other(
+                "no external paste target; content remains on clipboard",
+            )));
+        }
+        Ok((
+            pid,
+            objc2_app_kit::NSPasteboard::generalPasteboard().changeCount(),
+        ))
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn clipboard_paste_target_ready(app: &AppHandle, target: (i32, isize)) -> tauri::Result<bool> {
+    dispatch_appkit(app, "check clipboard paste target", move |app| {
+        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|app| app.processIdentifier());
+        if pid != Some(target.0)
+            || objc2_app_kit::NSPasteboard::generalPasteboard().changeCount() != target.1
+        {
+            return Err(tauri::Error::Io(std::io::Error::other(
+                "paste target or clipboard changed; paste cancelled",
+            )));
+        }
+        match app.get_webview_window(CLIPBOARD_WINDOW_LABEL) {
+            Some(window) => Ok(!window.is_focused()?),
+            None => Ok(true),
+        }
+    })
 }

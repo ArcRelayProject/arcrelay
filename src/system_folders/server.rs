@@ -14,11 +14,24 @@ use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
-struct Bridge {
-    service: Arc<SystemFolders>,
+pub(super) struct Bridge {
+    pub(super) service: Arc<SystemFolders>,
     token: String,
     authority: String,
     uploads: Arc<tokio::sync::Semaphore>,
+}
+
+impl Bridge {
+    #[cfg(any(target_os = "windows", test))]
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(super) fn for_webdav(service: Arc<SystemFolders>) -> Self {
+        Self {
+            service,
+            token: String::new(),
+            authority: String::new(),
+            uploads: Arc::new(tokio::sync::Semaphore::new(4)),
+        }
+    }
 }
 
 pub(super) fn bridge_directory(root: &Path) -> PathBuf {
@@ -191,18 +204,18 @@ async fn operation(
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ContentQuery {
-    domain: String,
-    item: Option<String>,
+pub(super) struct ContentQuery {
+    pub(super) domain: String,
+    pub(super) item: Option<String>,
     #[serde(default = "root_id")]
-    parent: String,
+    pub(super) parent: String,
     #[serde(default)]
-    name: String,
+    pub(super) name: String,
     #[serde(default)]
-    revision: String,
+    pub(super) revision: String,
 }
 
-async fn content(
+pub(super) async fn content(
     State(bridge): State<Bridge>,
     Query(query): Query<ContentQuery>,
 ) -> Result<Response, Error> {
@@ -254,7 +267,21 @@ async fn content(
         .unwrap())
 }
 
-async fn upload(
+struct ActiveRecovery {
+    service: Arc<SystemFolders>,
+    path: PathBuf,
+}
+impl Drop for ActiveRecovery {
+    fn drop(&mut self) {
+        self.service
+            .active_recoveries
+            .lock()
+            .unwrap()
+            .remove(&self.path);
+    }
+}
+
+pub(super) async fn upload(
     State(bridge): State<Bridge>,
     Query(query): Query<ContentQuery>,
     body: Body,
@@ -283,6 +310,16 @@ async fn upload(
         }
     }
     let recovery = recovery_root.join(uuid::Uuid::new_v4().to_string());
+    bridge
+        .service
+        .active_recoveries
+        .lock()
+        .unwrap()
+        .insert(recovery.clone());
+    let _active_recovery = ActiveRecovery {
+        service: bridge.service.clone(),
+        path: recovery.clone(),
+    };
     tokio::fs::create_dir_all(&recovery).await?;
     let metadata = recovery.join("save.json");
     let manifest = |phase: &str| {

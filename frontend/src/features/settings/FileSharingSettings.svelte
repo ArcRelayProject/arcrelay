@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDetailsDropdown } from "../../dismissibleDropdown";
   import AppSelect from "../../components/AppSelect.svelte";
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { Dialog } from "bits-ui";
@@ -350,7 +351,7 @@
           </div>
           <div class="local-share-row-actions">
             <button class="secondary-button manage-share-button" disabled={Boolean(localShareBusy)} on:click={() => openAccessDialog(share)}>{uiTranslate("管理访问", $uiLanguage)}</button>
-            <details class="share-more-menu">
+            <details class="share-more-menu" use:dismissibleDetailsDropdown>
               <summary aria-label={uiTranslate((`更多 ${share.name} 操作`), $uiLanguage)}><DotsThree size={20} /></summary>
               <div class="share-more-popover">
                 {#if share.web.mode !== "disabled" && directShareUrl(share)}

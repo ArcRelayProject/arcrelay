@@ -379,6 +379,7 @@ pub fn diagnostics_directory() -> PathBuf {
     log_directory().join("diagnostics")
 }
 
+#[cfg(target_os = "macos")]
 pub fn ensure_diagnostics_directory() -> io::Result<PathBuf> {
     let directory = diagnostics_directory();
     fs::create_dir_all(&directory)?;
@@ -991,6 +992,8 @@ fn harden_directory(path: &Path) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
@@ -1000,6 +1003,8 @@ fn harden_file(path: &Path) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 

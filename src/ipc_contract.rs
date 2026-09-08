@@ -102,6 +102,7 @@ fn ipc_contract_matches_rust() {
     registry.event::<crate::backend::DesktopRuntimeState>("desktop-runtime");
     registry.event::<crate::settings::AppSettings>("app-settings-changed");
     registry.event::<Option<i64>>("sound-mute-changed");
+    registry.event::<crate::desktop_notification::InAppNotification>("desktop-notification");
     registry.event::<crate::application::output_manager::ActionOutputSnapshot>("action-output");
     registry.event::<arcrelay_transfer::TransferSnapshot>("transfer-state");
     registry.event::<arcrelay_transfer::TransferProgress>("transfer-progress");
@@ -128,8 +129,6 @@ fn ipc_contract_matches_rust() {
     registry.event::<()>("clipboard-window-shown");
     registry.event::<()>("clipboard-window-hidden");
     registry.event::<bool>("clipboard-window-pin-changed");
-    registry
-        .event::<crate::commands::ContinuousPasteProgress>("clipboard-continuous-paste-progress");
     registry.event::<String>("clipboard-continuous-paste-error");
     let main = include_str!("main.rs");
     let registered: std::collections::BTreeSet<_> = main

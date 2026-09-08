@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "../../dismissibleDropdown";
   import AppSelect from "../../components/AppSelect.svelte";
   import { t } from "../../localization";
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
@@ -85,7 +86,6 @@
   let appPickerOpen = false;
   let appSearch = "";
   let appSearchInput: HTMLInputElement;
-  let appPickerElement: HTMLElement;
   let presetSearch = "";
   let transferMode: "import" | "export" = "import";
   let actionText = "";
@@ -130,16 +130,9 @@
 
   onMount(() => {
     const scope = new SubscriptionScope();
-    const closeAppPicker = (event: PointerEvent) => {
-      if (appPickerOpen && appPickerElement && event.target instanceof Node && !appPickerElement.contains(event.target)) {
-        appPickerOpen = false;
-      }
-    };
-    document.addEventListener("pointerdown", closeAppPicker);
     void scope.add(bridge.onActionOutput(applyOutput)).catch((error) => notify(String(error), "error"));
     return () => {
       scope.dispose();
-      document.removeEventListener("pointerdown", closeAppPicker);
     };
   });
 
@@ -670,7 +663,7 @@
           {#if actionDraft.type === "LaunchApp"}
             <div class="full-field">
               <span>{uiTranslate("已安装应用", $uiLanguage)}</span>
-              <div class="app-picker" bind:this={appPickerElement}>
+              <div class="app-picker" use:dismissibleDropdown={{ open: appPickerOpen, close: () => (appPickerOpen = false) }}>
                 <button
                   class="app-picker-trigger"
                   class:open={appPickerOpen}
@@ -706,7 +699,6 @@
                         bind:value={appSearch}
                         placeholder={uiTranslate("搜索应用", $uiLanguage)}
                         aria-label={uiTranslate("搜索已安装应用", $uiLanguage)}
-                        on:keydown={(event) => event.key === "Escape" && (appPickerOpen = false)}
                       />
                       {#if appSearch}
                         <button

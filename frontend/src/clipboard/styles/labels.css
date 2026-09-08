@@ -91,6 +91,10 @@
   background: var(--accent-soft);
 }
 
+.label-option.manage-only {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
 .label-toggle {
   display: flex;
   min-width: 0;
@@ -275,52 +279,103 @@
   background: var(--surface-soft);
 }
 
-.label-filter-control {
-  position: relative;
+.label-filter-toolbar,
+.quick-label-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
 }
 
+.label-filter-toolbar {
+  flex: 1;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-left: 6px;
+}
+
+.label-filter-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--border-color);
+}
+
+.quick-label-list {
+  justify-content: flex-end;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.quick-label-button,
 .label-filter-button {
-  position: relative;
-  display: grid;
-  width: 42px;
-  height: 38px;
+  display: inline-flex;
+  min-width: 0;
+  height: 32px;
   align-items: center;
-  justify-items: center;
-  padding: 0;
-  border: 0;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
   border-radius: 9px;
   color: var(--text-secondary);
-  background: transparent;
+  background: var(--surface-raised);
   cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 590;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
 }
 
+.quick-label-button {
+  max-width: 72px;
+}
+
+.quick-label-button > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-label-button:hover,
 .label-filter-button:hover {
   color: var(--text-primary);
+  border-color: var(--border-color);
   background: var(--surface-hover);
 }
 
+.quick-label-button:active,
 .label-filter-button:active {
-  transform: scale(0.94);
+  transform: scale(0.96);
 }
 
-.label-filter-control.open .label-filter-button,
-.label-filter-button:focus-visible {
+.quick-label-button.active,
+.label-filter-control.open .label-filter-button {
   color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   background: var(--accent-soft);
-  outline: 0;
-  box-shadow: none;
 }
 
-.label-filter-selection-dot {
-  position: absolute;
-  right: 8px;
-  bottom: 7px;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--surface-soft);
-  border-radius: 999px;
-  background: var(--label-color, var(--accent));
+.quick-label-button.all-labels {
+  flex: 0 0 auto;
+}
+
+.label-filter-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.label-filter-button {
+  min-width: 58px;
+}
+
+.label-filter-button svg {
+  transition: transform 140ms ease;
+}
+
+.label-filter-control.open .label-filter-button svg {
+  transform: rotate(180deg);
 }
 
 .label-filter-dot {
@@ -339,23 +394,76 @@
   right: 0;
   z-index: 8;
   display: grid;
-  width: 166px;
-  max-height: 230px;
-  padding: 5px;
-  overflow-y: auto;
+  width: min(310px, calc(100vw - 20px));
+  padding: 12px;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface-overlay);
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
   animation: clipboard-menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.label-filter-menu button {
+.label-filter-menu-title {
+  margin: 0 2px 9px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.label-filter-search {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: var(--control-bg);
+}
+
+.label-filter-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+.label-filter-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  background: transparent;
+  font-size: 12px;
+}
+
+.label-filter-search button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.label-filter-options {
+  max-height: 236px;
+  margin-top: 8px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.label-filter-options > button {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) 16px;
   width: 100%;
-  min-height: 34px;
+  min-height: 40px;
   align-items: center;
   gap: 7px;
   padding: 0 8px;
@@ -369,20 +477,90 @@
   cursor: pointer;
 }
 
-.label-filter-menu button:hover,
-.label-filter-menu button.active {
+.label-filter-options > button:hover,
+.label-filter-options > button.active {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
 
-.label-filter-menu button.active {
+.label-filter-options > button[aria-selected="true"] {
   color: var(--accent-strong);
 }
 
-.label-filter-menu button > span:nth-child(2) {
+.label-filter-options > button > span:nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.label-filter-no-results {
+  display: grid;
+  min-height: 92px;
+  place-content: center;
+  gap: 4px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.label-filter-no-results strong {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.label-filter-no-results span,
+.label-filter-hint {
+  font-size: 10px;
+}
+
+.label-filter-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  color: var(--text-muted);
+}
+
+.label-filter-hint kbd {
+  font: inherit;
+  font-weight: 650;
+}
+
+.manage-labels-button {
+  height: 34px;
+  margin: 2px -2px -2px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  color: var(--accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.manage-labels-button:hover {
+  background: var(--surface-hover);
+}
+
+@container clipboard-window (max-width: 600px) {
+  .quick-label-list .quick-label-button:nth-child(n + 4) {
+    display: none;
+  }
+
+  .quick-label-button {
+    max-width: 62px;
+    padding-inline: 7px;
+  }
+
+  .label-filter-toolbar {
+    gap: 3px;
+    margin-left: 3px;
+  }
+
+  .label-filter-divider {
+    margin-inline: 0;
+  }
 }
 
 @keyframes clipboard-item-enter {

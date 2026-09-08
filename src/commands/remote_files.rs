@@ -5,7 +5,9 @@ use crate::system_folders::SystemFolder;
 fn system_folders(
     state: &DesktopState,
 ) -> Result<&std::sync::Arc<crate::system_folders::SystemFolders>, String> {
-    state.system_folders.get().ok_or_else(|| "Native system folders are not ready. This feature requires the installed macOS 13+ app.".into())
+    state.system_folders.get().ok_or_else(|| {
+        "System folders are not ready. Check the desktop app logs and restart ArcRelay.".into()
+    })
 }
 
 #[arcrelay_desktop_ipc::command]

@@ -54,6 +54,8 @@ export const systemBridge = {
     setSoundTemporaryMute: (muted: boolean) => invoke("set_sound_temporary_mute", { muted }),
     resetSoundPreferences: () => invoke("reset_sound_preferences"),
     onSoundMuteChanged: (listener: (until: number | null) => void) => listen("sound-mute-changed", ({ payload }) => listener(payload)),
+    onDesktopNotification: (listener: (notification: { title: string; body: string; error: boolean }) => void) =>
+        listen("desktop-notification", ({ payload }) => listener(payload)),
     async showTestSystemNotification(): Promise<string> {
         return invoke("show_test_system_notification");
     },

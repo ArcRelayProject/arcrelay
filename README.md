@@ -142,3 +142,26 @@ Issues and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTIN
 Copyright © 2026 Shenzhen Changning Technology Co., Ltd.
 
 The source code is licensed under [GNU AGPL v3.0 only](LICENSE). The ArcRelay name, logo, and other brand assets are handled separately; see [TRADEMARKS.md](TRADEMARKS.md) before distributing a modified build under ArcRelay branding.
+
+## Embedded Sniptra screenshots
+
+Official stable and Test installers include the closed-source Sniptra screenshot
+component from [binary releases](https://github.com/ArcRelayProject/sniptra).
+The release preparation job resolves protocol 1 once, then every platform downloads
+the same release using the locked archive SHA-256. File checksums, executable
+metadata and OCR startup must pass before packaging. Missing components fail the
+release. `sniptra-lock.json` is retained with release assets for reproduction.
+
+Set the workflow dispatch `sniptra_release` input (or repository variable
+`SNIPTRA_RELEASE_TAG`) to the recorded release tag to rebuild an exact dependency.
+macOS uses universal Intel/Apple Silicon components; Windows x86_64 uses native
+binaries. Windows 11 ARM64 uses x64 emulation and validates both executable
+protocols on the ARM64 runner; there is no native ARM64 Sniptra artifact.
+
+Community source builds can omit Sniptra. To embed an official component, run
+`node scripts/sniptra-release.mjs resolve sniptra-lock.json`, then
+`node scripts/sniptra-release.mjs download sniptra-lock.json TARGET`; outside
+GitHub Actions set `SNIPTRA_ARTIFACT_DIR` to the printed component directory and
+`SNIPTRA_SIDECAR_TARGET` to the Rust target. Invoke `sniptra one-shot capture` and
+isolate settings with `SNIPTRA_PROFILE_DIR`. Redistribution terms are bundled in
+`sniptra-notices`; do not include private Sniptra sources.

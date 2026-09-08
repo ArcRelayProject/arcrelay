@@ -46,3 +46,19 @@ cargo test --all-targets
 
 For frontend changes, also run `npm ci`, `npm run check`, and `npm test` from
 the repository root.
+
+## Trusted maintainer automation
+
+Pull requests authored by `zibo-chen` or `chenzibo` receive an automated
+review and enter GitHub auto-merge. They do not require manual approval or
+manual CLA labeling under repository maintainer policy. This workflow does
+not sign an agreement on anyone's behalf.
+
+Required CI, CodeQL, an up-to-date branch, and conversation resolution remain
+mandatory. Drafts, conflicts, failing or pending checks, and unresolved
+conversations prevent merging. Other contributors keep the existing human
+review and CLA verification process. Eligibility uses the PR author's login
+and stable GitHub account ID, not commit names or the event actor.
+
+The privileged workflow executes only default-branch code. Its token may
+approve PRs and request protected auto-merge; it cannot skip required CI.

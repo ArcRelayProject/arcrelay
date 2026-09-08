@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "./dismissibleDropdown";
   import { t } from "./localization";
   import { localeFor } from "./localization.ts";
   import { isCommandError } from "./ipc/client";
@@ -784,6 +785,7 @@
   function breadcrumbPath(index: number) { return breadcrumbs.slice(0, index + 1).join("/"); }
 
   function handleKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[role="dialog"], [role="menu"]'))) return;
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") { event.preventDefault(); toggleAllVisible(); }
     else if ((event.key === "Delete" || event.key === "Backspace") && selectedEntries.length && selectedShare?.writable) { event.preventDefault(); deleteDialogOpen = true; }
@@ -806,8 +808,8 @@
   <header class="remote-title-row">
     <div class="remote-title-cluster">
       <h1>{uiTranslate("远程文件", $uiLanguage)}</h1>
-      <div class="device-selector-wrap">
-        <button class:open={deviceMenuOpen} class="device-selector" disabled={devices.length === 0} on:click={() => (deviceMenuOpen = !deviceMenuOpen)}>
+      <div class="device-selector-wrap" use:dismissibleDropdown={{ open: deviceMenuOpen, close: () => (deviceMenuOpen = false) }}>
+        <button class:open={deviceMenuOpen} class="device-selector" aria-expanded={deviceMenuOpen} disabled={devices.length === 0} on:click={() => (deviceMenuOpen = !deviceMenuOpen)}>
           <Monitor size={17} /><span>{uiTranslate(selectedDevice?.name ?? (loading ? "正在查找设备…" : "没有已连接桌面"), $uiLanguage)}</span>
           {#if selectedDevice}<i></i><small>{uiTranslate("在线", $uiLanguage)}</small>{/if}<CaretDown size={13} />
         </button>
@@ -840,9 +842,10 @@
     </nav>
 
     <div class="command-actions">
-      <div class="upload-action-wrap">
+      <SystemFolders peerId={selectedPeerId} shareId={selectedShareId} {devices} {shares} {language} {notify} />
+      <div class="upload-action-wrap" use:dismissibleDropdown={{ open: uploadMenuOpen, close: () => (uploadMenuOpen = false) }}>
         <button class="command-button primary-command" disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => pickUpload(false)}><UploadSimple size={17} /><span>{uiTranslate("上传", $uiLanguage)}</span></button>
-        <button class="upload-caret" aria-label={uiTranslate("上传选项", $uiLanguage)} disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => (uploadMenuOpen = !uploadMenuOpen)}><CaretDown size={12} /></button>
+        <button class="upload-caret" aria-expanded={uploadMenuOpen} aria-label={uiTranslate("上传选项", $uiLanguage)} disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => (uploadMenuOpen = !uploadMenuOpen)}><CaretDown size={12} /></button>
         {#if uploadMenuOpen}<div class="compact-menu upload-menu"><button on:click={() => pickUpload(false)}><FileIcon size={16} />{uiTranslate("上传文件", $uiLanguage)}</button><button on:click={() => pickUpload(true)}><FolderOpen size={16} />{uiTranslate("上传文件夹", $uiLanguage)}</button></div>{/if}
       </div>
       <button class="command-button" disabled={!selectedShare?.writable || Boolean(operation)} on:click={() => openFolderDialog()}><FolderSimplePlus size={17} /><span>{uiTranslate("新建文件夹", $uiLanguage)}</span></button>
@@ -851,8 +854,8 @@
         <button class="command-button selection-command" disabled={Boolean(operation)} on:click={downloadSelected}><DownloadSimple size={17} /><span>{uiTranslate("下载", $uiLanguage)}</span></button>
         <button class="command-button selection-command" disabled={selectedEntries.length !== 1 || !selectedShare?.writable || Boolean(operation)} on:click={openRename}><PencilSimple size={17} /><span>{uiTranslate("重命名", $uiLanguage)}</span></button>
       {/if}
-      <div class="more-menu-wrap">
-        <button class="command-icon-button" aria-label={uiTranslate("更多操作", $uiLanguage)} on:click={() => (moreMenuOpen = !moreMenuOpen)}><DotsThree size={20} weight="bold" /></button>
+      <div class="more-menu-wrap" use:dismissibleDropdown={{ open: moreMenuOpen, close: () => (moreMenuOpen = false) }}>
+        <button class="command-icon-button" aria-expanded={moreMenuOpen} aria-label={uiTranslate("更多操作", $uiLanguage)} on:click={() => (moreMenuOpen = !moreMenuOpen)}><DotsThree size={20} weight="bold" /></button>
         {#if moreMenuOpen}
           <div class="compact-menu more-menu">
             <button disabled={!selectedEntries.length} on:click={downloadSelected}><DownloadSimple size={16} />{uiTranslate("下载所选项目", $uiLanguage)}</button>
@@ -865,8 +868,8 @@
     </div>
 
     <div class="display-actions">
-      <div class="sort-wrap">
-        <button class:open={sortMenuOpen} class="sort-button" on:click={() => (sortMenuOpen = !sortMenuOpen)}>
+      <div class="sort-wrap" use:dismissibleDropdown={{ open: sortMenuOpen, close: () => (sortMenuOpen = false) }}>
+        <button class:open={sortMenuOpen} class="sort-button" aria-label={uiTranslate("排序", $uiLanguage)} aria-expanded={sortMenuOpen} on:click={() => (sortMenuOpen = !sortMenuOpen)}>
           {#if sortDirection === "ascending"}<SortAscending size={17} />{:else}<SortDescending size={17} />{/if}<span>{uiTranslate("排序：", $uiLanguage)}{uiTranslate(sortLabel(), $uiLanguage)}</span><CaretDown size={12} />
         </button>
         {#if sortMenuOpen}
@@ -887,7 +890,6 @@
     </div>
   </div>
 
-  <SystemFolders peerId={selectedPeerId} shareId={selectedShareId} {language} {notify} />
   {#if pageError}<div class="remote-error" role="alert">{pageError}</div>{/if}
 
   <div class="remote-files-body">
@@ -1017,9 +1019,9 @@
 {/if}
 
 <style>
-  .remote-files-page { position: relative; display: grid; grid-template-rows: 76px 54px minmax(0, 1fr) 30px; width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text); background: var(--surface); }
+  .remote-files-page { position: relative; display: grid; grid-template-rows: 76px 54px minmax(0, 1fr) 30px; grid-template-areas: "title" "commands" "files" "status"; width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text); background: var(--surface); }
   button, input { font: inherit; } button { color: inherit; } button:disabled { opacity: .42; cursor: not-allowed !important; }
-  .remote-title-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 340px) 38px; align-items: center; gap: 12px; padding: 0 22px 0 28px; border-bottom: 1px solid var(--border); }
+  .remote-title-row { grid-area: title; display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 340px) 38px; align-items: center; gap: 12px; padding: 0 22px 0 28px; border-bottom: 1px solid var(--border); }
   .remote-title-cluster { display: flex; min-width: 0; align-items: center; gap: 22px; }
   .remote-title-row h1 { flex: 0 0 auto; margin: 0; font-size: 24px; line-height: 1; letter-spacing: -.035em; }
   .device-selector-wrap, .more-menu-wrap, .upload-action-wrap, .sort-wrap { position: relative; }
@@ -1039,7 +1041,7 @@
   .remote-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; }
   .remote-icon-button, .navigation-buttons button, .command-icon-button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--control-bg); cursor: pointer; }
   .remote-icon-button:hover, .navigation-buttons button:hover:not(:disabled), .command-icon-button:hover { background: var(--control-hover); }
-  .remote-command-row { display: grid; grid-template-columns: auto minmax(170px, 1fr) auto auto; align-items: center; gap: 12px; padding: 0 22px; border-bottom: 1px solid var(--border); }
+  .remote-command-row { grid-area: commands; display: grid; grid-template-columns: auto minmax(170px, 1fr) auto auto; align-items: center; gap: 12px; padding: 0 22px; border-bottom: 1px solid var(--border); }
   .navigation-buttons { display: flex; gap: 5px; } .navigation-buttons button { width: 34px; height: 34px; border-color: transparent; background: transparent; }
   .remote-breadcrumb { display: flex; min-width: 0; align-items: center; gap: 4px; overflow: hidden; color: var(--text-muted); font-size: 13px; }
   .remote-breadcrumb button { flex: 0 1 auto; max-width: 150px; overflow: hidden; padding: 5px 6px; border: 0; border-radius: 6px; color: var(--text-muted); background: transparent; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -1062,7 +1064,7 @@
   .view-switcher button { display: grid; width: 29px; height: 27px; place-items: center; border: 0; border-radius: 6px; color: var(--text-muted); background: transparent; cursor: pointer; }
   .view-switcher button:hover { color: var(--text); background: var(--surface-hover); } .view-switcher button.active { color: var(--accent-strong); background: var(--accent-soft); }
   .remote-error { position: absolute; z-index: 20; top: 126px; right: 20px; left: 20px; overflow: hidden; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius: 8px; color: var(--danger); background: var(--danger-soft); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-  .remote-files-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
+  .remote-files-body { grid-area: files; display: grid; grid-template-columns: 220px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
   .remote-source-panel { display: grid; grid-template-rows: 46px minmax(0, 1fr) 38px; min-height: 0; overflow: hidden; border-right: 1px solid var(--border); background: var(--surface-soft); }
   .source-device-heading { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0 15px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 620; }
   .source-device-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .source-device-heading i { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--text-muted); } .source-device-heading i.online { background: var(--success); }
@@ -1122,7 +1124,7 @@
   .transfer-copy { display: grid; min-width: 0; gap: 4px; } .transfer-copy strong, .transfer-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .transfer-copy strong { font-size: 11px; font-weight: 620; } .transfer-copy small { color: var(--text-muted); font-size: 9px; }
   .transfer-copy i { position: relative; display: block; height: 3px; overflow: hidden; border-radius: 3px; background: var(--border-strong); } .transfer-copy b { position: absolute; inset: 0 auto 0 0; min-width: 0; border-radius: inherit; background: var(--accent); transition: width 120ms linear; } .transfer-copy b.indeterminate { width: 35% !important; animation: remote-transfer-indeterminate 1.1s ease-in-out infinite; }
   .remote-transfer-item em { color: var(--text-muted); font-size: 9px; font-style: normal; } .remote-transfer-item.failed em { color: var(--danger); } .remote-transfer-item.completed em { color: var(--success); }
-  .remote-status-bar { display: flex; align-items: center; gap: 8px; padding: 0 18px; border-top: 1px solid var(--border); color: var(--text-muted); background: var(--surface); font-size: 10px; }
+  .remote-status-bar { grid-area: status; display: flex; align-items: center; gap: 8px; padding: 0 18px; border-top: 1px solid var(--border); color: var(--text-muted); background: var(--surface); font-size: 10px; }
   .remote-status-bar i { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); } .status-spacer { flex: 1; }
   .remote-dialog-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--backdrop); }
   .remote-dialog { width: min(390px, 100%); padding: 22px; border: 1px solid var(--border-strong); border-radius: 15px; background: var(--surface-raised); box-shadow: var(--shadow-floating); }

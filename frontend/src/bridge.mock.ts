@@ -271,6 +271,7 @@ export const bridge = {
     async setSoundTemporaryMute(muted: boolean): Promise<number | null> { return mockSoundMuteUntil = muted ? Date.now() + 3_600_000 : null; },
     async resetSoundPreferences(): Promise<AppSettings> { mockData.appSettings.sounds = defaultSoundPreferences(); return structuredClone(mockData.appSettings); },
     async onSoundMuteChanged(_listener: (until: number | null) => void): Promise<UnlistenFn> { return () => {}; },
+    async onDesktopNotification(_listener: (notification: { title: string; body: string; error: boolean }) => void): Promise<UnlistenFn> { return () => {}; },
     async showTestSystemNotification(): Promise<string> {
         if (!mockData.appSettings.notifications.enabled)
             throw new Error("enable desktop notifications first");
@@ -384,7 +385,7 @@ export const bridge = {
         return transfersMock.setTransferReceivePolicy(peerId, automatic);
     },
     async listSystemFolders(): Promise<import('./ipc/generated').SystemFolder[]> { return []; },
-    async addSystemFolder(_peerId: string, _shareId: string): Promise<import('./ipc/generated').SystemFolder> { throw new Error("Finder integration requires the installed macOS app."); },
+    async addSystemFolder(_peerId: string, _shareId: string): Promise<import('./ipc/generated').SystemFolder> { throw new Error("System folder integration requires the installed desktop app."); },
     async openSystemFolder(_id: string): Promise<void> {},
     async removeSystemFolder(_id: string): Promise<void> {},
     async openSystemFolderRecovery(): Promise<void> {},

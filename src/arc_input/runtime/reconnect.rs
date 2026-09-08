@@ -1,7 +1,6 @@
 use super::*;
 
 const REVERSE_DIAL_DELAY: Duration = Duration::from_secs(2);
-const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub(super) struct ReconnectAttempt {
@@ -42,7 +41,7 @@ impl ReconnectAttempt {
         let delay = if succeeded {
             Duration::ZERO
         } else {
-            Duration::from_secs(1_u64 << self.failures.min(5)).min(MAX_RECONNECT_DELAY)
+            crate::retry::delay(self.failures)
         };
         self.next_attempt = now + delay;
     }
@@ -181,7 +180,7 @@ mod tests {
         for _ in 0..50 {
             attempt.finish(now, false);
         }
-        assert_eq!(attempt.next_attempt, now + MAX_RECONNECT_DELAY);
+        assert_eq!(attempt.next_attempt, now + Duration::from_secs(120));
         attempt.finish(now, true);
         assert!(attempt.start(now));
     }

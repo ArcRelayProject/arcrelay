@@ -1,6 +1,6 @@
 const now = Date.now();
 import { type UnlistenFn } from "@tauri-apps/api/event";
-import type { ClipboardCursor, ClipboardHistory, ClipboardItem, ClipboardImageOcr, ClipboardKind, ClipboardLabel, NearbyClipboardPeer, ClipboardPasteMode, ContinuousPasteProgress } from "./types";
+import type { ClipboardCursor, ClipboardHistory, ClipboardItem, ClipboardImageOcr, ClipboardKind, ClipboardLabel, NearbyClipboardPeer, ClipboardPasteMode, ContinuousPasteItemInput } from "./types";
 import type { ClipboardSortPreference } from "../types";
 import type { ClipboardTimeline, ClipboardTimelinePosition } from "./types";
 const mockImageSource = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
@@ -22,6 +22,9 @@ const mockImageOcr: ClipboardImageOcr = {
 };
 const mockLabels: ClipboardLabel[] = [
     { id: "mock-work", name: "工作", color: "#3B82F6", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-project", name: "项目", color: "#22C55E", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-temporary", name: "临时", color: "#F59E0B", revision: 1, updated_by_device_id: "mock", deleted: false },
+    { id: "mock-code", name: "代码", color: "#8B5CF6", revision: 1, updated_by_device_id: "mock", deleted: false },
 ];
 const mockItems: ClipboardItem[] = [
     {
@@ -84,7 +87,7 @@ const mockItems: ClipboardItem[] = [
         height: null,
         sensitive: false,
         favorite: true,
-        labels: mockLabels,
+        labels: [mockLabels[0]],
         available: true,
         textSyntax: "plain",
     },
@@ -152,10 +155,11 @@ const mockItems: ClipboardItem[] = [
         textSyntax: "plain",
     },
 ];
-function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: boolean): ClipboardHistory {
+function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: boolean, labelIds: string[] = []): ClipboardHistory {
     const query = search.trim().toLocaleLowerCase("zh-CN");
     const entries = mockItems.filter((item) => (!kind || item.kind === kind || (kind === "text" && item.kind === "html")) &&
         (!favoriteOnly || item.favorite) &&
+        (labelIds.length === 0 || labelIds.every((labelId) => item.labels.some((label) => label.id === labelId))) &&
         (!query || `${item.preview} ${item.sourceApp ?? ""}`.toLocaleLowerCase("zh-CN").includes(query)));
     return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
@@ -193,7 +197,7 @@ export const clipboardBridge = {
         labelIds?: string[];
         cursor: ClipboardCursor | null;
         limit?: number;
-    }) => mockHistory(options.search, options.kind, options.favoriteOnly),
+    }) => mockHistory(options.search, options.kind, options.favoriteOnly, options.labelIds),
     thumbnail: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imagePreview: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imageOcr: (id: number) => Promise.resolve(id === 101 ? mockImageOcr : null),
@@ -204,6 +208,7 @@ export const clipboardBridge = {
     paste: (id: number) => Promise.resolve(),
     pasteAs: (id: number, mode: ClipboardPasteMode) => Promise.resolve(),
     remove: (id: number) => Promise.resolve(),
+    removeMany: (ids: number[]) => Promise.resolve(ids.length),
     setFavorite: (id: number, favorite: boolean) => Promise.resolve(),
     labels: () => Promise.resolve(mockLabels),
     createLabel: (name: string, color: string) => Promise.resolve({ id: crypto.randomUUID(), name, color, revision: 1, updated_by_device_id: "mock", deleted: false }),
@@ -227,9 +232,9 @@ export const clipboardBridge = {
     sendFiles: (id: number, peerId: string) => Promise.resolve("mock-transfer"),
     clear: () => Promise.resolve(),
     pasteRecords: (ids: number[]) => Promise.resolve(ids.length),
-    startContinuousPaste: (ids: number[]) => Promise.resolve({ current: 0, total: ids.length, active: ids.length > 0 }),
-    stopContinuousPaste: () => Promise.resolve({ current: 0, total: 0, active: false }),
+    startContinuousPaste: (items: ContinuousPasteItemInput[]) => Promise.resolve({ current: 0, total: items.length, active: items.length > 0, nextPreview: items[0]?.preview ?? null, triggerShortcut: "Ctrl+V" }),
     hide: () => Promise.resolve(),
+    visible: () => Promise.resolve(true),
     pinned: () => Promise.resolve(false),
     setPinnedWindow: (pinned: boolean) => Promise.resolve(),
     startDragging: () => Promise.resolve(),
@@ -238,6 +243,5 @@ export const clipboardBridge = {
     onShown: async (handler: () => void): Promise<UnlistenFn> => () => undefined,
     onHidden: async (handler: () => void): Promise<UnlistenFn> => () => undefined,
     onPinChanged: async (handler: (pinned: boolean) => void): Promise<UnlistenFn> => () => undefined,
-    onContinuousPasteProgress: async (handler: (progress: ContinuousPasteProgress) => void): Promise<UnlistenFn> => () => undefined,
     onContinuousPasteError: async (handler: (error: string) => void): Promise<UnlistenFn> => () => undefined
 };

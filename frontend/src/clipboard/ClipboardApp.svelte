@@ -1,12 +1,15 @@
 <script lang="ts">
+  import { dismissibleDropdown } from "../dismissibleDropdown";
   import { t } from "../localization";
   import { translate as uiTranslate, language as uiLanguage, setLanguage } from "../i18n";
   import { SubscriptionScope } from "../subscriptions";
+  import { observeWindowVisibility } from "./windowVisibility";
   import { onMount, tick } from "svelte";
   import { Dialog } from "bits-ui";
   import {
     Check,
     ArrowLeft,
+    CaretDown,
     ClockCounterClockwise,
     CopySimple,
     FileText,
@@ -17,6 +20,7 @@
     Star,
     Tag,
     TextT,
+    Trash,
     X,
   } from "phosphor-svelte";
 
@@ -28,6 +32,7 @@
   import SegmentPicker from "./SegmentPicker.svelte";
   import { clipboardBridge } from "./bridge";
   import { HeightIndex } from "./heightIndex";
+  import { filterClipboardLabels, parseRecentLabelIds, rememberRecentLabel, selectQuickLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
   import { clearHtmlPreviewCache } from "./htmlPreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
@@ -35,13 +40,14 @@
   import { appendSelectedIds, selectionOrder, toggleSelectedId } from "./multiSelect";
   import { showClipboardContextMenu } from "./nativeContextMenu";
   import { historyQueryKey, mergeTimelineEntries, type NearbyHistory, type ScrollAnchor, type SearchSnapshot } from "./historyNavigation";
-  import type { ClipboardCursor, ClipboardFilter, ClipboardHistory, ClipboardItem, ClipboardKind, ClipboardLabel, ClipboardPasteMode, ContinuousPasteProgress } from "./types";
+  import type { ClipboardCursor, ClipboardFilter, ClipboardHistory, ClipboardItem, ClipboardKind, ClipboardLabel, ClipboardPasteMode } from "./types";
   import type { NearbyClipboardPeer } from "./types";
 
   const FETCH_SIZE = 60;
   const QUICK_PASTE_LIMIT = 5;
   const VIRTUAL_OVERSCAN_ROWS = 4;
   const ROW_GAP = 8;
+  const RECENT_LABELS_STORAGE_KEY = "arcrelay.clipboard.recent-labels";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
   const primaryShortcutLabel = isMacPlatform ? "⌘" : "Ctrl+";
   const filters: Array<{ id: ClipboardFilter; label: string; icon: typeof ClockCounterClockwise; size: number; weight?: "fill" }> = [
@@ -61,13 +67,19 @@
   let selectedId: number | null = null;
   let selectedIds: number[] = [];
   let multiPasting = false;
-  let continuousPaste: ContinuousPasteProgress = { current: 0, total: 0, active: false };
+  let selectedItems: ClipboardItem[] = [];
+  let combinedPasteAvailable = false;
   let windowVisible = !("__TAURI_INTERNALS__" in window);
   let loading = true;
   let loadingMore = false;
   let ocrPasting = false;
   let error = "";
   let labelFilterOpen = false;
+  let labelSearch = "";
+  let activeLabelOptionIndex = 0;
+  let labelSearchInput: HTMLInputElement;
+  let moreLabelsButton: HTMLButtonElement;
+  let recentLabelIds: string[] = [];
   let keyboardMode: ClipboardKeyboardMode = "search";
   let previewDialogOpen = false;
   let previewingItem: ClipboardItem | null = null;
@@ -82,6 +94,7 @@
   let editingItem: ClipboardItem | null = null;
   let editContent = "";
   let labelDialogOpen = false;
+  let managingLabels = false;
   let labelingItem: ClipboardItem | null = null;
   let labels: ClipboardLabel[] = [];
   let selectedLabelIds: string[] = [];
@@ -118,6 +131,12 @@
   let historyChangeCount = 0;
   let appearanceMedia: MediaQueryList | undefined;
   let handleSystemThemeChange: (() => void) | undefined;
+
+  $: selectedItems = selectedIds
+    .map((id) => history.entries.find((item) => item.id === id))
+    .filter((item): item is ClipboardItem => Boolean(item));
+  $: combinedPasteAvailable = selectedItems.length === selectedIds.length
+    && selectedItems.every((item) => item.available && (item.kind === "text" || item.kind === "html"));
   let currentSettings: AppSettings | undefined;
 
   $: imagePreviewReady = previewingItem?.kind === "image"
@@ -130,6 +149,9 @@
   $: shortcutNumbers = new Map((nearby ? [] : history.entries.slice(0, QUICK_PASTE_LIMIT)).map((_, index) => [index, index + 1]));
   $: rowShortcutModifier = keyboardMode === "search" ? primaryShortcutLabel : "";
   $: selectedLabel = labels.find((label) => label.id === selectedLabelFilter) ?? null;
+  $: quickLabels = selectQuickLabels(labels, recentLabelIds, selectedLabelFilter);
+  $: filteredLabels = filterClipboardLabels(labels, labelSearch);
+  $: showAllLabelOption = !labelSearch.trim();
   $: recalculateVisibleRange(history.entries, scrollTop, viewportHeight);
   $: {
     window.clearTimeout(debounceTimer);
@@ -283,11 +305,10 @@
     let disposed = false;
     const scope = new SubscriptionScope();
 
+    recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
-      // This webview is created hidden and then reused. Register its visibility
-      // lifecycle before settings and metadata I/O so an early shortcut cannot
-      // restore stale focus or list metrics.
-      await scope.add(clipboardBridge.onShown(() => {
+      // A newly created WebView may become visible before JS attaches.
+      await scope.add(observeWindowVisibility(clipboardBridge, () => {
         windowVisible = true;
         const shouldFocusSearch = currentSettings?.clipboardAutoFocusSearch ?? true;
         resetRestoredFocus();
@@ -299,8 +320,7 @@
             else focusSelectedRow();
           });
         });
-      }));
-      await scope.add(clipboardBridge.onHidden(() => {
+      }, () => {
         windowVisible = false;
         loadGeneration += 1;
         loading = false;
@@ -316,6 +336,8 @@
         clearHtmlPreviewCache();
         keyboardMode = "search";
         labelFilterOpen = false;
+        labelSearch = "";
+        selectedLabelFilter = null;
         previewGeneration++;
         previewDialogOpen = false;
         previewingItem = null;
@@ -357,6 +379,14 @@
       if (import.meta.env.DEV && previewParams.get("preview-theme") === "dark") {
         applyTheme({ theme: "dark" });
       }
+      if (import.meta.env.DEV && previewParams.has("preview-multi-select")) {
+        await load();
+        selectedIds = history.entries
+          .filter((item) => item.available && (item.kind === "text" || item.kind === "html"))
+          .slice(0, 3)
+          .map((item) => item.id);
+        selectedId = null;
+      }
       if (import.meta.env.DEV && previewParams.get("preview-dialog") === "labels") {
         await load();
         const previewItem = history.entries.find((item) => item.labels.length > 0) ?? history.entries[0];
@@ -369,11 +399,7 @@
         if (previewItem) await viewNearby(previewItem);
       }
       await scope.add(clipboardBridge.onPinChanged((value) => (windowPinned = value)));
-      await scope.add(clipboardBridge.onContinuousPasteProgress((progress) => {
-        continuousPaste = progress;
-      }));
       await scope.add(clipboardBridge.onContinuousPasteError((reason) => {
-        continuousPaste = { current: 0, total: 0, active: false };
         error = reason;
       }));
       await scope.add(clipboardBridge.onChanged(() => {
@@ -727,6 +753,10 @@
 
   async function pasteSelectedItems() {
     if (selectedIds.length === 0 || multiPasting) return;
+    if (!combinedPasteAvailable) {
+      error = uiTranslate("合并粘贴仅支持文本内容", $uiLanguage);
+      return;
+    }
     multiPasting = true;
     error = "";
     try {
@@ -740,11 +770,11 @@
   }
 
   async function startContinuousPaste() {
-    if (selectedIds.length === 0 || multiPasting) return;
+    if (selectedItems.length === 0 || selectedItems.length !== selectedIds.length || multiPasting) return;
     multiPasting = true;
     error = "";
     try {
-      continuousPaste = await clipboardBridge.startContinuousPaste([...selectedIds]);
+      await clipboardBridge.startContinuousPaste(selectedItems.map((item) => ({ id: item.id, preview: item.preview })));
       clearMultiSelection();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : String(reason);
@@ -753,8 +783,20 @@
     }
   }
 
-  async function stopContinuousPaste() {
-    continuousPaste = await clipboardBridge.stopContinuousPaste();
+  async function deleteSelectedItems() {
+    if (selectedIds.length === 0 || multiPasting) return;
+    if (!window.confirm(t("删除 {count} 项？", language, { count: selectedIds.length }))) return;
+    multiPasting = true;
+    error = "";
+    try {
+      await clipboardBridge.removeMany([...selectedIds]);
+      clearMultiSelection();
+      await load();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : String(reason);
+    } finally {
+      multiPasting = false;
+    }
   }
 
   async function pasteItem(item: ClipboardItem, mode: ClipboardPasteMode = "source") {
@@ -893,7 +935,7 @@
         return;
       }
       if (labelFilterOpen) {
-        labelFilterOpen = false;
+        closeLabelFilter({ restoreFocus: true });
         return;
       }
       if (nearby) {
@@ -909,6 +951,11 @@
 
     const target = event.target;
     const editingTarget = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
+    if (!editingTarget && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "#") {
+      event.preventDefault();
+      void toggleLabelFilter();
+      return;
+    }
     if (editingTarget && target !== searchInput) return;
     const element = target instanceof Element ? target : null;
     const rowTarget = element?.closest(".clipboard-row");
@@ -1015,6 +1062,7 @@
   }
 
   async function beginLabels(item: ClipboardItem) {
+    managingLabels = false;
     labelingItem = item;
     labels = await clipboardBridge.labels();
     selectedLabelIds = item.labels.map((label) => label.id);
@@ -1053,6 +1101,10 @@
   }
 
   async function saveLabels() {
+    if (managingLabels) {
+      labelDialogOpen = false;
+      return;
+    }
     if (!labelingItem) return;
     await clipboardBridge.setLabels(labelingItem.id, selectedLabelIds);
     labelDialogOpen = false;
@@ -1063,7 +1115,7 @@
     if (!newLabelName.trim()) return;
     const created = await clipboardBridge.createLabel(newLabelName.trim(), newLabelColor);
     labels = [...labels, created];
-    selectedLabelIds = [...selectedLabelIds, created.id];
+    if (!managingLabels) selectedLabelIds = [...selectedLabelIds, created.id];
     newLabelName = "";
     requestAnimationFrame(() => newLabelInput?.focus());
   }
@@ -1088,6 +1140,18 @@
       : [...selectedLabelIds, labelId];
   }
 
+  async function openLabelManager() {
+    labelFilterOpen = false;
+    labelSearch = "";
+    managingLabels = true;
+    labelingItem = null;
+    selectedLabelIds = [];
+    newLabelName = "";
+    newLabelColor = "#5B5FF0";
+    labels = await clipboardBridge.labels().catch(() => labels);
+    labelDialogOpen = true;
+  }
+
   async function toggleWindowPinned() {
     const pinned = !windowPinned;
     windowPinned = pinned;
@@ -1110,17 +1174,68 @@
     event.preventDefault();
   }
 
-  function handleWindowPointerDown(event: PointerEvent) {
-    const target = event.target as HTMLElement;
-    if (labelFilterOpen && !target.closest(".label-filter-control")) labelFilterOpen = false;
+  function closeLabelFilter({ restoreFocus = false } = {}) {
+    labelFilterOpen = false;
+    labelSearch = "";
+    activeLabelOptionIndex = 0;
+    if (restoreFocus) requestAnimationFrame(() => moreLabelsButton?.focus());
   }
 
-  function selectLabelFilter(labelId: string | null) {
+  async function toggleLabelFilter() {
+    if (labelFilterOpen) {
+      closeLabelFilter();
+      return;
+    }
+    labelFilterOpen = true;
+    labelSearch = "";
+    const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
+    activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
+    await tick();
+    labelSearchInput?.focus();
+  }
+
+  function selectLabelFilter(labelId: string | null, toggle = false) {
     abandonNearby();
-    selectedLabelFilter = labelId;
-    labelFilterOpen = false;
+    const nextLabelId = toggle && selectedLabelFilter === labelId ? null : labelId;
+    selectedLabelFilter = nextLabelId;
+    if (nextLabelId) {
+      recentLabelIds = rememberRecentLabel(recentLabelIds, nextLabelId);
+      localStorage.setItem(RECENT_LABELS_STORAGE_KEY, JSON.stringify(recentLabelIds));
+    }
+    closeLabelFilter();
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
+  }
+
+  function updateActiveLabelOption() {
+    const selectedIndex = filteredLabels.findIndex((label) => label.id === selectedLabelFilter);
+    activeLabelOptionIndex = showAllLabelOption ? Math.max(0, selectedIndex + 1) : 0;
+  }
+
+  function handleLabelSearchKeyDown(event: KeyboardEvent) {
+    const optionOffset = showAllLabelOption ? 1 : 0;
+    const optionCount = filteredLabels.length + optionOffset;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (optionCount === 0) return;
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      activeLabelOptionIndex = (activeLabelOptionIndex + delta + optionCount) % optionCount;
+      return;
+    }
+    if (event.key === "Enter") {
+      if (optionCount === 0) return;
+      event.preventDefault();
+      const labelId = showAllLabelOption && activeLabelOptionIndex === 0
+        ? null
+        : filteredLabels[activeLabelOptionIndex - optionOffset]?.id ?? null;
+      selectLabelFilter(labelId);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeLabelFilter({ restoreFocus: true });
+    }
   }
 
   function windowDrag(node: HTMLElement) {
@@ -1129,7 +1244,7 @@
   }
 </script>
 
-<svelte:window oncontextmenu={suppressWebviewContextMenu} on:pointerdown={handleWindowPointerDown} />
+<svelte:window oncontextmenu={suppressWebviewContextMenu} />
 
 <main class="clipboard-window">
   <header class="clipboard-header drag-region" use:windowDrag>
@@ -1152,33 +1267,84 @@
         </button>
       {/each}
     </div>
-    <div class:open={labelFilterOpen} class="label-filter-control">
-      <button
-        class="label-filter-button"
-        type="button"
-        aria-label={selectedLabel ? `${tr("管理标签", language)}：${selectedLabel.name}` : tr("管理标签", language)}
-        title={selectedLabel?.name ?? (uiTranslate("全部标签", $uiLanguage))}
-        aria-haspopup="listbox"
-        aria-expanded={labelFilterOpen}
-        on:click={() => (labelFilterOpen = !labelFilterOpen)}
-      >
-        <Tag size={19} weight={selectedLabel ? "fill" : "regular"} />
-        {#if selectedLabel}<span class="label-filter-selection-dot" style:--label-color={selectedLabel.color}></span>{/if}
-      </button>
-      {#if labelFilterOpen}
-        <div class="label-filter-menu" role="listbox" aria-label={tr("管理标签", language)}>
-          <button class:active={selectedLabelFilter === null} type="button" role="option" aria-selected={selectedLabelFilter === null} on:click={() => selectLabelFilter(null)}>
-            <Tag size={14} /><span>{uiTranslate("全部标签", $uiLanguage)}</span>
-            {#if selectedLabelFilter === null}<Check size={14} weight="bold" />{/if}
+    <div class="label-filter-toolbar" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+      <span class="label-filter-divider" aria-hidden="true"></span>
+      <div class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+        <button
+          class:active={selectedLabelFilter === null}
+          class="quick-label-button all-labels"
+          type="button"
+          aria-pressed={selectedLabelFilter === null}
+          on:click={() => selectLabelFilter(null)}
+        >{uiTranslate("全部", $uiLanguage)}</button>
+        {#each quickLabels as label (label.id)}
+          <button
+            class:active={selectedLabelFilter === label.id}
+            class="quick-label-button"
+            type="button"
+            aria-pressed={selectedLabelFilter === label.id}
+            title={label.name}
+            on:click={() => selectLabelFilter(label.id, true)}
+          >
+            <span class="label-filter-dot" style:--label-color={label.color}></span>
+            <span>{label.name}</span>
           </button>
-          {#each labels as label (label.id)}
-            <button class:active={selectedLabelFilter === label.id} type="button" role="option" aria-selected={selectedLabelFilter === label.id} on:click={() => selectLabelFilter(label.id)}>
-              <span class="label-filter-dot" style:--label-color={label.color}></span><span>{label.name}</span>
-              {#if selectedLabelFilter === label.id}<Check size={14} weight="bold" />{/if}
-            </button>
-          {/each}
+        {/each}
+      </div>
+      <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}>
+        <button
+          bind:this={moreLabelsButton}
+          class="label-filter-button"
+          type="button"
+          aria-label={uiTranslate("更多标签", $uiLanguage)}
+          title={uiTranslate("更多标签", $uiLanguage)}
+          aria-haspopup="dialog"
+          aria-expanded={labelFilterOpen}
+          on:click={() => void toggleLabelFilter()}
+        >
+          <span>{uiTranslate("更多", $uiLanguage)}</span>
+          <CaretDown size={13} weight="bold" />
+        </button>
+      {#if labelFilterOpen}
+        <div class="label-filter-menu" role="dialog" aria-label={uiTranslate("更多标签", $uiLanguage)}>
+          <strong class="label-filter-menu-title">{uiTranslate("全部标签", $uiLanguage)}</strong>
+          <label class="label-filter-search">
+            <MagnifyingGlass size={15} />
+            <input
+              bind:this={labelSearchInput}
+              bind:value={labelSearch}
+              placeholder={uiTranslate("搜索标签", $uiLanguage)}
+              on:input={updateActiveLabelOption}
+              on:keydown={handleLabelSearchKeyDown}
+            />
+            {#if labelSearch}
+              <button type="button" aria-label={tr("清除", language)} title={tr("清除", language)} on:click={() => { labelSearch = ""; updateActiveLabelOption(); labelSearchInput?.focus(); }}><X size={13} /></button>
+            {/if}
+          </label>
+          <div class="label-filter-options" role="listbox" aria-label={uiTranslate("全部标签", $uiLanguage)}>
+            {#if showAllLabelOption}
+              <button class:active={activeLabelOptionIndex === 0} type="button" role="option" aria-selected={selectedLabelFilter === null} on:mouseenter={() => (activeLabelOptionIndex = 0)} on:click={() => selectLabelFilter(null)}>
+                <Tag size={15} /><span>{uiTranslate("全部标签", $uiLanguage)}</span>
+                {#if selectedLabelFilter === null}<Check size={14} weight="bold" />{/if}
+              </button>
+            {/if}
+            {#each filteredLabels as label, index (label.id)}
+              <button class:active={activeLabelOptionIndex === index + (showAllLabelOption ? 1 : 0)} type="button" role="option" aria-selected={selectedLabelFilter === label.id} on:mouseenter={() => (activeLabelOptionIndex = index + (showAllLabelOption ? 1 : 0))} on:click={() => selectLabelFilter(label.id)}>
+                <span class="label-filter-dot" style:--label-color={label.color}></span><span>{label.name}</span>
+                {#if selectedLabelFilter === label.id}<Check size={14} weight="bold" />{/if}
+              </button>
+            {:else}
+              <div class="label-filter-no-results" role="status">
+                <strong>{uiTranslate("没有匹配的标签", $uiLanguage)}</strong>
+                <span>{uiTranslate("输入其他名称试试", $uiLanguage)}</span>
+              </div>
+            {/each}
+          </div>
+          <div class="label-filter-hint"><kbd>↑↓</kbd><span>{uiTranslate("选择", $uiLanguage)}</span><kbd>Enter</kbd><span>{uiTranslate("确认", $uiLanguage)}</span><kbd>Esc</kbd><span>{uiTranslate("关闭", $uiLanguage)}</span></div>
+          <button class="manage-labels-button" type="button" on:click={() => void openLabelManager()}>{uiTranslate("管理标签", $uiLanguage)}</button>
         </div>
       {/if}
+      </div>
     </div>
   </nav>
 
@@ -1216,6 +1382,13 @@
       </div>
     {:else if error}
       <div class="list-state error-state">{error}</div>
+    {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
+      <div class="list-state label-filter-empty-state">
+        <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}><Tag size={30} /></span>
+        <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
+        <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
+        <button type="button" on:click={() => selectLabelFilter(null)}>{uiTranslate("清除标签筛选", $uiLanguage)}</button>
+      </div>
     {:else if history.entries.length === 0}
       <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
     {:else}
@@ -1242,6 +1415,7 @@
               shortcutModifier={rowShortcutModifier}
               selected={selectedId === entry.item.id}
               multiSelected={selectedIds.includes(entry.item.id)}
+              multiSelectActive={selectedIds.length > 0}
               selectionOrder={selectionOrder(selectedIds, entry.item.id)}
               {language}
               timestamp={itemTimestamp(entry.item)}
@@ -1260,24 +1434,27 @@
   </section>
 
   {#if selectedIds.length > 0}
-    <div class="multi-select-actions" role="toolbar" aria-label={uiTranslate("多选操作", $uiLanguage)}>
-      <strong>{t("已选择 {count} 项", language, { count: selectedIds.length })}</strong>
-      <button type="button" disabled={multiPasting} on:click={pasteSelectedItems} title={uiTranslate("按选择顺序粘贴", $uiLanguage)}>
-        <CopySimple size={17} weight="bold" />
-        <span>{uiTranslate("多选粘贴", $uiLanguage)}</span>
-      </button>
-      <button class="continuous-action" type="button" disabled={multiPasting} on:click={startContinuousPaste} title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}>
-        <StackSimple size={17} weight="bold" />
-        <span>{uiTranslate("连续粘贴", $uiLanguage)}</span>
-      </button>
-      <button class="clear-selection" type="button" on:click={clearMultiSelection} aria-label={tr("取消", language)} title={tr("取消", language)}><X size={16} /></button>
+    <div class="multi-select-status" role="status" aria-live="polite">
+      {t("已选 {count} 项 · 按 1 → {count} 处理", language, { count: selectedIds.length })}
     </div>
-  {:else if continuousPaste.active}
-    <div class="multi-select-actions continuous-progress" role="status">
-      <StackSimple size={18} weight="bold" />
-      <strong>{t("连续粘贴 {current}/{total}", language, { current: continuousPaste.current, total: continuousPaste.total })}</strong>
-      <span>{uiTranslate("再次按剪贴板快捷键粘贴下一项", $uiLanguage)}</span>
-      <button class="clear-selection" type="button" on:click={stopContinuousPaste} aria-label={uiTranslate("停止连续粘贴", $uiLanguage)} title={uiTranslate("停止连续粘贴", $uiLanguage)}><X size={16} /></button>
+    <div class="multi-select-actions" role="toolbar" aria-label={uiTranslate("多选操作", $uiLanguage)}>
+      <button class="multi-action paste-action" type="button" disabled={multiPasting || !combinedPasteAvailable} on:click={pasteSelectedItems} aria-label={uiTranslate("粘贴", $uiLanguage)} title={combinedPasteAvailable ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage) : uiTranslate("合并粘贴仅支持文本内容", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span>
+        <CopySimple size={21} weight="bold" />
+      </button>
+      <button class="multi-action continuous-action" type="button" disabled={multiPasting} on:click={startContinuousPaste} aria-label={uiTranslate("开始连续粘贴", $uiLanguage)} title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span>
+        <StackSimple size={21} weight="bold" />
+      </button>
+      <div class="multi-action-divider" aria-hidden="true"></div>
+      <button class="multi-action delete-action" type="button" disabled={multiPasting} on:click={deleteSelectedItems} aria-label={uiTranslate("删除所选", $uiLanguage)} title={uiTranslate("删除所选", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("删除所选", $uiLanguage)}</span>
+        <Trash size={21} weight="bold" />
+      </button>
+      <button class="multi-action clear-selection" type="button" on:click={clearMultiSelection} aria-label={tr("取消", language)} title={tr("取消", language)}>
+        <span class="multi-action-label">{tr("取消", language)}</span>
+        <X size={21} />
+      </button>
     </div>
   {/if}
 
@@ -1288,10 +1465,15 @@
           {uiTranslate("正在识别图片文字…", $uiLanguage)}
         {:else if loadingMore && nearby}
           {tr("正在读取附近记录…", language)}
+        {:else if selectedLabel}
+          {t("{name} · {count} 条", language, { name: selectedLabel.name, count: history.totalCount ?? history.entries.length })}
         {:else}
           {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
         {/if}
       </strong>
+      {#if selectedLabel && !ocrPasting}
+        <button class="clear-label-filter" type="button" aria-label={uiTranslate("清除标签筛选", $uiLanguage)} title={uiTranslate("清除标签筛选", $uiLanguage)} on:click={() => selectLabelFilter(null)}><X size={13} /></button>
+      {/if}
     </div>
     <div class="footer-actions">
       <button class:loading class="icon-button" type="button" aria-label={tr("刷新", language)} aria-busy={loading} title={tr("刷新", language)} on:click={() => load()}><ClockCounterClockwise size={22} /></button>
@@ -1403,6 +1585,7 @@
     bind:newLabelName
     bind:newLabelColor
     bind:newLabelInput
+    manageOnly={managingLabels}
     {language}
     onSave={saveLabels}
     onCreate={createLabel}
