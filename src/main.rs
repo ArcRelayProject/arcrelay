@@ -3,6 +3,7 @@
 mod action_shortcuts;
 mod app_update;
 mod application;
+mod application_runtime;
 mod arc_input;
 mod autostart;
 mod backend;
@@ -24,6 +25,7 @@ mod observability;
 mod pairing_prompt;
 mod privacy;
 mod remote_files;
+mod retry;
 mod screenshot;
 mod settings;
 mod sound;
@@ -53,6 +55,9 @@ fn main() {
         return;
     }
     let _observability = observability::init();
+    let runtime = application_runtime::build().expect("failed to create application runtime");
+    tauri::async_runtime::set(runtime.handle().clone());
+    application_runtime::configure_image_workers().expect("failed to configure image workers");
 
     let builder = tauri::Builder::default()
         // Keep this plugin first: share activations must be forwarded before

@@ -1,3 +1,4 @@
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { invoke, listen } from '../ipc/client';
 import type { UnlistenFn } from '@tauri-apps/api/event';
@@ -56,6 +57,7 @@ export const clipboardBridge = {
     pasteRecords: (ids: number[]) => invoke("clipboard_paste_records", { ids }),
     startContinuousPaste: (items: ContinuousPasteItemInput[]) => invoke("clipboard_start_continuous_paste", { items }),
     hide: () => invoke("hide_clipboard_window"),
+    visible: () => getCurrentWindow().isVisible(),
     pinned: () => invoke("get_clipboard_window_pinned"),
     setPinnedWindow: (pinned: boolean) => invoke("set_clipboard_window_pinned", { pinned }),
     startDragging: () => invoke("start_clipboard_window_drag"),

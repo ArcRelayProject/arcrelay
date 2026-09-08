@@ -3,6 +3,7 @@
   import { t } from "../localization";
   import { translate as uiTranslate, language as uiLanguage, setLanguage } from "../i18n";
   import { SubscriptionScope } from "../subscriptions";
+  import { observeWindowVisibility } from "./windowVisibility";
   import { onMount, tick } from "svelte";
   import { Dialog } from "bits-ui";
   import {
@@ -306,10 +307,8 @@
 
     recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
-      // This webview is created hidden and then reused. Register its visibility
-      // lifecycle before settings and metadata I/O so an early shortcut cannot
-      // restore stale focus or list metrics.
-      await scope.add(clipboardBridge.onShown(() => {
+      // A newly created WebView may become visible before JS attaches.
+      await scope.add(observeWindowVisibility(clipboardBridge, () => {
         windowVisible = true;
         const shouldFocusSearch = currentSettings?.clipboardAutoFocusSearch ?? true;
         resetRestoredFocus();
@@ -321,8 +320,7 @@
             else focusSelectedRow();
           });
         });
-      }));
-      await scope.add(clipboardBridge.onHidden(() => {
+      }, () => {
         windowVisible = false;
         loadGeneration += 1;
         loading = false;

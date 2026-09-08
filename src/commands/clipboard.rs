@@ -2,6 +2,7 @@ use super::*;
 use arcrelay_core::domain::clipboard::{
     ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition, ClipboardTimelineQuery,
 };
+use image::ImageDecoder;
 
 // Reject overlapping clipboard actions instead of queueing a stale paste to
 // whichever application happens to be focused later.
@@ -24,6 +25,8 @@ const CLIPBOARD_IMAGE_PREVIEW_CACHE_BYTES: usize = 64 * 1024 * 1024;
 const CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION: u32 = 4_096;
 static CLIPBOARD_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
 static CLIPBOARD_PREVIEW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static CLIPBOARD_IMAGE_JOBS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+const MAX_CLIPBOARD_DECODE_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Default)]
 struct ContinuousPasteQueue {
@@ -435,6 +438,11 @@ pub async fn clipboard_thumbnail(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    // Admit work before loading the database BLOB, including non-UI callers.
+    let _slot = CLIPBOARD_IMAGE_JOBS
+        .acquire()
+        .await
+        .map_err(|e| e.to_string())?;
     let cache = CLIPBOARD_THUMBNAILS.get_or_init(|| Mutex::new(ClipboardThumbnailCache::default()));
     if let Some(value) = cache
         .lock()
@@ -453,7 +461,15 @@ pub async fn clipboard_thumbnail(
         return Ok(None);
     };
     let directory = clipboard_preview_directory(&app)?;
+    let work = state
+        .modules
+        .content_resources()
+        .work(clipboard_image_work_bytes(&png)?)
+        .await
+        .map_err(|error| error.to_string())?;
     let cached = tauri::async_runtime::spawn_blocking(move || {
+        let _slot = _slot;
+        let _work = work;
         let encoded = build_clipboard_thumbnail(&png)?;
         persist_clipboard_image(&directory, id, "thumbnail", encoded)
     })
@@ -475,6 +491,10 @@ pub async fn clipboard_image_preview(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    let _slot = CLIPBOARD_IMAGE_JOBS
+        .acquire()
+        .await
+        .map_err(|e| e.to_string())?;
     let cache =
         CLIPBOARD_IMAGE_PREVIEWS.get_or_init(|| Mutex::new(ClipboardImagePreviewCache::default()));
     if let Some(value) = cache
@@ -494,7 +514,15 @@ pub async fn clipboard_image_preview(
         return Ok(None);
     };
     let directory = clipboard_preview_directory(&app)?;
+    let work = state
+        .modules
+        .content_resources()
+        .work(clipboard_image_work_bytes(&png)?)
+        .await
+        .map_err(|error| error.to_string())?;
     let cached = tauri::async_runtime::spawn_blocking(move || {
+        let _slot = _slot;
+        let _work = work;
         let encoded = build_clipboard_image_preview(&png)?;
         persist_clipboard_image(&directory, id, "preview", encoded)
     })
@@ -536,14 +564,40 @@ pub async fn clipboard_html_preview(
         .map_err(|error| error.to_string())
 }
 
+fn clipboard_image_work_bytes(png: &[u8]) -> Result<u64, String> {
+    let decoder = image::codecs::png::PngDecoder::new(std::io::Cursor::new(png))
+        .map_err(|error| error.to_string())?;
+    let (width, height) = decoder.dimensions();
+    let decoded = decoder
+        .total_bytes()
+        .max(u64::from(width) * u64::from(height) * 4);
+    if width > 16_384 || height > 16_384 || decoded > MAX_CLIPBOARD_DECODE_BYTES {
+        return Err("clipboard image exceeds decoded image budget".into());
+    }
+    // Source, resize/conversion workspace and encoded output can overlap.
+    Ok(decoded * 3 + png.len() as u64 * 2 + 8 * 1024 * 1024)
+}
+
+fn decode_clipboard_image(png: &[u8]) -> Result<image::DynamicImage, String> {
+    clipboard_image_work_bytes(png)?;
+    let mut reader =
+        image::ImageReader::with_format(std::io::Cursor::new(png), image::ImageFormat::Png);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(MAX_CLIPBOARD_DECODE_BYTES);
+    reader.limits(limits);
+    reader.decode().map_err(|error| error.to_string())
+}
+
 fn build_clipboard_thumbnail(png: &[u8]) -> Result<Vec<u8>, String> {
-    let image = image::load_from_memory(png).map_err(|error| error.to_string())?;
-    let thumbnail = image.thumbnail(720, 360).to_rgba8();
+    let image = decode_clipboard_image(png)?;
+    let thumbnail = image.thumbnail(720, 360).into_rgba8();
     encode_png(thumbnail)
 }
 
 fn build_clipboard_image_preview(png: &[u8]) -> Result<Vec<u8>, String> {
-    let image = image::load_from_memory(png).map_err(|error| error.to_string())?;
+    let image = decode_clipboard_image(png)?;
     let preview = if image.width() > CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION
         || image.height() > CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION
     {
@@ -555,7 +609,7 @@ fn build_clipboard_image_preview(png: &[u8]) -> Result<Vec<u8>, String> {
     } else {
         image
     }
-    .to_rgba8();
+    .into_rgba8();
     encode_png(preview)
 }
 
@@ -613,6 +667,18 @@ mod clipboard_image_preview_tests {
 
         assert_eq!(width, CLIPBOARD_IMAGE_PREVIEW_MAX_DIMENSION);
         assert!(height <= 410);
+    }
+
+    #[test]
+    fn image_admission_uses_decoded_size_and_rejects_invalid_dimensions() {
+        let png = source_png(1_600, 900);
+        let cost = clipboard_image_work_bytes(&png).unwrap();
+        assert!(cost >= 1_600 * 900 * 4 * 3);
+        assert!(cost > png.len() as u64);
+        let too_wide = source_png(16_385, 1);
+        assert!(clipboard_image_work_bytes(&too_wide).is_err());
+        assert!(build_clipboard_thumbnail(&too_wide).is_err());
+        assert!(clipboard_image_work_bytes(b"invalid png").is_err());
     }
 }
 
