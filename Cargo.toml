@@ -30,7 +30,7 @@ arcrelay-transport = { version = "0.1.0", git = "https://github.com/ArcRelayProj
 arcrelay-wire = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-wire.git", rev = "486cb5336779e8652e9f991d523bd62d06995cea" }
 arcrelay-web-gateway = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-web-gateway.git", rev = "3cb7802caf61d722e638d9f797e5b34dd4a6d4cf" }
 async-trait = "0.1"
-tauri = { version = "2.11.5", features = ["tray-icon", "image-png", "macos-private-api", "protocol-asset"] }
+tauri = { version = "2.11.5", features = ["tray-icon", "image-png", "macos-private-api", "protocol-asset", "unstable"] }
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2.5.1"
@@ -75,7 +75,7 @@ block2 = "0.6"
 core-foundation = "0.10"
 core-graphics = { version = "0.24", features = ["highsierra"] }
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSFont", "NSGraphics", "NSImage", "NSImageView", "NSPanel", "NSPasteboard", "NSRunningApplication", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "NSWorkspace", "block2", "libc", "objc2-core-graphics", "objc2-quartz-core"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSButton", "NSColor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSFont", "NSGraphics", "NSImage", "NSImageView", "NSPanel", "NSPasteboard", "NSRunningApplication", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "NSWorkspace", "block2", "libc", "objc2-core-graphics", "objc2-quartz-core"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "SMErrors", "objc2", "objc2-foundation"] }

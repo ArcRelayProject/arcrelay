@@ -129,8 +129,6 @@ fn ipc_contract_matches_rust() {
     registry.event::<()>("clipboard-window-shown");
     registry.event::<()>("clipboard-window-hidden");
     registry.event::<bool>("clipboard-window-pin-changed");
-    registry
-        .event::<crate::commands::ContinuousPasteProgress>("clipboard-continuous-paste-progress");
     registry.event::<String>("clipboard-continuous-paste-error");
     let main = include_str!("main.rs");
     let registered: std::collections::BTreeSet<_> = main

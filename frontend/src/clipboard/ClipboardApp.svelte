@@ -19,6 +19,7 @@
     Star,
     Tag,
     TextT,
+    Trash,
     X,
   } from "phosphor-svelte";
 
@@ -38,7 +39,7 @@
   import { appendSelectedIds, selectionOrder, toggleSelectedId } from "./multiSelect";
   import { showClipboardContextMenu } from "./nativeContextMenu";
   import { historyQueryKey, mergeTimelineEntries, type NearbyHistory, type ScrollAnchor, type SearchSnapshot } from "./historyNavigation";
-  import type { ClipboardCursor, ClipboardFilter, ClipboardHistory, ClipboardItem, ClipboardKind, ClipboardLabel, ClipboardPasteMode, ContinuousPasteProgress } from "./types";
+  import type { ClipboardCursor, ClipboardFilter, ClipboardHistory, ClipboardItem, ClipboardKind, ClipboardLabel, ClipboardPasteMode } from "./types";
   import type { NearbyClipboardPeer } from "./types";
 
   const FETCH_SIZE = 60;
@@ -65,7 +66,8 @@
   let selectedId: number | null = null;
   let selectedIds: number[] = [];
   let multiPasting = false;
-  let continuousPaste: ContinuousPasteProgress = { current: 0, total: 0, active: false };
+  let selectedItems: ClipboardItem[] = [];
+  let combinedPasteAvailable = false;
   let windowVisible = !("__TAURI_INTERNALS__" in window);
   let loading = true;
   let loadingMore = false;
@@ -128,6 +130,12 @@
   let historyChangeCount = 0;
   let appearanceMedia: MediaQueryList | undefined;
   let handleSystemThemeChange: (() => void) | undefined;
+
+  $: selectedItems = selectedIds
+    .map((id) => history.entries.find((item) => item.id === id))
+    .filter((item): item is ClipboardItem => Boolean(item));
+  $: combinedPasteAvailable = selectedItems.length === selectedIds.length
+    && selectedItems.every((item) => item.available && (item.kind === "text" || item.kind === "html"));
   let currentSettings: AppSettings | undefined;
 
   $: imagePreviewReady = previewingItem?.kind === "image"
@@ -373,6 +381,14 @@
       if (import.meta.env.DEV && previewParams.get("preview-theme") === "dark") {
         applyTheme({ theme: "dark" });
       }
+      if (import.meta.env.DEV && previewParams.has("preview-multi-select")) {
+        await load();
+        selectedIds = history.entries
+          .filter((item) => item.available && (item.kind === "text" || item.kind === "html"))
+          .slice(0, 3)
+          .map((item) => item.id);
+        selectedId = null;
+      }
       if (import.meta.env.DEV && previewParams.get("preview-dialog") === "labels") {
         await load();
         const previewItem = history.entries.find((item) => item.labels.length > 0) ?? history.entries[0];
@@ -385,11 +401,7 @@
         if (previewItem) await viewNearby(previewItem);
       }
       await scope.add(clipboardBridge.onPinChanged((value) => (windowPinned = value)));
-      await scope.add(clipboardBridge.onContinuousPasteProgress((progress) => {
-        continuousPaste = progress;
-      }));
       await scope.add(clipboardBridge.onContinuousPasteError((reason) => {
-        continuousPaste = { current: 0, total: 0, active: false };
         error = reason;
       }));
       await scope.add(clipboardBridge.onChanged(() => {
@@ -743,6 +755,10 @@
 
   async function pasteSelectedItems() {
     if (selectedIds.length === 0 || multiPasting) return;
+    if (!combinedPasteAvailable) {
+      error = uiTranslate("合并粘贴仅支持文本内容", $uiLanguage);
+      return;
+    }
     multiPasting = true;
     error = "";
     try {
@@ -756,11 +772,11 @@
   }
 
   async function startContinuousPaste() {
-    if (selectedIds.length === 0 || multiPasting) return;
+    if (selectedItems.length === 0 || selectedItems.length !== selectedIds.length || multiPasting) return;
     multiPasting = true;
     error = "";
     try {
-      continuousPaste = await clipboardBridge.startContinuousPaste([...selectedIds]);
+      await clipboardBridge.startContinuousPaste(selectedItems.map((item) => ({ id: item.id, preview: item.preview })));
       clearMultiSelection();
     } catch (reason) {
       error = reason instanceof Error ? reason.message : String(reason);
@@ -769,8 +785,20 @@
     }
   }
 
-  async function stopContinuousPaste() {
-    continuousPaste = await clipboardBridge.stopContinuousPaste();
+  async function deleteSelectedItems() {
+    if (selectedIds.length === 0 || multiPasting) return;
+    if (!window.confirm(t("删除 {count} 项？", language, { count: selectedIds.length }))) return;
+    multiPasting = true;
+    error = "";
+    try {
+      await clipboardBridge.removeMany([...selectedIds]);
+      clearMultiSelection();
+      await load();
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : String(reason);
+    } finally {
+      multiPasting = false;
+    }
   }
 
   async function pasteItem(item: ClipboardItem, mode: ClipboardPasteMode = "source") {
@@ -1389,6 +1417,7 @@
               shortcutModifier={rowShortcutModifier}
               selected={selectedId === entry.item.id}
               multiSelected={selectedIds.includes(entry.item.id)}
+              multiSelectActive={selectedIds.length > 0}
               selectionOrder={selectionOrder(selectedIds, entry.item.id)}
               {language}
               timestamp={itemTimestamp(entry.item)}
@@ -1407,24 +1436,27 @@
   </section>
 
   {#if selectedIds.length > 0}
-    <div class="multi-select-actions" role="toolbar" aria-label={uiTranslate("多选操作", $uiLanguage)}>
-      <strong>{t("已选择 {count} 项", language, { count: selectedIds.length })}</strong>
-      <button type="button" disabled={multiPasting} on:click={pasteSelectedItems} title={uiTranslate("按选择顺序粘贴", $uiLanguage)}>
-        <CopySimple size={17} weight="bold" />
-        <span>{uiTranslate("多选粘贴", $uiLanguage)}</span>
-      </button>
-      <button class="continuous-action" type="button" disabled={multiPasting} on:click={startContinuousPaste} title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}>
-        <StackSimple size={17} weight="bold" />
-        <span>{uiTranslate("连续粘贴", $uiLanguage)}</span>
-      </button>
-      <button class="clear-selection" type="button" on:click={clearMultiSelection} aria-label={tr("取消", language)} title={tr("取消", language)}><X size={16} /></button>
+    <div class="multi-select-status" role="status" aria-live="polite">
+      {t("已选 {count} 项 · 按 1 → {count} 处理", language, { count: selectedIds.length })}
     </div>
-  {:else if continuousPaste.active}
-    <div class="multi-select-actions continuous-progress" role="status">
-      <StackSimple size={18} weight="bold" />
-      <strong>{t("连续粘贴 {current}/{total}", language, { current: continuousPaste.current, total: continuousPaste.total })}</strong>
-      <span>{uiTranslate("再次按剪贴板快捷键粘贴下一项", $uiLanguage)}</span>
-      <button class="clear-selection" type="button" on:click={stopContinuousPaste} aria-label={uiTranslate("停止连续粘贴", $uiLanguage)} title={uiTranslate("停止连续粘贴", $uiLanguage)}><X size={16} /></button>
+    <div class="multi-select-actions" role="toolbar" aria-label={uiTranslate("多选操作", $uiLanguage)}>
+      <button class="multi-action paste-action" type="button" disabled={multiPasting || !combinedPasteAvailable} on:click={pasteSelectedItems} aria-label={uiTranslate("粘贴", $uiLanguage)} title={combinedPasteAvailable ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage) : uiTranslate("合并粘贴仅支持文本内容", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span>
+        <CopySimple size={21} weight="bold" />
+      </button>
+      <button class="multi-action continuous-action" type="button" disabled={multiPasting} on:click={startContinuousPaste} aria-label={uiTranslate("开始连续粘贴", $uiLanguage)} title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span>
+        <StackSimple size={21} weight="bold" />
+      </button>
+      <div class="multi-action-divider" aria-hidden="true"></div>
+      <button class="multi-action delete-action" type="button" disabled={multiPasting} on:click={deleteSelectedItems} aria-label={uiTranslate("删除所选", $uiLanguage)} title={uiTranslate("删除所选", $uiLanguage)}>
+        <span class="multi-action-label">{uiTranslate("删除所选", $uiLanguage)}</span>
+        <Trash size={21} weight="bold" />
+      </button>
+      <button class="multi-action clear-selection" type="button" on:click={clearMultiSelection} aria-label={tr("取消", language)} title={tr("取消", language)}>
+        <span class="multi-action-label">{tr("取消", language)}</span>
+        <X size={21} />
+      </button>
     </div>
   {/if}
 

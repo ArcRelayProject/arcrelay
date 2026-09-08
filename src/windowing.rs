@@ -13,11 +13,13 @@ use tauri::{
 use crate::backend::DesktopState;
 
 mod clipboard;
+mod continuous_paste;
 mod permission_guide;
 mod tray;
 pub(crate) mod tray_transfer;
 
 pub use clipboard::*;
+pub use continuous_paste::*;
 pub use permission_guide::*;
 pub use tray::*;
 
