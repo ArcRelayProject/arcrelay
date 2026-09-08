@@ -2250,7 +2250,7 @@
   "{name} · {count} 条": "{name} · {count} elementos",
   "正在同步并校对…": "Sincronizando y verificando…",
   "同步并校对": "Sincronizar y verificar",
-  "双向补齐在线设备的记录和标签，校验数量与版本。首次同步可能需要较长时间。": "Completar registros y etiquetas en ambos sentidos entre los dispositivos conectados y verificar las cantidades y versiones. La primera sincronización puede tardar más.",
+  "双向校对文本、图片和标签，核验共享记录数量与版本。本机文件历史单独保留。": "Cotejar textos, imágenes y etiquetas en ambos sentidos, verificando cantidades y versiones de los registros compartidos. El historial de archivos locales se conserva por separado.",
   "设备历史已同步并校对": "Historial de dispositivos sincronizado y verificado",
   "同步尚未完成": "Sincronización incompleta",
   "后台将继续重试": "Se seguirá intentando en segundo plano",

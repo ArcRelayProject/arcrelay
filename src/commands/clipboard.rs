@@ -14,6 +14,23 @@ fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, Stri
         .map_err(|_| "clipboard action already in progress".to_string())
 }
 
+#[cfg(target_os = "macos")]
+type PasteTarget = (i32, isize);
+#[cfg(not(target_os = "macos"))]
+struct PasteTarget;
+
+fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
+    #[cfg(target_os = "macos")]
+    return crate::windowing::clipboard_paste_target(_app).map_err(|error| error.to_string());
+    #[cfg(not(target_os = "macos"))]
+    Ok(PasteTarget)
+}
+
+fn paste_failure(stage: &'static str, error: impl std::fmt::Display) -> String {
+    tracing::warn!(event = "clipboard.paste.failed", stage, %error, "clipboard insertion failed");
+    error.to_string()
+}
+
 static CLIPBOARD_THUMBNAILS: OnceLock<Mutex<ClipboardThumbnailCache>> = OnceLock::new();
 static CLIPBOARD_IMAGE_PREVIEWS: OnceLock<Mutex<ClipboardImagePreviewCache>> = OnceLock::new();
 static CONTINUOUS_PASTE: OnceLock<Mutex<ContinuousPasteQueue>> = OnceLock::new();
@@ -723,12 +740,13 @@ pub async fn clipboard_paste_text(
         return Err("cannot paste empty text".to_string());
     }
     require_input_permission(&state, &app).await?;
+    let target = capture_paste_target(&app)?;
     state
         .clipboard
         .set_text(&content)
         .await
         .map_err(|error| error.to_string())?;
-    prepare_window_and_wait_for_paste(&app).await?;
+    prepare_window_and_wait_for_paste(&app, target).await?;
     state
         .clipboard
         .paste_prepared(ClipboardContentKind::Text)
@@ -770,44 +788,71 @@ async fn paste_clipboard_record(
     mode: arcrelay_core::domain::clipboard::ClipboardPasteMode,
 ) -> Result<(), String> {
     let _action = begin_clipboard_action()?;
-    require_input_permission(state, app).await?;
+    tracing::debug!(
+        event = "clipboard.paste.requested",
+        id,
+        ?mode,
+        "clipboard insertion requested"
+    );
+    require_input_permission(state, app)
+        .await
+        .map_err(|error| paste_failure("permission", error))?;
+    let target = capture_paste_target(app).map_err(|error| paste_failure("target", error))?;
     // Resolve conversions such as image OCR before hiding the panel. If
     // preparation fails, the caller can keep the error visible in the window.
     let kind = state
         .clipboard
         .prepare_record_as(id, mode)
         .await
-        .map_err(|error| error.to_string())?;
-    prepare_window_and_wait_for_paste(app).await?;
+        .map_err(|error| paste_failure("write", error))?;
+    prepare_window_and_wait_for_paste(app, target)
+        .await
+        .map_err(|error| paste_failure("focus", error))?;
     state
         .clipboard
         .paste_prepared(kind)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| paste_failure("shortcut", error))?;
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(())
 }
 
-async fn prepare_window_and_wait_for_paste(app: &AppHandle) -> Result<(), String> {
+async fn prepare_window_and_wait_for_paste(
+    app: &AppHandle,
+    _original: PasteTarget,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let target =
         crate::windowing::clipboard_paste_target(app).map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    if target.0 != _original.0 {
+        return Err("paste target changed during clipboard preparation; paste cancelled".into());
+    }
     crate::windowing::prepare_clipboard_window_for_paste(app).map_err(|error| error.to_string())?;
     #[cfg(target_os = "macos")]
     {
         let started = std::time::Instant::now();
+        let mut ready_since = None;
         // Yield to AppKit before observing resignation of the panel's key status.
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             if crate::windowing::clipboard_paste_target_ready(app, target)
                 .map_err(|error| error.to_string())?
             {
+                // Key-window resignation precedes the target editor becoming
+                // ready. Require another 50ms of stable focus/content.
+                let ready = ready_since.get_or_insert_with(std::time::Instant::now);
+                if ready.elapsed() < std::time::Duration::from_millis(50) {
+                    continue;
+                }
                 tracing::debug!(
                     target_pid = target.0,
                     wait_ms = started.elapsed().as_millis() as u64,
                     "clipboard paste target ready"
                 );
                 break;
+            } else {
+                ready_since = None;
             }
             if started.elapsed() >= std::time::Duration::from_millis(500) {
                 return Err(
@@ -817,7 +862,7 @@ async fn prepare_window_and_wait_for_paste(app: &AppHandle) -> Result<(), String
         }
     }
     #[cfg(not(target_os = "macos"))]
-    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(130)).await;
     Ok(())
 }
 
@@ -832,6 +877,7 @@ pub async fn clipboard_paste_records(
         return Ok(0);
     }
     require_input_permission(&state, &app).await?;
+    let target = capture_paste_target(&app)?;
     let mut parts = Vec::with_capacity(ids.len());
     for id in &ids {
         parts.push(
@@ -848,7 +894,7 @@ pub async fn clipboard_paste_records(
         .set_text(&combined)
         .await
         .map_err(|error| error.to_string())?;
-    prepare_window_and_wait_for_paste(&app).await?;
+    prepare_window_and_wait_for_paste(&app, target).await?;
     state
         .clipboard
         .paste_prepared(ClipboardContentKind::Text)
@@ -1011,7 +1057,8 @@ pub async fn paste_next_continuous_record(
 async fn require_input_permission(state: &DesktopState, app: &AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let permission = refresh_input_permission_state(state).await?;
+        let permission = state.clipboard.input_permission_state();
+        state.set_input_permission(permission, app);
         if permission == InputPermissionState::Granted {
             return Ok(());
         }

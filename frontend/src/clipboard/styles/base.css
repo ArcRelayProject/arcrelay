@@ -385,7 +385,7 @@ input:focus-visible {
   box-shadow: 0 3px 10px color-mix(in srgb, var(--text-primary) 4%, transparent);
   text-align: left;
   cursor: default;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .clipboard-row,
@@ -400,11 +400,6 @@ input:focus-visible {
 
 .clipboard-row:hover {
   border-color: var(--border-color);
-  transform: translateY(-1px);
-}
-
-.clipboard-row:active {
-  transform: translateY(0) scale(0.995);
 }
 
 .clipboard-row.selected {

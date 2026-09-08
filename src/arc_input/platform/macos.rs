@@ -28,6 +28,7 @@ const MACOS_KEYCODE_FUNCTION: u16 = 0x3f;
 mod consumer;
 mod cursor;
 mod gesture;
+mod keyboard;
 mod scroll;
 use cursor::set_hidden as set_cursor_hidden;
 const CAPTURE_QUEUE_CAPACITY: usize = 4096;
@@ -105,6 +106,8 @@ extern "C" {
     #[cfg(test)]
     fn CGEventGetTimestamp(event: CGEventRef) -> u64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
+    #[cfg(test)]
+    fn CGEventSetFlags(event: CGEventRef, flags: u64);
     fn CGEventCreateData(allocator: *const c_void, event: CGEventRef) -> CFDataRef;
     fn CGEventCreateFromData(allocator: *const c_void, data: CFDataRef) -> CGEventRef;
     fn CGEventCreateMouseEvent(
@@ -158,6 +161,7 @@ struct CaptureContext {
     system_gesture_format_version: Arc<AtomicU32>,
     gesture_gate: RefCell<gesture::CaptureGate>,
     pressed_modifiers: AtomicUsize,
+    caps_lock: std::cell::Cell<Option<bool>>,
     tap: AtomicUsize,
     gesture_tap: AtomicUsize,
     overflowed: AtomicBool,
@@ -341,6 +345,30 @@ unsafe extern "C" fn capture_callback(
     if CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA) == ARC_INPUT_EVENT_TAG {
         return event;
     }
+    if event_type == 12
+        && context.options.capture_keyboard
+        && CGEventGetIntegerValueField(event, EventField::KEYBOARD_EVENT_KEYCODE) == 0x39
+    {
+        // macOS reports Caps Lock's latched state, not a physical down/up.
+        // Send one complete key stroke per state transition; Windows toggles
+        // VK_CAPITAL on down and would ignore the old up-only stream.
+        let locked = CGEventGetFlags(event) & CGEventFlags::CGEventFlagAlphaShift.bits() != 0;
+        if context.caps_lock.replace(Some(locked)) != Some(locked) {
+            for down in [true, false] {
+                context.emit(CapturedInputEvent::Keyboard(
+                    MappedKeyboardEvent::Physical {
+                        hid_usage: 0x39,
+                        down,
+                    },
+                ));
+            }
+        }
+        return if context.suppress_local.load(Ordering::Acquire) {
+            std::ptr::null_mut()
+        } else {
+            event
+        };
+    }
     if event_type == 14 && context.options.capture_keyboard {
         if let Some(value) = consumer::decode(event) {
             let result = lock(&context.consumer).route(value);
@@ -485,6 +513,7 @@ struct CaptureState {
 struct InjectionState {
     consumer: arcrelay_input::ConsumerSequence,
     pressed_keys: BTreeSet<u16>,
+    function_tap: keyboard::FunctionTap,
     pressed_buttons: BTreeSet<u16>,
     scroll_gesture_active: bool,
     scroll_momentum_active: bool,
@@ -626,6 +655,7 @@ impl NativePlatform {
 
     fn release_state(&self) -> Result<(), PlatformError> {
         let mut state = lock(&self.injection);
+        state.function_tap = keyboard::FunctionTap::default();
         state.consumer.clear();
         self.brightness.cancel();
         if let Some(cancel) = state.system_gesture.cancel() {
@@ -804,6 +834,7 @@ impl InputCapturePort for NativePlatform {
                     system_gesture_format_version,
                     gesture_gate: RefCell::new(gesture::CaptureGate::default()),
                     pressed_modifiers: AtomicUsize::new(0),
+                    caps_lock: std::cell::Cell::new(None),
                     tap: AtomicUsize::new(0),
                     gesture_tap: AtomicUsize::new(0),
                     overflowed: AtomicBool::new(false),
@@ -1011,6 +1042,7 @@ impl InputInjectionPort for NativePlatform {
         display: &DisplayId,
     ) -> Result<(), PlatformError> {
         let mut state = lock(&self.injection);
+        state.function_tap.cancel();
         if state.consumer.apply(event) {
             if event.key.is_brightness() {
                 self.brightness.adjust(
@@ -1084,6 +1116,14 @@ impl InputInjectionPort for NativePlatform {
                 } else {
                     state.pressed_keys.remove(hid_usage);
                 }
+                let alone = state
+                    .pressed_keys
+                    .iter()
+                    .all(|key| *key == HID_KEY_FUNCTION)
+                    && state.pressed_buttons.is_empty();
+                if state.function_tap.key(*hid_usage, *down, alone) {
+                    keyboard::perform_function_tap(self)?;
+                }
             }
             MappedKeyboardEvent::Semantic { action, down } => {
                 let chord = target_chord(*action, OsFamily::MacOs);
@@ -1112,6 +1152,7 @@ impl InputInjectionPort for NativePlatform {
                 }
             }
             MappedKeyboardEvent::TextCommit(text) => {
+                lock(&self.injection).function_tap.cancel();
                 for chunk in text.chars().collect::<Vec<_>>().chunks(16) {
                     let text = chunk.iter().collect::<String>();
                     let event = CGEvent::new_keyboard_event(self.source()?, 0, true)
@@ -1129,6 +1170,7 @@ impl InputInjectionPort for NativePlatform {
     fn pointer_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
         self.post_button(hid_usage, down)?;
         let mut state = lock(&self.injection);
+        state.function_tap.cancel();
         if down {
             state.pressed_buttons.insert(hid_usage);
         } else {
@@ -1139,6 +1181,7 @@ impl InputInjectionPort for NativePlatform {
 
     fn scroll(&self, event: ScrollEvent) -> Result<(), PlatformError> {
         let mut state = lock(&self.injection);
+        state.function_tap.cancel();
         self.post_portable_scroll(event)?;
         state.observe_scroll(event);
         Ok(())
@@ -1146,6 +1189,7 @@ impl InputInjectionPort for NativePlatform {
 
     fn native_quartz_scroll(&self, data: &[u8]) -> Result<(), PlatformError> {
         let mut state = lock(&self.injection);
+        state.function_tap.cancel();
         let event = scroll::prepare_native(data)?;
         event.post();
         // Native gestures must be cancelled on handoff/disconnect as well as
@@ -1168,6 +1212,7 @@ impl InputInjectionPort for NativePlatform {
             ));
         }
         let mut state = lock(&self.injection);
+        state.function_tap.cancel();
         let phases = state
             .system_gesture
             .apply(event)
@@ -1457,6 +1502,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(0)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
@@ -1512,6 +1558,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(0)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
@@ -1552,6 +1599,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(2)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
@@ -1638,6 +1686,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(0)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
@@ -1669,6 +1718,85 @@ mod emergency_shortcut_tests {
     }
 
     #[test]
+    fn caps_lock_transitions_produce_complete_strokes_and_ignore_duplicate_flags() {
+        let (events, receiver) = mpsc::sync_channel(8);
+        let mut context = CaptureContext {
+            consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
+            events,
+            options: CaptureOptions {
+                suppress_local: true,
+                capture_pointer: true,
+                capture_keyboard: true,
+            },
+            suppress_local: Arc::new(AtomicBool::new(true)),
+            cursor_hidden: Arc::new(Mutex::new(false)),
+            native_quartz_capture: Arc::new(AtomicBool::new(false)),
+            system_gesture_generation: Arc::new(AtomicU64::new(0)),
+            system_gesture_format_version: Arc::new(AtomicU32::new(0)),
+            gesture_gate: RefCell::new(gesture::CaptureGate::default()),
+            pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(Some(false)),
+            tap: AtomicUsize::new(0),
+            gesture_tap: AtomicUsize::new(0),
+            overflowed: AtomicBool::new(false),
+        };
+        unsafe {
+            for (locked, changed) in [
+                (true, true),
+                (true, false),
+                (false, true),
+                (false, false),
+                (true, true),
+            ] {
+                let event = CGEventCreateKeyboardEvent(std::ptr::null(), 0x39, true);
+                assert!(!event.is_null());
+                CGEventSetFlags(
+                    event,
+                    if locked {
+                        CGEventFlags::CGEventFlagAlphaShift.bits()
+                    } else {
+                        0
+                    },
+                );
+                assert!(capture_callback(
+                    std::ptr::null(),
+                    12,
+                    event,
+                    (&mut context as *mut CaptureContext).cast()
+                )
+                .is_null());
+                CFRelease(event);
+                if changed {
+                    for down in [true, false] {
+                        assert_eq!(
+                            receiver.try_recv().unwrap(),
+                            CapturedInputEvent::Keyboard(MappedKeyboardEvent::Physical {
+                                hid_usage: 0x39,
+                                down
+                            })
+                        );
+                    }
+                }
+                assert!(receiver.try_recv().is_err());
+            }
+            // Synthetic Caps Lock events must not become another toggle.
+            let event = CGEventCreateKeyboardEvent(std::ptr::null(), 0x39, true);
+            CGEventSetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
+            assert_eq!(
+                capture_callback(
+                    std::ptr::null(),
+                    12,
+                    event,
+                    (&mut context as *mut CaptureContext).cast()
+                ),
+                event
+            );
+            CFRelease(event);
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+
+    #[test]
     fn capture_queue_overflow_immediately_fails_open() {
         let (events, _receiver) = mpsc::sync_channel(0);
         let suppress_local = Arc::new(AtomicBool::new(true));
@@ -1689,6 +1817,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(2)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
@@ -1741,6 +1870,7 @@ mod emergency_shortcut_tests {
             system_gesture_format_version: Arc::new(AtomicU32::new(2)),
             gesture_gate: RefCell::new(gesture::CaptureGate::default()),
             pressed_modifiers: AtomicUsize::new(0),
+            caps_lock: std::cell::Cell::new(None),
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
