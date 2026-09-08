@@ -255,7 +255,9 @@ pub(super) fn show_transfer_system_notification(
     if let Some(transfer_id) = value.transfer_request_id {
         notification = notification.open_transfer_request(transfer_id);
     }
-    if let Err(error) = crate::desktop_notification::show(app, settings, notification) {
+    if let Err(error) =
+        crate::desktop_notification::show_with_sound(app, settings, notification, value.sound, None)
+    {
         tracing::warn!(%error, "Failed to show transfer notification");
     }
 }

@@ -6,9 +6,9 @@ use arcrelay_protocol::server::{
 };
 use tokio::sync::broadcast;
 
-use super::action_service::{execute_by_id, ActionService};
+use super::action_service::{execute_by_id_without_sound, ActionService};
 use super::output_manager::OutputManager;
-use crate::notification::{HostNotification, NotificationKind, NotificationStore};
+use crate::notification::{HostNotification, NewNotification, NotificationKind, NotificationStore};
 use crate::privacy::{PrivacyManager, PRIVACY_ACTION_ID};
 
 pub struct AppActionProvider {
@@ -94,22 +94,48 @@ impl ActionProvider for AppActionProvider {
                 "投屏隐私模式已关闭".to_string()
             });
         }
-        if !lock_unpoison(&self.action_service)
+        let action_name = lock_unpoison(&self.action_service)
             .actions()
             .iter()
-            .any(|action| action.id == action_id)
-        {
+            .find(|action| action.id == action_id)
+            .map(|action| action.name.clone());
+        let Some(action_name) = action_name else {
             return Err(HostCapabilityError::new(
                 HostCapabilityErrorCode::NotFound,
                 format!("quick action {action_id} was not found"),
             ));
-        }
+        };
         let service = self.action_service.clone();
         let action_id = action_id.to_string();
-        tokio::task::spawn_blocking(move || execute_by_id(&service, &action_id))
-            .await
-            .map_err(|error| host_error(HostCapabilityErrorCode::Internal, error))?
-            .map_err(|error| host_error(HostCapabilityErrorCode::FailedPrecondition, error))
+        let action_id_for_run = action_id.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            execute_by_id_without_sound(&service, &action_id_for_run)
+        })
+        .await
+        .map_err(|error| host_error(HostCapabilityErrorCode::Internal, error))?;
+        match result {
+            Ok(message) => Ok(message),
+            Err(error) => {
+                match self.notification_store.create(NewNotification {
+                    title: format!("快捷动作失败：{action_name}"),
+                    body: error.clone(),
+                    source: "ArcRelay Agent".to_string(),
+                    kind: NotificationKind::ActionRequired,
+                    reference: Some(format!("action:{action_id}")),
+                }) {
+                    Ok(_) => crate::sound::play(crate::sound::SoundEvent::ActionFailed),
+                    Err(notification_error) => tracing::warn!(
+                        %notification_error,
+                        %action_id,
+                        "suppressed action failure sound because its notification could not be stored"
+                    ),
+                }
+                Err(host_error(
+                    HostCapabilityErrorCode::FailedPrecondition,
+                    error,
+                ))
+            }
+        }
     }
 
     fn subscribe_output(&self) -> Option<broadcast::Receiver<OutputLine>> {

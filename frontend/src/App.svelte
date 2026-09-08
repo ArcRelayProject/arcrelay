@@ -275,6 +275,12 @@
           bridge.onNotificationCount((count) => {
             if (snapshot) snapshot = { ...snapshot, unreadNotificationCount: count };
           }),
+          bridge.onDesktopNotification((notification) => {
+            const message = notification.body
+              ? `${notification.title}：${notification.body}`
+              : notification.title;
+            showToast(message, notification.error ? "error" : "success");
+          }),
           bridge.onAppUpdateChecked((result) => { appUpdateStatus = result; }),
           bridge.onAppUpdateProgress((progress) => {
             appUpdateProgress = progress;
@@ -846,7 +852,7 @@
     toast = message;
     toastKind = kind;
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = ""), 2600);
+    toastTimer = setTimeout(() => (toast = ""), kind === "error" ? 6000 : 2600);
   }
 
   function showInputToast(message: string, error = false) {

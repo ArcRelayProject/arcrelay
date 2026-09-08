@@ -79,9 +79,7 @@ impl DesktopAutomations {
             loop {
                 match events.recv().await {
                     Ok(activity) => {
-                        if let Some(event) = sound_tracker.update(&activity) {
-                            crate::sound::play_automation(event, &activity.automation_id);
-                        }
+                        let sound = sound_tracker.update(&activity);
                         let _ = event_app.emit("automation-activity", &activity);
                         if matches!(
                             activity.status,
@@ -101,18 +99,32 @@ impl DesktopAutomations {
                                 } else {
                                     DesktopNotificationCategory::WorkflowFailed
                                 };
-                            let _ = show(
-                                &event_app,
-                                &event_app.state::<crate::backend::DesktopState>().settings,
-                                DesktopNotification::new(
-                                    category,
-                                    &activity.definition.name,
-                                    activity
-                                        .reason
-                                        .as_deref()
-                                        .unwrap_or("review the automation activity"),
-                                ),
+                            let notification = DesktopNotification::new(
+                                category,
+                                &activity.definition.name,
+                                activity
+                                    .reason
+                                    .as_deref()
+                                    .unwrap_or("review the automation activity"),
                             );
+                            let settings =
+                                &event_app.state::<crate::backend::DesktopState>().settings;
+                            let result = if let Some(sound) = sound {
+                                crate::desktop_notification::show_with_sound(
+                                    &event_app,
+                                    settings,
+                                    notification,
+                                    sound,
+                                    Some(&activity.automation_id),
+                                )
+                            } else {
+                                show(&event_app, settings, notification)
+                            };
+                            if let Err(error) = result {
+                                tracing::warn!(%error, activity_id = %activity.id, "failed to deliver automation notification");
+                            }
+                        } else if let Some(sound) = sound {
+                            crate::sound::play_automation(sound, &activity.automation_id);
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
