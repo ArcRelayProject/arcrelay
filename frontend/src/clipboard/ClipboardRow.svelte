@@ -11,6 +11,7 @@
   export let shortcutIndex: number | null;
   export let selected: boolean;
   export let multiSelected = false;
+  export let multiSelectActive = false;
   export let selectionOrder: number | null = null;
   export let language: LanguagePreference;
   export let onSelect: (event?: MouseEvent) => void;
@@ -87,10 +88,12 @@
   </div>
   <div class="clipboard-meta">
     {#if timelineTarget}<span class="timeline-target-badge">{tr("定位记录", language)}</span>{/if}
-    {#if shortcutIndex !== null}
-      <span class="item-number" title={t("按 {shortcut} 快速插入", language, { shortcut: `${shortcutModifier}${shortcutIndex}` })}>{shortcutIndex}</span>
-    {:else}
-      <span class="item-number placeholder" aria-hidden="true"></span>
+    {#if !multiSelectActive}
+      {#if shortcutIndex !== null}
+        <span class="item-number" title={t("按 {shortcut} 快速插入", language, { shortcut: `${shortcutModifier}${shortcutIndex}` })}>{shortcutIndex}</span>
+      {:else}
+        <span class="item-number placeholder" aria-hidden="true"></span>
+      {/if}
     {/if}
     <strong>{item.sourceApp ?? tr("此电脑", language)}</strong>
     {#if item.sourceDeviceName}

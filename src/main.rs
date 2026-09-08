@@ -8,6 +8,7 @@ mod autostart;
 mod backend;
 mod clipboard_sync;
 mod commands;
+mod continuous_paste_trigger;
 mod desktop_notification;
 mod domain;
 mod gesture_debug;
@@ -251,8 +252,8 @@ fn main() {
             commands::clipboard_paste_record_as,
             commands::clipboard_paste_records,
             commands::clipboard_start_continuous_paste,
-            commands::clipboard_stop_continuous_paste,
             commands::clipboard_delete_record,
+            commands::clipboard_delete_records,
             commands::clipboard_set_favorite,
             commands::clipboard_labels,
             commands::clipboard_create_label,

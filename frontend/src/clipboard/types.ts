@@ -30,3 +30,4 @@ export interface NearbyClipboardPeer {
 }
 
 export type ContinuousPasteProgress = import('../ipc/generated').ContinuousPasteProgress;
+export type ContinuousPasteItemInput = import('../ipc/generated').ContinuousPasteItemInput;
