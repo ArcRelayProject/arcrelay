@@ -166,10 +166,10 @@ function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: b
 export const clipboardBridge = {
     timeline: async (position: ClipboardTimelinePosition, sortBy: ClipboardSortPreference, limit = 30): Promise<ClipboardTimeline | null> => {
         const timestamp = (item: ClipboardItem) => sortBy === "createdAt" ? item.firstCapturedAtMs : item.updatedAtMs;
-        const sorted = [...mockItems].sort((a, b) => timestamp(b) - timestamp(a) || b.id - a.id);
+        const sorted = [...mockItems].sort((a, b) => timestamp(b) - timestamp(a) || (b.syncId > a.syncId ? 1 : b.syncId < a.syncId ? -1 : 0));
         const cursorFor = (item: ClipboardItem): ClipboardCursor => ({ sortAtMs: timestamp(item), id: item.id });
-        const after = (item: ClipboardItem, cursor: ClipboardCursor) => timestamp(item) > cursor.sortAtMs || (timestamp(item) === cursor.sortAtMs && item.id > cursor.id);
-        const before = (item: ClipboardItem, cursor: ClipboardCursor) => timestamp(item) < cursor.sortAtMs || (timestamp(item) === cursor.sortAtMs && item.id < cursor.id);
+        const after = (item: ClipboardItem, cursor: ClipboardCursor) => timestamp(item) > cursor.sortAtMs || (timestamp(item) === cursor.sortAtMs && item.syncId > (mockItems.find(row => row.id === cursor.id)?.syncId ?? ""));
+        const before = (item: ClipboardItem, cursor: ClipboardCursor) => timestamp(item) < cursor.sortAtMs || (timestamp(item) === cursor.sortAtMs && item.syncId < (mockItems.find(row => row.id === cursor.id)?.syncId ?? ""));
         let entries: ClipboardItem[];
         let anchor: ClipboardCursor | null = null;
         if (position.type === "around") {
@@ -225,7 +225,7 @@ export const clipboardBridge = {
     joinSegments: async (id: number, version: string, ids: string[]): Promise<string> => {
         return mockItems.find((item) => item.id === id)?.preview ?? "";
     },
-    mergeDevices: () => Promise.resolve(3),
+    mergeDevices: () => Promise.resolve({ devices: 2, received: 3, sent: 0, labelsReceived: 0, labelsSent: 0, failed: 0, totalRecords: mockItems.length, complete: true, failures: [] }),
     nearbyPeers: async (): Promise<NearbyClipboardPeer[]> => {
         return [{ id: "mock-peer", name: "办公室 Mac", paired: true }];
     },

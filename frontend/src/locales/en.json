@@ -2247,5 +2247,12 @@
   "可以切换其他标签，或返回查看全部剪贴板记录。": "Switch to another label or return to all clipboard items.",
   "清除标签筛选": "Clear label filter",
   "“{name}”标签下暂无内容": "No items with the “{name}” label",
-  "{name} · {count} 条": "{name} · {count} items"
+  "{name} · {count} 条": "{name} · {count} items",
+  "正在同步并校对…": "Synchronizing and verifying…",
+  "同步并校对": "Sync and Verify",
+  "双向补齐在线设备的记录和标签，校验数量与版本。首次同步可能需要较长时间。": "Reconcile records and labels in both directions across online devices, then verify counts and versions. Initial synchronization can take longer.",
+  "设备历史已同步并校对": "Device history synchronized and verified",
+  "同步尚未完成": "Synchronization is incomplete",
+  "后台将继续重试": "Background recovery will continue",
+  "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项": "Received updates {received} · Sent updates {sent} · Label updates {labels} · Syncable records {total}"
 }

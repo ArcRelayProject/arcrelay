@@ -2247,5 +2247,12 @@
   "可以切换其他标签，或返回查看全部剪贴板记录。": "Changez d’étiquette ou revenez à tous les éléments du presse-papiers.",
   "清除标签筛选": "Effacer le filtre d’étiquette",
   "“{name}”标签下暂无内容": "Aucun élément avec l’étiquette « {name} »",
-  "{name} · {count} 条": "{name} · {count} éléments"
+  "{name} · {count} 条": "{name} · {count} éléments",
+  "正在同步并校对…": "Synchronisation et vérification…",
+  "同步并校对": "Synchroniser et vérifier",
+  "双向补齐在线设备的记录和标签，校验数量与版本。首次同步可能需要较长时间。": "Compléter les historiques et les étiquettes dans les deux sens entre les appareils en ligne, puis vérifier les nombres et les versions. La première synchronisation peut prendre du temps.",
+  "设备历史已同步并校对": "Historique des appareils synchronisé et vérifié",
+  "同步尚未完成": "Synchronisation incomplète",
+  "后台将继续重试": "Les tentatives se poursuivront en arrière-plan",
+  "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项": "Mises à jour reçues {received} · Envoyées {sent} · Étiquettes mises à jour {labels} · Entrées synchronisables {total}"
 }

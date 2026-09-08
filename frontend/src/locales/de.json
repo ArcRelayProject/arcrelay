@@ -2247,5 +2247,12 @@
   "可以切换其他标签，或返回查看全部剪贴板记录。": "Wechsle zu einem anderen Label oder zeige alle Einträge an.",
   "清除标签筛选": "Label-Filter löschen",
   "“{name}”标签下暂无内容": "Keine Einträge mit dem Label „{name}“",
-  "{name} · {count} 条": "{name} · {count} Einträge"
+  "{name} · {count} 条": "{name} · {count} Einträge",
+  "正在同步并校对…": "Synchronisieren und prüfen…",
+  "同步并校对": "Synchronisieren und prüfen",
+  "双向补齐在线设备的记录和标签，校验数量与版本。首次同步可能需要较长时间。": "Verläufe und Labels auf verbundenen Geräten in beide Richtungen abgleichen und Anzahl sowie Versionen prüfen. Die erste Synchronisierung kann länger dauern.",
+  "设备历史已同步并校对": "Geräteverlauf synchronisiert und geprüft",
+  "同步尚未完成": "Synchronisierung unvollständig",
+  "后台将继续重试": "Erneuter Versuch im Hintergrund",
+  "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项": "Empfangene Updates {received} · Gesendete Updates {sent} · Label-Updates {labels} · Synchronisierbare Einträge {total}"
 }

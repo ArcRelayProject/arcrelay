@@ -653,8 +653,14 @@
     if (clipboardMergeBusy) return;
     clipboardMergeBusy = true;
     try {
-      await bridge.mergeClipboardDevices();
-      showToast(tr("设备历史已合并"));
+      const result = await bridge.mergeClipboardDevices();
+      const counts = t("接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项", appSettings.language, {
+        received: result.received, sent: result.sent,
+        labels: result.labelsReceived + result.labelsSent, total: result.totalRecords,
+      });
+      showToast(result.complete ? `${tr("设备历史已同步并校对")} · ${counts}`
+        : `${tr("同步尚未完成")} · ${counts} · ${result.failures[0] ?? tr("后台将继续重试")}`,
+        result.complete ? "success" : "error");
     } catch (error) {
       showToast(errorMessage(error), "error");
     } finally {

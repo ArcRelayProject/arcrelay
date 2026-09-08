@@ -1176,7 +1176,9 @@ pub async fn clipboard_text_content(
 }
 
 #[arcrelay_desktop_ipc::command]
-pub async fn clipboard_merge_devices(state: State<'_, DesktopState>) -> Result<usize, String> {
+pub async fn clipboard_merge_devices(
+    state: State<'_, DesktopState>,
+) -> Result<crate::clipboard_sync::ClipboardMergeSummary, String> {
     state.clipboard_sync.merge_all().await
 }
 

@@ -17,7 +17,9 @@ pub(super) fn control_hello() -> proto::ClientControlFrame {
         } else {
             1
         },
-        max_version: if feature == proto::Feature::RemoteFiles {
+        max_version: if feature == proto::Feature::ClipboardSync {
+            arcrelay_protocol::clipboard_replication::VERSION
+        } else if feature == proto::Feature::RemoteFiles {
             arcrelay_protocol::remote_files::REMOTE_FILE_PROTOCOL_VERSION
         } else {
             1

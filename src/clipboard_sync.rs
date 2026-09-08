@@ -43,6 +43,9 @@ pub struct ClipboardSyncManager {
     clipboard: Arc<ClipboardApplicationService>,
     network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
     commands: Arc<tokio::sync::Mutex<HashMap<String, mpsc::Sender<ConnectionCommand>>>>,
+    replica_connections: Arc<tokio::sync::Mutex<HashMap<String, quinn::Connection>>>,
+    replica_gates: Arc<tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+    manual_merge_gate: Arc<tokio::sync::Mutex<()>>,
     remote_file_peers: Arc<tokio::sync::Mutex<HashSet<String>>>,
     active: Arc<tokio::sync::Mutex<HashSet<String>>>,
     retries: Arc<tokio::sync::Mutex<HashMap<String, crate::retry::RetryBackoff>>>,
@@ -98,7 +101,6 @@ enum ConnectionCommand {
         source: PathBuf,
         response: oneshot::Sender<RemoteFileResult<RemoteFileResponse>>,
     },
-    Merge(oneshot::Sender<Result<usize, String>>),
     RemoteRequest(
         RemoteFileRequest,
         oneshot::Sender<RemoteFileResult<RemoteFileResponse>>,
@@ -219,9 +221,9 @@ struct ClipboardMergeResult {
     remote_versions: RemoteClipboardVersions,
 }
 
-struct AbortTaskOnDrop(tokio::task::JoinHandle<()>);
+struct AbortTaskOnDrop<T = ()>(tokio::task::JoinHandle<T>);
 
-impl Drop for AbortTaskOnDrop {
+impl<T> Drop for AbortTaskOnDrop<T> {
     fn drop(&mut self) {
         self.0.abort();
     }
@@ -245,6 +247,8 @@ async fn wait_for_available<T>(
 }
 
 mod manager;
+mod replication;
+pub use replication::ClipboardMergeSummary;
 mod remote_files;
 mod transfer;
 mod wire;

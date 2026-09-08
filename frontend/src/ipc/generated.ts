@@ -80,6 +80,8 @@ export type ClipboardItemView = { id: number, kind: ClipboardContentKind, previe
 
 export type ClipboardLabel = { id: string, name: string, color: string, revision: number, updated_by_device_id: string, deleted: boolean, };
 
+export type ClipboardMergeSummary = { devices: number, received: number, sent: number, labelsReceived: number, labelsSent: number, failed: number, totalRecords: number, complete: boolean, failures: Array<string>, };
+
 export type ClipboardOcrBlock = { text: string, confidence: number, left: number, top: number, width: number, height: number,
 /**
  * Four corners in source-image pixel coordinates when the detector
@@ -500,7 +502,7 @@ export interface CommandMap {
   clipboard_image_preview: { args: { id: number; }; result: string | null };
   clipboard_join_segments: { args: { id: number; ids: Array<string>; version: string; }; result: string };
   clipboard_labels: { args: { }; result: Array<ClipboardLabel> };
-  clipboard_merge_devices: { args: { }; result: number };
+  clipboard_merge_devices: { args: { }; result: ClipboardMergeSummary };
   clipboard_paste_record: { args: { id: number; }; result: null };
   clipboard_paste_record_as: { args: { id: number; mode: ClipboardPasteMode; }; result: null };
   clipboard_paste_records: { args: { ids: Array<number>; }; result: number };
