@@ -32,7 +32,7 @@ impl PreparedBackend {
         let settings = SettingsManager::new(&config_dir).map_err(std::io::Error::other)?;
         let saved_settings = settings.snapshot();
         let device_name = effective_device_name(&saved_settings.device_name);
-        let server_name = Arc::new(tokio::sync::RwLock::new(device_name.clone()));
+        let server_name = Arc::new(RwLock::new(device_name.clone()));
         let receive_directory = dirs::download_dir().unwrap_or_else(|| config_dir.clone());
         let root_identity = DeviceIdentity::load_or_create(&config_dir.join("identity"))
             .map_err(std::io::Error::other)?;

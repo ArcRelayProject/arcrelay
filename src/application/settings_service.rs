@@ -44,7 +44,7 @@ async fn apply_step(
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            *state.server_name.write().await = name;
+            state.set_local_device_name(name);
             Ok(())
         }
         Step::WebGateway => {
@@ -172,6 +172,7 @@ pub async fn update(
         }
     }
     if name_changed {
+        state.emit_runtime_snapshot(app);
         if let Err(error) = state
             .command_tx
             .send(BackendCommand::DisconnectAllDevices)

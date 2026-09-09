@@ -109,6 +109,8 @@
   let autoConnectBusyId = "";
   let remoteDevices: ConnectedDevice[] = [];
   let selectedDevice: ConnectedDevice | undefined;
+  let localDeviceName = "";
+  let localPlatformName = "";
   let onlineDeviceIds = new Set<string>();
   let pairingSelectionDeviceId = "";
   let approvedPairingGrantIds = new Set<string>();
@@ -123,6 +125,14 @@
     approvedPairingGrantIds = next;
   }
   $: onlineDeviceIds = new Set(snapshot?.connectedDevices.map((device) => device.id) ?? []);
+  $: localDeviceName = appSettings.deviceName.trim() || snapshot?.localDeviceName || uiTranslate("本机", $uiLanguage);
+  $: localPlatformName = snapshot?.localPlatform === "windows"
+    ? "Windows"
+    : snapshot?.localPlatform === "macos"
+      ? "macOS"
+      : snapshot?.localPlatform === "linux"
+        ? "Linux"
+        : snapshot?.localPlatform || "";
   $: remoteDevices = [
     ...(snapshot?.pairedDevices ?? []),
     ...(snapshot?.connectedDevices ?? []).filter(
@@ -248,7 +258,7 @@
               <div class="device-master-list">
                 <button class:selected={selectedDeviceId === "__local__"} type="button" on:click={() => (selectedDeviceId = "__local__")}>
                   <span class="master-device-icon"><DesktopTower size={20} /></span>
-                  <span class="master-device-copy"><strong>{uiTranslate(appSettings.deviceName || "这台 Mac", $uiLanguage)}</strong><small><i class:offline={!snapshot?.serverRunning} class="device-status-dot"></i>{uiTranslate(snapshot?.serverRunning ? "可连接" : "服务停止", $uiLanguage)}</small></span>
+                  <span class="master-device-copy"><strong>{localDeviceName}</strong><small><i class:offline={!snapshot?.serverRunning} class="device-status-dot"></i>{uiTranslate(snapshot?.serverRunning ? "可连接" : "服务停止", $uiLanguage)}</small></span>
                   <span class="local-device-badge">{uiTranslate("本机", $uiLanguage)}</span><CaretRight class="master-device-caret" size={16} />
                 </button>
                 {#each remoteDevices as device (device.id)}
@@ -303,9 +313,9 @@
               {:else}
                 <header class="device-inspector-header local-inspector-header">
                   <span class="inspector-device-icon"><DesktopTower size={29} /></span>
-                  <div><h2>{uiTranslate(appSettings.deviceName || "这台 Mac", $uiLanguage)}</h2><span class:offline={!snapshot?.serverRunning} class="inspector-online-state"><i></i>{uiTranslate(snapshot?.serverRunning ? "本机可连接" : "连接服务已停止", $uiLanguage)}</span></div>
+                  <div><h2>{localDeviceName}</h2><span class:offline={!snapshot?.serverRunning} class="inspector-online-state"><i></i>{uiTranslate(snapshot?.serverRunning ? "本机可连接" : "连接服务已停止", $uiLanguage)}</span></div>
                 </header>
-                <dl class="device-connection-facts"><div><dt>{uiTranslate("网络端口", $uiLanguage)}</dt><dd>{snapshot?.port}</dd></div><div><dt>{uiTranslate("安全连接", $uiLanguage)}</dt><dd>QUIC · TLS 1.3</dd></div></dl>
+                <dl class="device-connection-facts"><div><dt>{uiTranslate("系统", $uiLanguage)}</dt><dd>{localPlatformName}</dd></div><div><dt>{uiTranslate("网络端口", $uiLanguage)}</dt><dd>{snapshot?.port}</dd></div><div><dt>{uiTranslate("安全连接", $uiLanguage)}</dt><dd>QUIC · TLS 1.3</dd></div></dl>
                 <section class="inspector-section"><span class="inspector-section-icon"><HandTap size={20} /></span><div><strong>{uiTranslate("当前控制", $uiLanguage)}</strong><small>{uiTranslate(snapshot?.activeInputDevice ? `${snapshot.activeInputDevice.name} 正在控制本机` : "无设备正在控制", $uiLanguage)}</small></div><span class:active={Boolean(snapshot?.activeInputDevice)} class="inspector-state-pill">{uiTranslate(snapshot?.activeInputDevice ? "控制中" : "空闲", $uiLanguage)}</span></section>
                 <div class="local-inspector-cta"><strong>{uiTranslate("连接另一台设备", $uiLanguage)}</strong><span>{uiTranslate("添加设备后，可在这里管理连接与控制状态。", $uiLanguage)}</span><button class="primary-button" on:click={() => (addDeviceGuideOpen = true)}><Plus size={16} /> {uiTranslate("添加设备", $uiLanguage)}</button></div>
               {/if}
