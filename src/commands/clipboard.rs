@@ -15,13 +15,13 @@ fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, Stri
 }
 
 #[cfg(target_os = "macos")]
-type PasteTarget = (i32, isize);
+type PasteTarget = crate::windowing::ClipboardPasteRecipient;
 #[cfg(not(target_os = "macos"))]
 struct PasteTarget;
 
 fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
     #[cfg(target_os = "macos")]
-    return crate::windowing::clipboard_paste_target(_app).map_err(|error| error.to_string());
+    return crate::windowing::clipboard_paste_recipient(_app).map_err(|error| error.to_string());
     #[cfg(not(target_os = "macos"))]
     Ok(PasteTarget)
 }
@@ -822,39 +822,30 @@ async fn prepare_window_and_wait_for_paste(
     _original: PasteTarget,
 ) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    let target =
-        crate::windowing::clipboard_paste_target(app).map_err(|error| error.to_string())?;
-    #[cfg(target_os = "macos")]
-    if target.0 != _original.0 {
-        return Err("paste target changed during clipboard preparation; paste cancelled".into());
-    }
+    let mut target = crate::windowing::prepare_clipboard_paste_target(app, _original)
+        .map_err(|error| error.to_string())?;
+    #[cfg(not(target_os = "macos"))]
     crate::windowing::prepare_clipboard_window_for_paste(app).map_err(|error| error.to_string())?;
     #[cfg(target_os = "macos")]
     {
         let started = std::time::Instant::now();
-        let mut ready_since = None;
         // Yield to AppKit before observing resignation of the panel's key status.
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            if crate::windowing::clipboard_paste_target_ready(app, target)
+            if crate::windowing::clipboard_paste_target_ready(app, &mut target, started.elapsed())
                 .map_err(|error| error.to_string())?
             {
-                // Key-window resignation precedes the target editor becoming
-                // ready. Require another 50ms of stable focus/content.
-                let ready = ready_since.get_or_insert_with(std::time::Instant::now);
-                if ready.elapsed() < std::time::Duration::from_millis(50) {
-                    continue;
-                }
                 tracing::debug!(
-                    target_pid = target.0,
+                    target_pid = ?target.pid,
                     wait_ms = started.elapsed().as_millis() as u64,
                     "clipboard paste target ready"
                 );
                 break;
-            } else {
-                ready_since = None;
             }
             if started.elapsed() >= std::time::Duration::from_millis(500) {
+                if target.pid.is_none() {
+                    return Err("no external paste target; content remains on clipboard".into());
+                }
                 return Err(
                     "paste target did not regain focus; content remains on clipboard".into(),
                 );
