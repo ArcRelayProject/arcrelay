@@ -47,6 +47,19 @@ pub(super) fn local_pointer_location<'a>(
     Some((display, display.desk_point_from_logical(point)))
 }
 
+pub(super) fn gaze_target_is_active(
+    active_route: Option<&(ServiceInstanceId, DisplayId)>,
+    local: &ServiceInstanceId,
+    selected_target: &ServiceInstanceId,
+    selected_display: &DisplayId,
+    local_pointer_on_selected_display: bool,
+) -> bool {
+    match active_route {
+        Some((target, display)) => target == selected_target && display == selected_display,
+        None => selected_target == local && local_pointer_on_selected_display,
+    }
+}
+
 impl ArcInputRuntime {
     pub(super) fn disable_consumer_capture(&self) {
         *lock(&self.consumer_route) = None;
@@ -869,15 +882,26 @@ impl ArcInputRuntime {
             .cloned()
             .ok_or(RuntimeError::NoDisplay)?;
         let local = self.identity.service_instance_id.clone();
-        let already_on_selected_display = lock(&self.session).as_ref().is_some_and(|session| {
-            session.current_target == selection.target
-                && session.current_display == selection.display
-        }) || (selection.target == local
+        let active_route = lock(&self.session).as_ref().map(|session| {
+            (
+                session.current_target.clone(),
+                session.current_display.clone(),
+            )
+        });
+        let local_pointer_on_selected_display = active_route.is_none()
+            && selection.target == local
             && self
                 .platform
                 .current_pointer_position()
                 .ok()
-                .is_some_and(|point| surface.contains_logical_point(point)));
+                .is_some_and(|point| surface.contains_logical_point(point));
+        let already_on_selected_display = gaze_target_is_active(
+            active_route.as_ref(),
+            &local,
+            &selection.target,
+            &selection.display,
+            local_pointer_on_selected_display,
+        );
         if already_on_selected_display {
             *lock(&self.gaze_consumed) = Some(selection);
             return Ok(());

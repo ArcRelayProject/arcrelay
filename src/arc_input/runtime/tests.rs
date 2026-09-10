@@ -148,6 +148,39 @@ async fn gaze_preselection_never_changes_control_without_physical_confirmation()
     assert!(lock(&runtime.gaze_preselection).is_none());
 }
 
+#[test]
+fn gaze_return_to_local_uses_the_active_route_not_the_hidden_native_pointer() {
+    let local = ServiceInstanceId::parse("local-device").unwrap();
+    let remote = ServiceInstanceId::parse("remote-device").unwrap();
+    let local_display = DisplayId::parse("local-display").unwrap();
+    let remote_display = DisplayId::parse("remote-display").unwrap();
+    let remote_route = (remote, remote_display);
+
+    assert!(!super::input::gaze_target_is_active(
+        Some(&remote_route),
+        &local,
+        &local,
+        &local_display,
+        true,
+    ));
+    assert!(super::input::gaze_target_is_active(
+        None,
+        &local,
+        &local,
+        &local_display,
+        true,
+    ));
+
+    let local_route = (local.clone(), local_display.clone());
+    assert!(super::input::gaze_target_is_active(
+        Some(&local_route),
+        &local,
+        &local,
+        &local_display,
+        false,
+    ));
+}
+
 #[tokio::test]
 async fn windows_gesture_target_uses_negotiated_capabilities_and_falls_back_when_unavailable() {
     let directory = tempfile::tempdir().unwrap();
