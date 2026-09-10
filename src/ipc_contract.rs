@@ -116,6 +116,8 @@ fn ipc_contract_matches_rust() {
     registry.event::<Vec<crate::application::runtime_modules::ModuleStatus>>("runtime-modules");
     registry.event::<crate::arc_input::runtime::RuntimeSnapshot>("arc-input-state");
     registry.event::<crate::gaze::GazeStatusView>("gaze-state");
+    registry.event::<serde_json::Value>("gaze-calibration-flow");
+    registry.event::<String>("gaze-calibration-cancel");
     registry.event::<crate::commands::PrintJobActivitySnapshot>("print-job-activity");
     registry.event::<arcrelay_automation::AutomationActivity>("automation-activity");
     registry.event::<()>("automation-configuration");

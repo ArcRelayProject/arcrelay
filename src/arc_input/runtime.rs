@@ -48,6 +48,26 @@ struct ObservedControlState {
 #[derive(Debug, Clone)]
 pub enum RuntimeEvent {
     SnapshotChanged,
+    GazeCalibrationOverlay(GazeCalibrationOverlayEvent),
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazeCalibrationOverlayEvent {
+    pub session_id: String,
+    pub stage: String,
+    pub source_device_id: String,
+    pub target_device_id: String,
+    pub display_id: String,
+    pub screen_index: u32,
+    pub next_screen_index: Option<u32>,
+    pub screen_name: String,
+    pub next_screen_name: Option<String>,
+    pub target_u: f64,
+    pub target_v: f64,
+    pub dwell_progress: f64,
+    pub current: u32,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
@@ -190,6 +210,65 @@ fn momentum_phase_from_proto(value: i32) -> ScrollMomentumPhase {
         proto::ScrollMomentumPhase::Ended => ScrollMomentumPhase::Ended,
         proto::ScrollMomentumPhase::Unspecified => ScrollMomentumPhase::Unspecified,
     }
+}
+
+fn gaze_stage_to_proto(stage: &str) -> Result<i32, RuntimeError> {
+    let stage = match stage {
+        "calibrating" => proto::GazeCalibrationStage::Calibrating,
+        "paused" => proto::GazeCalibrationStage::Paused,
+        "transition" => proto::GazeCalibrationStage::Transition,
+        "close" => proto::GazeCalibrationStage::Close,
+        "cancel" => proto::GazeCalibrationStage::Cancel,
+        _ => {
+            return Err(RuntimeError::InvalidInput(
+                "unsupported gaze calibration stage".into(),
+            ));
+        }
+    };
+    Ok(stage as i32)
+}
+
+fn gaze_stage_from_proto(stage: i32) -> Result<&'static str, RuntimeError> {
+    match proto::GazeCalibrationStage::try_from(stage)
+        .unwrap_or(proto::GazeCalibrationStage::Unspecified)
+    {
+        proto::GazeCalibrationStage::Calibrating => Ok("calibrating"),
+        proto::GazeCalibrationStage::Paused => Ok("paused"),
+        proto::GazeCalibrationStage::Transition => Ok("transition"),
+        proto::GazeCalibrationStage::Close => Ok("close"),
+        proto::GazeCalibrationStage::Cancel => Ok("cancel"),
+        proto::GazeCalibrationStage::Unspecified => Err(RuntimeError::InvalidInput(
+            "unspecified gaze calibration stage".into(),
+        )),
+    }
+}
+
+fn validate_gaze_calibration_event(
+    event: &GazeCalibrationOverlayEvent,
+) -> Result<(), RuntimeError> {
+    if event.session_id.is_empty()
+        || event.session_id.len() > 128
+        || event.display_id.len() > 256
+        || event.screen_name.len() > 256
+        || event
+            .next_screen_name
+            .as_ref()
+            .is_some_and(|name| name.len() > 256)
+        || event.total > 512
+        || event.current > event.total
+        || !event.target_u.is_finite()
+        || !event.target_v.is_finite()
+        || !event.dwell_progress.is_finite()
+        || !(0.0..=1.0).contains(&event.target_u)
+        || !(0.0..=1.0).contains(&event.target_v)
+        || !(0.0..=1.0).contains(&event.dwell_progress)
+    {
+        return Err(RuntimeError::InvalidInput(
+            "invalid gaze calibration overlay payload".into(),
+        ));
+    }
+    gaze_stage_to_proto(&event.stage)?;
+    Ok(())
 }
 
 fn simultaneous_claim_wins(

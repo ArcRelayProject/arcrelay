@@ -122,6 +122,12 @@ fn main() {
             gaze::capture_gaze_calibration_sample,
             gaze::finish_gaze_calibration,
             gaze::clear_gaze_calibration,
+            gaze::cancel_gaze_calibration,
+            gaze::open_gaze_calibration_windows,
+            gaze::focus_gaze_calibration_screen,
+            gaze::close_gaze_calibration_windows,
+            gaze::send_gaze_calibration_overlay,
+            gaze::request_gaze_calibration_cancel,
             gaze::open_camera_permission_settings,
             commands::get_log_status,
             commands::set_detailed_logging,
@@ -454,6 +460,15 @@ fn main() {
                 loop {
                     match input_events.recv().await {
                         Ok(arc_input::runtime::RuntimeEvent::SnapshotChanged) => {}
+                        Ok(arc_input::runtime::RuntimeEvent::GazeCalibrationOverlay(event)) => {
+                            if let Err(error) = gaze::apply_gaze_calibration_overlay_event(
+                                &input_app,
+                                &event,
+                            ) {
+                                tracing::warn!(%error, "failed to apply gaze calibration overlay event");
+                            }
+                            continue;
+                        }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                             tracing::debug!(skipped, "Arc Input UI event stream lagged");
                         }

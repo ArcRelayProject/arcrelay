@@ -1048,6 +1048,53 @@ impl ArcInputRuntime {
                 }
                 self.release_control_local(session)?;
             }
+            Some(proto::control_frame::Body::GazeCalibrationOverlay(overlay)) => {
+                let header = overlay.header.ok_or(RuntimeError::MissingHeader)?;
+                if header.source_device_id != peer.as_str()
+                    || header.target_device_id != self.identity.service_instance_id.as_str()
+                {
+                    return Err(RuntimeError::WrongPeer);
+                }
+                let event = GazeCalibrationOverlayEvent {
+                    session_id: overlay.session_id,
+                    stage: gaze_stage_from_proto(overlay.stage)?.to_string(),
+                    source_device_id: header.source_device_id,
+                    target_device_id: header.target_device_id,
+                    display_id: overlay.display_id,
+                    screen_index: overlay.screen_index,
+                    next_screen_index: overlay.next_screen_index,
+                    screen_name: overlay.screen_name,
+                    next_screen_name: (!overlay.next_screen_name.is_empty())
+                        .then_some(overlay.next_screen_name),
+                    target_u: overlay.target_u,
+                    target_v: overlay.target_v,
+                    dwell_progress: overlay.dwell_progress,
+                    current: overlay.current,
+                    total: overlay.total,
+                };
+                validate_gaze_calibration_event(&event)?;
+                let configuration = self.store.snapshot();
+                let layout = configuration.layout.ok_or_else(|| {
+                    RuntimeError::InvalidInput(
+                        "gaze calibration requires a workspace layout".into(),
+                    )
+                })?;
+                if !layout
+                    .displays
+                    .values()
+                    .any(|display| display.device_id == peer)
+                    || (!matches!(event.stage.as_str(), "close" | "cancel")
+                        && !layout.displays.values().any(|display| {
+                            display.device_id == self.identity.service_instance_id
+                                && display.display_id.as_str() == event.display_id
+                        }))
+                {
+                    return Err(RuntimeError::WrongPeer);
+                }
+                let _ = self
+                    .events
+                    .send(RuntimeEvent::GazeCalibrationOverlay(event));
+            }
             _ => {}
         }
         let _ = self.events.send(RuntimeEvent::SnapshotChanged);
@@ -1318,6 +1365,55 @@ impl ArcInputRuntime {
             target_device_id: peer.to_string(),
             sequence: 0,
         }
+    }
+
+    pub async fn send_gaze_calibration_overlay(
+        &self,
+        mut event: GazeCalibrationOverlayEvent,
+    ) -> Result<(), RuntimeError> {
+        validate_gaze_calibration_event(&event)?;
+        let target = ServiceInstanceId::parse(event.target_device_id.clone())?;
+        let configuration = self.store.snapshot();
+        let layout = configuration.layout.ok_or_else(|| {
+            RuntimeError::InvalidInput("gaze calibration requires a workspace layout".into())
+        })?;
+        if !layout
+            .displays
+            .values()
+            .any(|display| display.device_id == target)
+        {
+            return Err(RuntimeError::InvalidInput(
+                "gaze calibration target is outside the workspace".into(),
+            ));
+        }
+        event.source_device_id = self.identity.service_instance_id.to_string();
+        if target == self.identity.service_instance_id {
+            let _ = self
+                .events
+                .send(RuntimeEvent::GazeCalibrationOverlay(event));
+            return Ok(());
+        }
+        let frame = proto::ControlFrame {
+            body: Some(proto::control_frame::Body::GazeCalibrationOverlay(
+                proto::GazeCalibrationOverlay {
+                    header: Some(self.metadata_header(&target)),
+                    session_id: event.session_id,
+                    stage: gaze_stage_to_proto(&event.stage)?,
+                    display_id: event.display_id,
+                    screen_index: event.screen_index,
+                    next_screen_index: event.next_screen_index,
+                    screen_name: event.screen_name,
+                    next_screen_name: event.next_screen_name.unwrap_or_default(),
+                    target_u: event.target_u,
+                    target_v: event.target_v,
+                    dwell_progress: event.dwell_progress,
+                    current: event.current,
+                    total: event.total,
+                },
+            )),
+        };
+        self.network.send_control(&target, &frame).await?;
+        Ok(())
     }
 
     pub(super) fn peer_route_snapshot_frame(

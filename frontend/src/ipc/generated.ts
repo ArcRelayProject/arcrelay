@@ -167,11 +167,17 @@ export type FileKind = "image" | "pdf" | "archive" | "file";
 
 export type FrontendLogEntry = { level: string, event: string, detail: string, stack: string | null, };
 
+export type GazeCalibrationOverlayEvent = { sessionId: string, stage: string, sourceDeviceId: string, targetDeviceId: string, displayId: string, screenIndex: number, nextScreenIndex: number | null, screenName: string, nextScreenName: string | null, targetU: number, targetV: number, dwellProgress: number, current: number, total: number, };
+
+export type GazeCalibrationScreenView = { index: number, name: string, x: number, y: number, width: number, height: number, scaleFactor: number, };
+
 export type GazeCameraView = { id: string, name: string, description: string, };
 
-export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, target: GazeTargetView | null, error: string | null, };
+export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
 
-export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, };
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
+
+export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
 
 export type GeometryConfidence = "Unknown" | "Estimated" | "HardwareReported" | "UserProvided" | "UserCalibrated";
 
@@ -489,6 +495,7 @@ export interface CommandMap {
   automation_capabilities: { args: { }; result: Array<Capability> };
   begin_gaze_calibration: { args: { cameraId: string; }; result: GazeStatusView };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
+  cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_transfer: { args: { transferId: string; }; result: null };
   capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
@@ -526,6 +533,7 @@ export interface CommandMap {
   clipboard_thumbnail: { args: { id: number; }; result: string | null };
   clipboard_timeline: { args: { limit: number | null; position: ClipboardTimelinePositionInput; sortBy: ClipboardSortPreference; }; result: ClipboardTimelineView | null };
   clipboard_update_label: { args: { color: string; labelId: string; name: string; }; result: null };
+  close_gaze_calibration_windows: { args: { }; result: null };
   close_input_permission_guide: { args: { }; result: null };
   confirm_automation_activity: { args: { activityId: string; }; result: null };
   connect_desktop_address: { args: { host: string; port: number | null; }; result: string };
@@ -548,6 +556,7 @@ export interface CommandMap {
   export_actions_text: { args: { }; result: string };
   export_diagnostic_bundle: { args: { }; result: DiagnosticBundleInfo };
   finish_gaze_calibration: { args: { }; result: GazeStatusView };
+  focus_gaze_calibration_screen: { args: { index: number; }; result: null };
   forget_input_peer: { args: { serviceInstanceId: string; }; result: RuntimeSnapshot };
   forget_paired_device: { args: { deviceId: string; }; result: null };
   frontend_log: { args: { entry: FrontendLogEntry; }; result: null };
@@ -600,6 +609,7 @@ export interface CommandMap {
   open_automation_screen_permission: { args: { }; result: null };
   open_camera_permission_settings: { args: { }; result: null };
   open_full_disk_access_settings: { args: { }; result: null };
+  open_gaze_calibration_windows: { args: { }; result: Array<GazeCalibrationScreenView> };
   open_input_permission_settings: { args: { }; result: null };
   open_log_directory: { args: { }; result: null };
   open_remote_entry: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileOpenResult };
@@ -628,6 +638,7 @@ export interface CommandMap {
   remove_remote_printer: { args: { bindingId: string; }; result: PrinterSharingSnapshot };
   remove_system_folder: { args: { id: string; }; result: null };
   rename_remote_entry: { args: { newName: string; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileEntry };
+  request_gaze_calibration_cancel: { args: { sessionId: string; sourceDeviceId: string; }; result: null };
   reset_sound_preferences: { args: { }; result: AppSettings };
   respond_pairing: { args: { accepted: boolean; approvedGrantIds: Array<string> | null; }; result: null };
   respond_transfer: { args: { accepted: boolean; automaticReceive: boolean; transferId: string; }; result: null };
@@ -639,6 +650,7 @@ export interface CommandMap {
   save_action: { args: { action: QuickAction; }; result: BootstrapState };
   save_automation: { args: { definition: AutomationDefinition; }; result: AutomationDefinition };
   save_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: RuntimeSnapshot };
+  send_gaze_calibration_overlay: { args: { event: GazeCalibrationOverlayEvent; }; result: null };
   send_system_share_transfer: { args: { paths: Array<string>; peerId: string; requestIds: Array<string>; }; result: string };
   send_transfer: { args: { paths: Array<string>; peerId: string; }; result: string };
   set_automation_enabled: { args: { automationId: string; enabled: boolean; }; result: null };
@@ -700,6 +712,8 @@ export interface EventMap {
   "desktop-notification": InAppNotification;
   "desktop-runtime": DesktopRuntimeState;
   "desktop-state": BootstrapState;
+  "gaze-calibration-cancel": string;
+  "gaze-calibration-flow": JsonValue;
   "gaze-state": GazeStatusView;
   "input-metrics": InputMetricsView | null;
   "notification-count": number;

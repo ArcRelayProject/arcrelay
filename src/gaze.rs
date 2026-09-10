@@ -3,17 +3,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use arcrelay_gaze::{
-    layout_signature, CalibrationProfile, Calibrator, GazeTracker, TrackerConfig, TrackerSession,
-    TrackerSnapshot, WorkspaceMapper,
+    layout_signature, CalibrationProfile, Calibrator, GazeTracker, TargetingSource, TrackerConfig,
+    TrackerSession, TrackerSnapshot, WorkspaceMapper,
 };
 use arcrelay_input::DeskPointUm;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewUrl,
+    WebviewWindowBuilder,
+};
 use tokio::sync::{watch, Mutex, OnceCell};
 
+use crate::arc_input::runtime::GazeCalibrationOverlayEvent;
 use crate::arc_input::ArcInputRuntime;
 
 const GAZE_EVENT: &str = "gaze-state";
+const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_gaze_ipc.rs"));
@@ -35,6 +40,50 @@ pub struct GazeTargetView {
     pub logical_y: f64,
     pub confidence: f32,
     pub stable_for_ms: u64,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazeObservationView {
+    pub left_eye_open: bool,
+    pub right_eye_open: bool,
+    pub head_yaw: f32,
+    pub head_pitch: f32,
+    pub head_roll: f32,
+    pub gaze_x: f32,
+    pub gaze_y: f32,
+    pub gaze_z: f32,
+}
+
+#[derive(Clone, Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazeCalibrationScreenView {
+    pub index: usize,
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GazeCalibrationFlowPayload {
+    session_id: String,
+    source_device_id: String,
+    target_device_id: String,
+    stage: String,
+    screen_index: u32,
+    next_screen_index: Option<u32>,
+    screen_name: String,
+    next_screen_name: Option<String>,
+    u: f64,
+    v: f64,
+    dwell_progress: f64,
+    current: u32,
+    total: u32,
 }
 
 #[derive(Clone, Debug, Serialize, ts_rs::TS)]
@@ -51,6 +100,7 @@ pub struct GazeStatusView {
     pub dropped_frames: u64,
     pub inference_ms: Option<f32>,
     pub face_confidence: Option<f32>,
+    pub observation: Option<GazeObservationView>,
     pub target: Option<GazeTargetView>,
     pub error: Option<String>,
 }
@@ -172,6 +222,19 @@ impl GazeService {
 
     pub async fn status(&self) -> GazeStatusView {
         let snapshot = self.snapshots.borrow().clone();
+        let observation = snapshot
+            .observation
+            .as_ref()
+            .map(|observation| GazeObservationView {
+                left_eye_open: observation.left_eye_open,
+                right_eye_open: observation.right_eye_open,
+                head_yaw: observation.head_pose.yaw,
+                head_pitch: observation.head_pose.pitch,
+                head_roll: observation.head_pose.roll,
+                gaze_x: observation.gaze.x,
+                gaze_y: observation.gaze.y,
+                gaze_z: observation.gaze.z,
+            });
         let target = snapshot.target.map(|stable| GazeTargetView {
             device_id: stable.target.device_id,
             display_id: stable.target.display_id,
@@ -179,6 +242,10 @@ impl GazeService {
             logical_y: stable.target.logical_y,
             confidence: stable.target.confidence,
             stable_for_ms: stable.stable_for_ms,
+            source: match stable.target.source {
+                TargetingSource::Eye => "eye".into(),
+                TargetingSource::HeadFallback => "headFallback".into(),
+            },
         });
         GazeStatusView {
             revision: self.revision.fetch_add(1, Ordering::AcqRel) + 1,
@@ -203,6 +270,7 @@ impl GazeService {
                 .observation
                 .as_ref()
                 .map(|observation| observation.face_confidence),
+            observation,
             target,
             error: snapshot.error,
         }
@@ -287,6 +355,11 @@ impl GazeService {
         Ok(self.status().await)
     }
 
+    pub async fn cancel_calibration(&self) -> GazeStatusView {
+        self.calibration.lock().await.take();
+        self.status().await
+    }
+
     fn load_profile(&self) -> Option<CalibrationProfile> {
         let bytes = std::fs::read(&self.profile_path).ok()?;
         match serde_json::from_slice(&bytes) {
@@ -297,6 +370,192 @@ impl GazeService {
             }
         }
     }
+}
+
+fn close_gaze_calibration_windows_inner(app: &AppHandle) {
+    for (label, window) in app.webview_windows() {
+        if label.starts_with(GAZE_CALIBRATION_WINDOW_PREFIX) {
+            let _ = window.close();
+        }
+    }
+}
+
+fn gaze_calibration_windows_exist(app: &AppHandle) -> bool {
+    app.webview_windows()
+        .keys()
+        .any(|label| label.starts_with(GAZE_CALIBRATION_WINDOW_PREFIX))
+}
+
+#[tauri::command]
+pub fn open_gaze_calibration_windows(
+    app: AppHandle,
+) -> Result<Vec<GazeCalibrationScreenView>, String> {
+    close_gaze_calibration_windows_inner(&app);
+    let mut monitors = app
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+    monitors.sort_by_key(|monitor| (monitor.position().y, monitor.position().x));
+
+    let mut screens = Vec::with_capacity(monitors.len());
+    for (index, monitor) in monitors.iter().enumerate() {
+        let position = *monitor.position();
+        let size = *monitor.size();
+        let name = monitor
+            .name()
+            .cloned()
+            .unwrap_or_else(|| format!("屏幕 {}", index + 1));
+        let label = format!("{GAZE_CALIBRATION_WINDOW_PREFIX}{index}");
+        let url = WebviewUrl::App(format!("gaze-calibration.html?screen={index}").into());
+        let window = WebviewWindowBuilder::new(&app, &label, url)
+            .title("ArcRelay 眼动标定")
+            .inner_size(800.0, 600.0)
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible(false)
+            .build()
+            .map_err(|error| format!("创建{name}标定覆盖层失败: {error}"))?;
+        window
+            .set_position(Position::Physical(PhysicalPosition::new(
+                position.x, position.y,
+            )))
+            .map_err(|error| format!("定位{name}标定覆盖层失败: {error}"))?;
+        window
+            .set_size(Size::Physical(PhysicalSize::new(size.width, size.height)))
+            .map_err(|error| format!("调整{name}标定覆盖层失败: {error}"))?;
+        window
+            .show()
+            .map_err(|error| format!("显示{name}标定覆盖层失败: {error}"))?;
+        screens.push(GazeCalibrationScreenView {
+            index,
+            name,
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+            scale_factor: monitor.scale_factor(),
+        });
+    }
+
+    if let Some(window) = app.get_webview_window(&format!("{GAZE_CALIBRATION_WINDOW_PREFIX}0")) {
+        let _ = window.set_focus();
+    }
+    Ok(screens)
+}
+
+#[tauri::command]
+pub fn focus_gaze_calibration_screen(app: AppHandle, index: usize) -> Result<(), String> {
+    app.get_webview_window(&format!("{GAZE_CALIBRATION_WINDOW_PREFIX}{index}"))
+        .ok_or_else(|| format!("标定屏幕 {} 不可用", index + 1))?
+        .set_focus()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn close_gaze_calibration_windows(app: AppHandle) -> Result<(), String> {
+    close_gaze_calibration_windows_inner(&app);
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    Ok(())
+}
+
+pub fn apply_gaze_calibration_overlay_event(
+    app: &AppHandle,
+    event: &GazeCalibrationOverlayEvent,
+) -> Result<(), String> {
+    if event.stage == "close" {
+        close_gaze_calibration_windows_inner(app);
+        return Ok(());
+    }
+    if event.stage == "cancel" {
+        close_gaze_calibration_windows_inner(app);
+        app.emit("gaze-calibration-cancel", &event.session_id)
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    let opened_windows = !gaze_calibration_windows_exist(app);
+    if opened_windows {
+        open_gaze_calibration_windows(app.clone())?;
+    }
+    let focus_index = if event.stage == "transition" {
+        event.next_screen_index.unwrap_or(event.screen_index)
+    } else {
+        event.screen_index
+    };
+    let _ = focus_gaze_calibration_screen(app.clone(), focus_index as usize);
+    let payload = GazeCalibrationFlowPayload {
+        session_id: event.session_id.clone(),
+        source_device_id: event.source_device_id.clone(),
+        target_device_id: event.target_device_id.clone(),
+        stage: event.stage.clone(),
+        screen_index: event.screen_index,
+        next_screen_index: event.next_screen_index,
+        screen_name: event.screen_name.clone(),
+        next_screen_name: event.next_screen_name.clone(),
+        u: event.target_u,
+        v: event.target_v,
+        dwell_progress: event.dwell_progress,
+        current: event.current,
+        total: event.total,
+    };
+    app.emit("gaze-calibration-flow", &payload)
+        .map_err(|error| error.to_string())?;
+
+    // A freshly-created webview can miss the event emitted in the same run-loop
+    // turn. Replay the first frame once after its frontend listener is mounted.
+    if opened_windows {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+            let _ = app.emit("gaze-calibration-flow", payload);
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn send_gaze_calibration_overlay(
+    service: State<'_, Arc<GazeService>>,
+    event: GazeCalibrationOverlayEvent,
+) -> Result<(), String> {
+    service
+        .input
+        .send_gaze_calibration_overlay(event)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn request_gaze_calibration_cancel(
+    app: AppHandle,
+    service: State<'_, Arc<GazeService>>,
+    session_id: String,
+    source_device_id: String,
+) -> Result<(), String> {
+    close_gaze_calibration_windows_inner(&app);
+    service
+        .input
+        .send_gaze_calibration_overlay(GazeCalibrationOverlayEvent {
+            session_id,
+            stage: "cancel".into(),
+            source_device_id: service.input.identity().service_instance_id.to_string(),
+            target_device_id: source_device_id,
+            display_id: String::new(),
+            screen_index: 0,
+            next_screen_index: None,
+            screen_name: String::new(),
+            next_screen_name: None,
+            target_u: 0.5,
+            target_v: 0.5,
+            dwell_progress: 0.0,
+            current: 0,
+            total: 0,
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -363,6 +622,13 @@ pub async fn clear_gaze_calibration(
     service: State<'_, Arc<GazeService>>,
 ) -> Result<GazeStatusView, String> {
     service.clear_calibration().await
+}
+
+#[tauri::command]
+pub async fn cancel_gaze_calibration(
+    service: State<'_, Arc<GazeService>>,
+) -> Result<GazeStatusView, String> {
+    Ok(service.cancel_calibration().await)
 }
 
 #[tauri::command]

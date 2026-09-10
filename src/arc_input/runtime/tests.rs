@@ -4,6 +4,57 @@ use super::*;
 mod workspace_sync;
 
 #[tokio::test]
+async fn local_gaze_calibration_overlay_uses_the_runtime_event_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local-gaze-overlay").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.to_string();
+    let local_id = runtime.identity.service_instance_id.clone();
+    let display = test_display("screen-1", &local_id, 0);
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: WorkspaceId::parse("gaze-overlay-desk").unwrap(),
+        revision: TopologyRevision(1),
+        displays: [(display.display_id.clone(), display)]
+            .into_iter()
+            .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+    let mut events = runtime.subscribe();
+    runtime
+        .send_gaze_calibration_overlay(GazeCalibrationOverlayEvent {
+            session_id: "session-1".into(),
+            stage: "calibrating".into(),
+            source_device_id: String::new(),
+            target_device_id: local.clone(),
+            display_id: "screen-1".into(),
+            screen_index: 0,
+            next_screen_index: None,
+            screen_name: "Main".into(),
+            next_screen_name: None,
+            target_u: 0.5,
+            target_v: 0.5,
+            dwell_progress: 0.25,
+            current: 1,
+            total: 9,
+        })
+        .await
+        .unwrap();
+    let RuntimeEvent::GazeCalibrationOverlay(event) = events.recv().await.unwrap() else {
+        panic!("expected gaze calibration overlay event");
+    };
+    assert_eq!(event.source_device_id, local);
+    assert_eq!(event.display_id, "screen-1");
+    assert_eq!(event.dwell_progress, 0.25);
+}
+
+#[tokio::test]
 async fn gaze_preselection_never_changes_control_without_physical_confirmation() {
     let directory = tempfile::tempdir().unwrap();
     let runtime = ArcInputRuntime::load(
@@ -34,6 +85,7 @@ async fn gaze_preselection_never_changes_control_without_physical_confirmation()
         logical_x: 960.0,
         logical_y: 540.0,
         confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
     });
 
     assert!(lock(&runtime.gaze_preselection).is_some());
@@ -49,6 +101,7 @@ async fn gaze_preselection_never_changes_control_without_physical_confirmation()
         logical_x: 998.0,
         logical_y: 540.0,
         confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
     });
     assert!(lock(&runtime.gaze_preselection).is_none());
     assert!(lock(&runtime.gaze_consumed).is_some());
@@ -61,6 +114,7 @@ async fn gaze_preselection_never_changes_control_without_physical_confirmation()
         logical_x: 1229.0,
         logical_y: 540.0,
         confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
     });
     assert!(lock(&runtime.gaze_preselection).is_some());
     assert!(lock(&runtime.gaze_consumed).is_none());

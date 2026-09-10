@@ -23,6 +23,7 @@ export default defineConfig({
         trayTransfer: resolve(import.meta.dirname, "tray-transfer.html"),
         permissionGuide: resolve(import.meta.dirname, "permission-guide.html"),
         privacyOverlay: resolve(import.meta.dirname, "privacy-overlay.html"),
+        gazeCalibration: resolve(import.meta.dirname, "gaze-calibration.html"),
       },
     },
   },
