@@ -19,10 +19,9 @@ export type CalibrationFlowPayload = {
 };
 
 export type StabilitySample = {
-  gazeX: number;
-  gazeY: number;
   headYaw: number;
   headPitch: number;
+  headRoll: number;
 };
 
 export function observationCanCalibrate(
@@ -51,17 +50,17 @@ export function observationCanHeadCalibrate(
       && Number.isFinite(observation.headYaw)
       && Number.isFinite(observation.headPitch)
       && Number.isFinite(observation.headRoll)
-      && Math.abs(observation.headYaw) <= 55
-      && Math.abs(observation.headPitch) <= 40,
+      && Math.abs(observation.headYaw) <= 80
+      && Math.abs(observation.headPitch) <= 60
+      && Math.abs(observation.headRoll) <= 50,
   );
 }
 
 export function toStabilitySample(observation: GazeObservationView): StabilitySample {
   return {
-    gazeX: observation.gazeX,
-    gazeY: observation.gazeY,
     headYaw: observation.headYaw,
     headPitch: observation.headPitch,
+    headRoll: observation.headRoll,
   };
 }
 
@@ -71,10 +70,9 @@ function range(values: number[]): number {
 
 export function samplesAreStable(samples: StabilitySample[]): boolean {
   if (samples.length < 4) return false;
-  return range(samples.map((sample) => sample.gazeX)) <= 0.075
-    && range(samples.map((sample) => sample.gazeY)) <= 0.075
-    && range(samples.map((sample) => sample.headYaw)) <= 5
-    && range(samples.map((sample) => sample.headPitch)) <= 5;
+  return range(samples.map((sample) => sample.headYaw)) <= 7
+    && range(samples.map((sample) => sample.headPitch)) <= 7
+    && range(samples.map((sample) => sample.headRoll)) <= 8;
 }
 
 export function clampProgress(value: number): number {

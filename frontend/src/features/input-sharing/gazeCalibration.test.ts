@@ -33,19 +33,19 @@ test("keeps head calibration available when the eyes are occluded", () => {
   };
   assert.equal(observationCanCalibrate(observation, 0.9), false);
   assert.equal(observationCanHeadCalibrate(observation, 0.9), true);
-  assert.equal(observationCanHeadCalibrate({ ...observation, headYaw: 60 }, 0.9), false);
+  assert.equal(observationCanHeadCalibrate({ ...observation, headYaw: 75 }, 0.9), true);
+  assert.equal(observationCanHeadCalibrate({ ...observation, headYaw: 82 }, 0.9), false);
 });
 
-test("requires a compact four-frame gaze and pose window", () => {
+test("requires a compact four-frame filtered head-pose window", () => {
   const stable = [0, 1, 2, 3].map((index) => ({
-    gazeX: 0.1 + index * 0.004,
-    gazeY: -0.2 + index * 0.003,
     headYaw: 1 + index * 0.3,
     headPitch: -2 + index * 0.2,
+    headRoll: index * 0.15,
   }));
   assert.equal(samplesAreStable(stable.slice(0, 3)), false);
   assert.equal(samplesAreStable(stable), true);
-  assert.equal(samplesAreStable([...stable.slice(0, 3), { ...stable[3], gazeX: 0.3 }]), false);
+  assert.equal(samplesAreStable([...stable.slice(0, 3), { ...stable[3], headYaw: 12 }]), false);
 });
 
 test("clamps dwell progress", () => {

@@ -23,14 +23,10 @@
   type Phase = "ready" | "checking" | "calibrating" | "transition" | "complete";
   type Target = { display: DisplaySurface; screenIndex: number; u: number; v: number; label: string };
 
-  const DWELL_MS = 700;
-  const PREFLIGHT_MS = 800;
-  const FRESH_MS = 900;
-  const POINTS = [
-    [0.11, 0.12, "左上"], [0.5, 0.11, "上方"], [0.89, 0.12, "右上"],
-    [0.11, 0.5, "左侧"], [0.5, 0.5, "中央"], [0.89, 0.5, "右侧"],
-    [0.11, 0.88, "左下"], [0.5, 0.89, "下方"], [0.89, 0.88, "右下"],
-  ] as const;
+  const DWELL_MS = 180;
+  const PREFLIGHT_MS = 600;
+  const FRESH_MS = 700;
+  const POINTS = Array.from({ length: 9 }, (_, index) => [0.5, 0.5, `样本 ${index + 1}`] as const);
 
   let cameras: GazeCamera[] = [];
   let selectedCamera = "";
@@ -66,9 +62,8 @@
     ? Math.round((Math.max(0, targetIndex) + dwellProgress) / targets.length * 100)
     : 0;
   $: faceReady = observationCanHeadCalibrate(status?.observation, status?.faceConfidence);
-  $: samplingMode = status?.observation?.leftEyeOpen && status?.observation?.rightEyeOpen
-    ? "视线精确采样"
-    : "头部方向采样";
+  $: samplingMode = "滤波后的头部方向采样";
+  $: liveTargetName = allDisplays.find((display) => display.displayId === status?.target?.displayId)?.name;
 
   function screenIndex(display: DisplaySurface): number {
     return Object.values(snapshot.configuration.layout?.displays ?? {})
@@ -255,15 +250,15 @@
         await closeAllDevices();
         targetIndex = -1;
         phase = "complete";
-        notify("眼动与头部方向标定已完成并保存。侧看屏幕时会自动使用头部方向兜底。");
+        notify("头部屏幕区域标定已完成。稳定看向另一块屏幕后会自动移动鼠标。");
         return;
       }
 
       const previous = target;
       targetIndex += 1;
       const next = targets[targetIndex];
-      resetPointStability();
       if (previous.display.displayId !== next.display.displayId) {
+        resetPointStability();
         phase = "transition";
         if (previous.display.deviceId !== next.display.deviceId) {
           await closeDevice(previous.display.deviceId);
@@ -275,8 +270,10 @@
           phase = "calibrating";
           resetPointStability();
           void sendFlow("calibrating", next);
-        }, 1450);
+        }, 900);
       } else {
+        dwellProgress = 0;
+        stableSince = performance.now();
         await sendFlow("calibrating", next);
       }
     } catch (error) {
@@ -378,9 +375,9 @@
   {#if phase === "ready"}
     <article class="hero-card">
       <div class="hero-copy">
-        <span class="eyebrow"><Crosshair size={15} weight="bold" />多设备自然注视标定</span>
-        <h2>只需看向每块屏幕上的圆点</h2>
-        <p>ArcRelay 会让圆点依次出现在本机和已连接设备的物理屏幕上。视线清晰时精确采样；侧看屏幕时自动用头部方向兜底。</p>
+        <span class="eyebrow"><Crosshair size={15} weight="bold" />多设备头部区域标定</span>
+        <h2>把头转向每块屏幕中央的圆点</h2>
+        <p>ArcRelay 只学习你看向每块屏幕时的头部方向，不再依赖偏头时不稳定的眼动向量。标定后看向目标屏幕即可移动鼠标。</p>
         <label class="camera-field"><span>用于标定的摄像头</span><AppSelect bind:value={selectedCamera} options={cameraOptions} disabled={running || busy} placeholder="未发现摄像头" aria-label="用于标定的摄像头" /></label>
         <div class="privacy-line"><LockKey size={15} weight="fill" /><span><strong>完全本机处理</strong>　只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。</span></div>
         <div class="hero-actions">
@@ -390,7 +387,7 @@
       </div>
       <div class="preview-panel" aria-hidden="true">
         <img src={calibrationMonitor} alt="" />
-        <div class="preview-meta"><span><Monitor size={15} />{allDisplays.length} 块屏幕</span><span>{deviceCount} 台设备</span><span><Eye size={15} />双通道识别</span></div>
+        <div class="preview-meta"><span><Monitor size={15} />{allDisplays.length} 块屏幕</span><span>{deviceCount} 台设备</span><span><Eye size={15} />头部区域识别</span></div>
       </div>
     </article>
     <div class="readiness-grid">
@@ -398,12 +395,12 @@
       <section><span class:ok={Boolean(allDisplays.length)}>{#if allDisplays.length}<Check size={16} weight="bold" />{:else}<WarningCircle size={16} />{/if}</span><div><strong>标定范围</strong><p>{allDisplays.length} 块屏幕 · {deviceCount} 台设备</p></div></section>
       <section><span class:ok={running}>{#if running}<Check size={16} weight="bold" />{:else}<Camera size={16} />{/if}</span><div><strong>眼动服务</strong><p>{running ? `${status?.cameraName ?? "摄像头"} 正在运行` : "开始标定时自动启动"}</p></div></section>
     </div>
-    {#if status?.calibrated}<div class="existing-profile"><CheckCircle size={18} weight="fill" /><div><strong>当前布局已有双通道标定</strong><p>摄像头、设备或屏幕位置变化后，建议重新标定。</p></div><button on:click={clearCalibration}><Trash size={15} />删除标定</button></div>{/if}
+    {#if status?.calibrated}<div class="existing-profile"><CheckCircle size={18} weight="fill" /><div><strong>当前布局已有头部区域标定</strong><p>摄像头、设备或屏幕位置变化后，建议重新标定。</p></div><button on:click={clearCalibration}><Trash size={15} />删除标定</button></div>{/if}
   {:else if phase === "checking"}
     <article class="state-card">
       <div class="check-visual" style={`--check-progress:${preflightProgress * 360}deg`}><Eye size={34} weight="duotone" /></div>
       <span class="eyebrow">自动环境检查</span><h2>{faceReady ? "很好，请保持这个姿势" : "请面向摄像头"}</h2>
-      <p>{faceReady ? "正在确认面部与头部方向稳定，完成后会自动进入跨设备全屏标定。" : "让面部保持在画面中，坐姿自然，避免强背光。"}</p>
+      <p>{faceReady ? "正在确认滤波后的头部方向稳定，完成后会自动进入跨设备全屏标定。" : "让面部保持在画面中，坐姿自然，允许较大角度偏转。"}</p>
       <div class="check-list"><span class:ok={Boolean(status?.faceConfidence && status.faceConfidence >= .6)}><i></i>面部清晰</span><span class:ok={Boolean(status?.observation)}><i></i>头部方向有效</span><span class:ok={faceReady}><i></i>姿态稳定</span></div>
       <div class="bar"><span style={`width:${preflightProgress * 100}%`}></span></div><button class="cancel-button" on:click={() => cancelCalibration()}><X size={15} />取消</button>
     </article>
@@ -411,24 +408,24 @@
     <article class="state-card">
       <div class="running-icon"><Crosshair size={30} weight="duotone" /></div><span class="eyebrow">跨设备全屏标定</span>
       <h2>{phase === "transition" ? "正在切换到下一块屏幕" : `请看向 ${target?.display.name ?? "屏幕"} 上的圆点`}</h2>
-      <p>{phase === "transition" ? "下一台设备会自动显示引导，不需要移动或点击窗口。" : `${samplingMode} · 稳定后自动采样；面部丢失时暂停，恢复后继续。`}</p>
+      <p>{phase === "transition" ? "下一台设备会自动显示引导，不需要移动或点击窗口。" : `${samplingMode} · 保持头部朝向圆点；面部丢失时暂停，恢复后继续。`}</p>
       <div class="bar"><span style={`width:${overallProgress}%`}></span></div><strong class="progress-label">{overallProgress}% · {targetIndex + 1}/{targets.length}</strong>
       <button class="cancel-button" on:click={() => cancelCalibration()}><Stop size={15} />退出标定</button>
     </article>
   {:else}
     <article class="state-card complete-card">
-      <div class="complete-icon"><Check size={38} weight="bold" /></div><span class="eyebrow">标定完成</span><h2>视线现在可以自然跨设备了</h2>
-      <p>双眼清晰时精确定位；侧看其他屏幕时自动使用头部方向选择屏幕。实体鼠标移动后才会真正切换控制。</p>
+      <div class="complete-icon"><Check size={38} weight="bold" /></div><span class="eyebrow">标定完成</span><h2>看向屏幕即可移动鼠标</h2>
+      <p>ArcRelay 会根据滤波后的头部方向选择屏幕；稳定看向另一块屏幕后，鼠标会自动移动到该屏幕中央。</p>
       <div class="screen-results">{#each completedScreens as name}<span><Monitor size={16} /><strong>{name}</strong><i><Check size={13} weight="bold" /></i></span>{/each}</div>
       <div class="hero-actions"><button class="start-button" on:click={() => phase = "ready"}>返回眼动设置</button><button class="text-button" on:click={beginCalibration}><ArrowClockwise size={15} />重新标定</button></div>
     </article>
   {/if}
 
   {#if phase === "ready"}
-    <section class="live-strip"><span class:live={running}></span><div><strong>{running ? "眼动服务正在运行" : "眼动服务尚未启动"}</strong><small>{status?.target?.source === "headFallback" ? "头部方向兜底" : status?.target ? "视线精确定位" : status?.cameraName ?? "开始标定时自动启动"}</small></div><dl><div><dt>推理延迟</dt><dd>{status?.inferenceMs?.toFixed(0) ?? "—"} ms</dd></div><div><dt>人脸置信度</dt><dd>{status?.faceConfidence?.toFixed(2) ?? "—"}</dd></div></dl>{#if running}<button on:click={stop} disabled={busy}><Stop size={14} />停止</button>{/if}</section>
+    <section class="live-strip"><span class:live={running}></span><div><strong>{running ? "头部屏幕识别正在运行" : "头部屏幕识别尚未启动"}</strong><small>{status?.target ? `正在看向 ${liveTargetName ?? "已标定屏幕"}` : status?.cameraName ?? "开始标定时自动启动"}</small></div><dl><div><dt>推理延迟</dt><dd>{status?.inferenceMs?.toFixed(0) ?? "—"} ms</dd></div><div><dt>人脸置信度</dt><dd>{status?.faceConfidence?.toFixed(2) ?? "—"}</dd></div></dl>{#if running}<button on:click={stop} disabled={busy}><Stop size={14} />停止</button>{/if}</section>
   {/if}
   {#if status?.error}<div class="error-banner"><WarningCircle size={17} /><span>{status.error}</span></div>{/if}
-  <div class="safety-note"><strong>安全默认：</strong>注视和头部方向只预选屏幕；只有随后明确移动实体鼠标才切换 Arc Input 目标，不会点击、输入或抢占控制权。</div>
+  <div class="safety-note"><strong>自动切屏：</strong>稳定看向另一块屏幕后，ArcRelay 会移动鼠标到屏幕中央；按 ⌘⌥⇧ Esc 可随时紧急释放，不会自动点击或输入。</div>
 </section>
 
 <style>

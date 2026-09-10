@@ -799,6 +799,30 @@ impl ArcInputRuntime {
         lock(&self.gaze_consumed).take();
     }
 
+    pub fn clear_gaze_candidate(&self) {
+        lock(&self.gaze_preselection).take();
+    }
+
+    /// Move Arc Input ownership and the pointer to a stable head-selected
+    /// display. Held keys or buttons always block the automatic transition.
+    pub async fn activate_gaze_target(
+        self: &Arc<Self>,
+        target: &arcrelay_gaze::GazeTarget,
+    ) -> Result<(), RuntimeError> {
+        if !self.input_sharing_enabled() {
+            return Ok(());
+        }
+        self.preselect_gaze_target(target);
+        if lock(&self.session)
+            .as_ref()
+            .is_some_and(|session| !session.held.is_empty())
+        {
+            return Ok(());
+        }
+        self.activate_gaze_preselection("stable head direction selected gaze target")
+            .await
+    }
+
     async fn confirm_gaze_preselection(
         self: &Arc<Self>,
         event: &CapturedInputEvent,
@@ -820,6 +844,14 @@ impl ArcInputRuntime {
         {
             return Ok(());
         }
+        self.activate_gaze_preselection("physical pointer movement confirmed gaze target")
+            .await
+    }
+
+    async fn activate_gaze_preselection(
+        self: &Arc<Self>,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
         let Some(selection) = lock(&self.gaze_preselection).take() else {
             return Ok(());
         };
@@ -837,6 +869,19 @@ impl ArcInputRuntime {
             .cloned()
             .ok_or(RuntimeError::NoDisplay)?;
         let local = self.identity.service_instance_id.clone();
+        let already_on_selected_display = lock(&self.session).as_ref().is_some_and(|session| {
+            session.current_target == selection.target
+                && session.current_display == selection.display
+        }) || (selection.target == local
+            && self
+                .platform
+                .current_pointer_position()
+                .ok()
+                .is_some_and(|point| surface.contains_logical_point(point)));
+        if already_on_selected_display {
+            *lock(&self.gaze_consumed) = Some(selection);
+            return Ok(());
+        }
 
         let controller = lock(&self.session)
             .as_ref()
@@ -907,14 +952,7 @@ impl ArcInputRuntime {
             )
             .await?;
         }
-        self.record(
-            "gaze",
-            format!(
-                "physical pointer movement confirmed gaze target {}",
-                selection.display
-            ),
-            None,
-        );
+        self.record("gaze", format!("{reason} {}", selection.display), None);
         *lock(&self.gaze_consumed) = Some(selection);
         Ok(())
     }

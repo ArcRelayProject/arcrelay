@@ -99,12 +99,12 @@
     </div>
     {#if flow.stage === "paused"}
       <section class="pause-card" role="status">
-        <strong>暂时看不到你的眼睛</strong>
-        <p>保持自然坐姿，面向摄像头。识别恢复后会自动继续，进度不会丢失。</p>
+        <strong>暂时看不到你的面部</strong>
+        <p>保持自然坐姿，让面部回到摄像头范围。识别恢复后会自动继续，进度不会丢失。</p>
         <span><i></i>正在等待恢复…</span>
       </section>
     {:else}
-      <p class="instruction">看着圆点，保持自然，不需要点击</p>
+      <p class="instruction">把头转向圆点，保持自然，不需要点击</p>
       <span class="counter">{flow.current + 1} / {flow.total}</span>
     {/if}
   {:else if incoming}

@@ -172,7 +172,10 @@ impl GazeService {
             .layout
             .ok_or_else(|| "请先完成跨屏输入的屏幕布局".to_string())?;
         let profile = self.load_profile().filter(|profile| {
-            profile.camera_id == camera_id && profile.layout_signature == layout_signature(&layout)
+            profile.version >= 3
+                && !profile.head_regions.is_empty()
+                && profile.camera_id == camera_id
+                && profile.layout_signature == layout_signature(&layout)
         });
         let mapper = profile
             .clone()
@@ -196,9 +199,27 @@ impl GazeService {
                 }
                 let snapshot = snapshots.borrow().clone();
                 service.snapshots.send_replace(snapshot.clone());
-                if let Some(stable) = snapshot.target.as_ref() {
-                    service.input.preselect_gaze_target(&stable.target);
-                } else if snapshot.target.is_none() {
+                let calibrating = service.calibration.lock().await.is_some();
+                let automatic_head_regions = service
+                    .profile
+                    .lock()
+                    .await
+                    .as_ref()
+                    .is_some_and(|profile| !profile.head_regions.is_empty());
+                if calibrating {
+                    service.input.clear_gaze_candidate();
+                } else if let Some(stable) = snapshot.target.as_ref() {
+                    if automatic_head_regions {
+                        if let Err(error) = service.input.activate_gaze_target(&stable.target).await
+                        {
+                            tracing::warn!(%error, "failed to activate head-selected display");
+                        }
+                    } else {
+                        service.input.preselect_gaze_target(&stable.target);
+                    }
+                } else if automatic_head_regions {
+                    service.input.clear_gaze_candidate();
+                } else {
                     service.input.clear_gaze_preselection();
                 }
                 let _ = app.emit(GAZE_EVENT, service.status().await);
@@ -298,19 +319,29 @@ impl GazeService {
             .borrow()
             .observation
             .clone()
-            .ok_or_else(|| "当前没有可用的人脸与眼睛观测".to_string())?;
+            .ok_or_else(|| "当前没有可用的头部姿态观测".to_string())?;
+        let point = DeskPointUm {
+            x: desk_x_um,
+            y: desk_y_um,
+        };
+        let layout = self
+            .input
+            .snapshot()
+            .configuration
+            .layout
+            .ok_or_else(|| "屏幕布局在标定期间被移除".to_string())?;
+        let display_id = layout
+            .displays
+            .values()
+            .find(|display| display.desk_rect_um.contains(point))
+            .map(|display| display.display_id.to_string())
+            .ok_or_else(|| "标定点不属于当前屏幕布局".to_string())?;
         let mut calibration = self.calibration.lock().await;
         let calibration = calibration
             .as_mut()
             .ok_or_else(|| "尚未开始标定".to_string())?;
         calibration
-            .push(
-                &observation,
-                DeskPointUm {
-                    x: desk_x_um,
-                    y: desk_y_um,
-                },
-            )
+            .push_for_display(&observation, point, display_id)
             .map_err(|error| error.to_string())?;
         Ok(calibration.sample_count())
     }
