@@ -4,6 +4,72 @@ use super::*;
 mod workspace_sync;
 
 #[tokio::test]
+async fn gaze_preselection_never_changes_control_without_physical_confirmation() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.clone();
+    let display = test_display("local-screen", &local, 0);
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: WorkspaceId::parse("gaze-desk").unwrap(),
+        revision: TopologyRevision(1),
+        displays: [(display.display_id.clone(), display)]
+            .into_iter()
+            .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 250_000,
+        desk_y_um: 150_000,
+        logical_x: 960.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+    });
+
+    assert!(lock(&runtime.gaze_preselection).is_some());
+    assert!(lock(&runtime.session).is_none());
+
+    let consumed = lock(&runtime.gaze_preselection).take().unwrap();
+    *lock(&runtime.gaze_consumed) = Some(consumed);
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 260_000,
+        desk_y_um: 150_000,
+        logical_x: 998.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+    });
+    assert!(lock(&runtime.gaze_preselection).is_none());
+    assert!(lock(&runtime.gaze_consumed).is_some());
+
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 320_000,
+        desk_y_um: 150_000,
+        logical_x: 1229.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+    });
+    assert!(lock(&runtime.gaze_preselection).is_some());
+    assert!(lock(&runtime.gaze_consumed).is_none());
+
+    runtime.clear_gaze_preselection();
+    assert!(lock(&runtime.gaze_preselection).is_none());
+}
+
+#[tokio::test]
 async fn windows_gesture_target_uses_negotiated_capabilities_and_falls_back_when_unavailable() {
     let directory = tempfile::tempdir().unwrap();
     let identity = Arc::new(ProductIdentity::from_device_id("windows-gesture-gateway").unwrap());

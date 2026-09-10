@@ -2,7 +2,7 @@
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { ArrowsOutCardinal, ArrowLeft, Bug, GridFour, Keyboard, Power } from "phosphor-svelte";
+  import { ArrowsOutCardinal, ArrowLeft, Bug, Eye, GridFour, Keyboard, Power } from "phosphor-svelte";
 
   import { SubscriptionScope, observeSnapshot } from "../../subscriptions";
   import { bridge } from "../../bridge";
@@ -13,6 +13,7 @@
   import InputWorkspacePage from "./InputWorkspacePage.svelte";
   import KeyboardPage from "./KeyboardPage.svelte";
   import GestureDebugPage from "./GestureDebugPage.svelte";
+  import GazePage from "./GazePage.svelte";
   import {
     canTakeInputControl,
     friendlyDeviceName,
@@ -22,7 +23,7 @@
 
   export let notify: (message: string, error?: boolean) => void;
 
-  type Section = "overview" | "workspace" | "keyboard" | "diagnostics" | "gestureDebug";
+  type Section = "overview" | "workspace" | "keyboard" | "gaze" | "diagnostics" | "gestureDebug";
 
   // Keep the local gesture lab implementation available for future diagnostics,
   // but do not expose or route into it from the product UI for now.
@@ -39,6 +40,7 @@
     { id: "overview" as const, label: "总览", icon: GridFour },
     { id: "workspace" as const, label: "布局与通道", icon: ArrowsOutCardinal },
     { id: "keyboard" as const, label: "键盘行为", icon: Keyboard },
+    { id: "gaze" as const, label: "眼动", icon: Eye },
     { id: "diagnostics" as const, label: "诊断", icon: Bug },
   ];
 
@@ -152,8 +154,8 @@
     {:else}
       <header class="input-sharing-header">
         <div>
-          <div class="title-line"><h1>{uiTranslate(section === "keyboard" ? "键盘行为" : section === "diagnostics" ? "诊断" : "跨屏输入", $uiLanguage)}</h1><span class:controlling class:warning={Boolean(offlinePeer)}>{uiTranslate(status, $uiLanguage)}</span></div>
-          <p>{uiTranslate(section === "workspace" ? "按桌面上的真实位置排列屏幕，相邻重叠边段会自动连通。" : section === "keyboard" ? "让快捷键在不同系统上保持相同意图。" : section === "diagnostics" ? "查看连接质量、跨屏通道和最近事件。" : offlinePeer ? "布局已保留，但一台设备暂时不可用。" : "在设备之间自然移动鼠标和键盘。", $uiLanguage)}</p>
+          <div class="title-line"><h1>{uiTranslate(section === "keyboard" ? "键盘行为" : section === "gaze" ? "眼动追踪" : section === "diagnostics" ? "诊断" : "跨屏输入", $uiLanguage)}</h1><span class:controlling class:warning={Boolean(offlinePeer)}>{uiTranslate(status, $uiLanguage)}</span></div>
+          <p>{uiTranslate(section === "workspace" ? "按桌面上的真实位置排列屏幕，相邻重叠边段会自动连通。" : section === "keyboard" ? "让快捷键在不同系统上保持相同意图。" : section === "gaze" ? "用本机摄像头预选正在注视的屏幕与位置。" : section === "diagnostics" ? "查看连接质量、跨屏通道和最近事件。" : offlinePeer ? "布局已保留，但一台设备暂时不可用。" : "在设备之间自然移动鼠标和键盘。", $uiLanguage)}</p>
         </div>
         <div class="header-control">
           <small>{uiTranslate(offlinePeer ? `等待${friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!)}重新连接` : enabled ? "任一设备活动即可自动接管 · ⌘⌥⇧ Esc 紧急释放" : "启用一次后持续待命", $uiLanguage)}</small>
@@ -194,6 +196,8 @@
           <InputWorkspacePage {snapshot} onSnapshot={applySnapshot} {notify} />
         {:else if section === "keyboard"}
           <KeyboardPage {snapshot} onSnapshot={applySnapshot} {notify} />
+        {:else if section === "gaze"}
+          <GazePage {snapshot} {notify} />
         {:else}
           <DiagnosticsPage {snapshot} {notify} onRefresh={() => refresh()} />
         {/if}

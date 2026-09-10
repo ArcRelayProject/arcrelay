@@ -12,6 +12,7 @@ mod commands;
 mod continuous_paste_trigger;
 mod desktop_notification;
 mod domain;
+mod gaze;
 mod gesture_debug;
 mod hang_watchdog;
 mod infrastructure;
@@ -113,6 +114,15 @@ fn main() {
             arc_input::commands::connect_input_peer,
             arc_input::commands::forget_input_peer,
             arc_input::commands::test_input_edge,
+            gaze::list_gaze_cameras,
+            gaze::get_gaze_status,
+            gaze::start_gaze_tracking,
+            gaze::stop_gaze_tracking,
+            gaze::begin_gaze_calibration,
+            gaze::capture_gaze_calibration_sample,
+            gaze::finish_gaze_calibration,
+            gaze::clear_gaze_calibration,
+            gaze::open_camera_permission_settings,
             commands::get_log_status,
             commands::set_detailed_logging,
             commands::open_log_directory,
@@ -320,6 +330,7 @@ fn main() {
             app.manage(desktop_state);
             app.manage(system_share.clone());
             app.manage(input_runtime.clone());
+            app.manage(gaze::GazeService::new(input_runtime.clone()));
             for args in app.state::<startup::PendingActivations>().take() {
                 if let Err(error) = system_share.handle_activation_args(args.into_iter().map(std::ffi::OsString::from)) {
                     tracing::warn!(%error, "Could not import queued system share request");
@@ -502,6 +513,10 @@ fn main() {
             app_handle
                 .state::<Arc<gesture_debug::GestureDebugState>>()
                 .stop();
+            let gaze = app_handle.state::<Arc<gaze::GazeService>>();
+            if let Err(error) = tauri::async_runtime::block_on(gaze.stop()) {
+                tracing::warn!(%error, "failed to stop gaze tracking during exit");
+            }
         }
         tauri::RunEvent::Ready => {
             APP_EVENT_LOOP_READY.store(true, Ordering::SeqCst);
@@ -517,11 +532,17 @@ fn main() {
             );
             if prevented {
                 api.prevent_exit();
-            } else if let Err(error) = app_handle
-                .state::<Arc<arc_input::ArcInputRuntime>>()
-                .shutdown()
-            {
-                tracing::warn!(%error, "failed to stop Arc Input during exit");
+            } else {
+                let gaze = app_handle.state::<Arc<gaze::GazeService>>();
+                if let Err(error) = tauri::async_runtime::block_on(gaze.stop()) {
+                    tracing::warn!(%error, "failed to stop gaze tracking during exit");
+                }
+                if let Err(error) = app_handle
+                    .state::<Arc<arc_input::ArcInputRuntime>>()
+                    .shutdown()
+                {
+                    tracing::warn!(%error, "failed to stop Arc Input during exit");
+                }
             }
         }
         tauri::RunEvent::WindowEvent {

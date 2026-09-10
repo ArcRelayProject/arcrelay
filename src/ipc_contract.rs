@@ -95,6 +95,7 @@ fn ipc_contract_matches_rust() {
     crate::commands::register_ipc_contract(&mut registry);
     crate::app_update::register_ipc_contract(&mut registry);
     crate::gesture_debug::register_ipc_contract(&mut registry);
+    crate::gaze::register_ipc_contract(&mut registry);
     arc_input_commands::register_ipc_contract(&mut registry);
     registry.ty::<crate::ipc::IpcError>();
     registry.event::<crate::ipc::IpcError>("print-job-activity-error");
@@ -114,6 +115,7 @@ fn ipc_contract_matches_rust() {
     );
     registry.event::<Vec<crate::application::runtime_modules::ModuleStatus>>("runtime-modules");
     registry.event::<crate::arc_input::runtime::RuntimeSnapshot>("arc-input-state");
+    registry.event::<crate::gaze::GazeStatusView>("gaze-state");
     registry.event::<crate::commands::PrintJobActivitySnapshot>("print-job-activity");
     registry.event::<arcrelay_automation::AutomationActivity>("automation-activity");
     registry.event::<()>("automation-configuration");

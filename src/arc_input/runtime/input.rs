@@ -754,6 +754,171 @@ impl ArcInputRuntime {
         )?)
     }
 
+    /// Record a stable gaze candidate. This never changes input ownership on
+    /// its own; a deliberate physical pointer movement must confirm it.
+    pub fn preselect_gaze_target(&self, target: &arcrelay_gaze::GazeTarget) {
+        let Ok(device) = ServiceInstanceId::parse(target.device_id.clone()) else {
+            return;
+        };
+        let Ok(display) = DisplayId::parse(target.display_id.clone()) else {
+            return;
+        };
+        let point = DeskPointUm {
+            x: target.desk_x_um,
+            y: target.desk_y_um,
+        };
+        let valid = self.store.snapshot().layout.is_some_and(|layout| {
+            layout.displays.get(&display).is_some_and(|surface| {
+                surface.device_id == device && surface.desk_rect_um.contains(point)
+            })
+        });
+        if !valid {
+            return;
+        }
+        let far_from_consumed = lock(&self.gaze_consumed).as_ref().is_none_or(|consumed| {
+            consumed.target != device
+                || consumed.display != display
+                || (consumed.point.x.saturating_sub(point.x) as f64)
+                    .hypot(consumed.point.y.saturating_sub(point.y) as f64)
+                    >= 50_000.0
+        });
+        if !far_from_consumed {
+            return;
+        }
+        lock(&self.gaze_consumed).take();
+        *lock(&self.gaze_preselection) = Some(GazePreselection {
+            target: device,
+            display,
+            point,
+            expires_at: Instant::now() + Duration::from_millis(900),
+        });
+    }
+
+    pub fn clear_gaze_preselection(&self) {
+        lock(&self.gaze_preselection).take();
+        lock(&self.gaze_consumed).take();
+    }
+
+    async fn confirm_gaze_preselection(
+        self: &Arc<Self>,
+        event: &CapturedInputEvent,
+    ) -> Result<(), RuntimeError> {
+        let CapturedInputEvent::PointerDelta { x, y } = event else {
+            return Ok(());
+        };
+        // A small amount of camera noise must never move input ownership. The
+        // confirmation gesture is harmless pointer movement, not a click/key.
+        if (*x).hypot(*y) < 3.0 {
+            return Ok(());
+        }
+        // Never migrate a drag or keyboard chord between machines. Keep the
+        // candidate armed briefly so a later pointer move can confirm it once
+        // all physical keys and buttons have been released.
+        if lock(&self.session)
+            .as_ref()
+            .is_some_and(|session| !session.held.is_empty())
+        {
+            return Ok(());
+        }
+        let Some(selection) = lock(&self.gaze_preselection).take() else {
+            return Ok(());
+        };
+        if Instant::now() >= selection.expires_at {
+            return Ok(());
+        }
+        let layout = self.store.snapshot().layout.ok_or(RuntimeError::NoLayout)?;
+        let surface = layout
+            .displays
+            .get(&selection.display)
+            .filter(|surface| {
+                surface.device_id == selection.target
+                    && surface.desk_rect_um.contains(selection.point)
+            })
+            .cloned()
+            .ok_or(RuntimeError::NoDisplay)?;
+        let local = self.identity.service_instance_id.clone();
+
+        let controller = lock(&self.session)
+            .as_ref()
+            .map(|session| session.controller.clone());
+        if controller
+            .as_ref()
+            .is_some_and(|controller| controller != &local)
+        {
+            self.take_control_from_capture().await?;
+        } else if selection.target != local && controller.is_none() {
+            if !self.workspace_mesh_connected() {
+                return Ok(());
+            }
+            self.take_control_from_capture().await?;
+        }
+
+        let current_target = lock(&self.session)
+            .as_ref()
+            .map(|session| session.current_target.clone());
+        if current_target
+            .as_ref()
+            .is_some_and(|target| target != &selection.target)
+        {
+            let moving_from_local = current_target.as_ref() == Some(&local);
+            self.disable_consumer_capture();
+            self.handoff_to(selection.target.clone(), selection.display.clone())
+                .await?;
+            self.platform.set_native_quartz_capture_enabled(
+                selection.target != local && self.native_quartz_target_supported(&selection.target),
+            )?;
+            let generation = self
+                .system_gesture_generation
+                .fetch_add(1, Ordering::AcqRel)
+                + 1;
+            let gesture_version = self.system_gesture_target_version(&selection.target);
+            self.platform.set_system_gesture_capture_generation(
+                if selection.target != local && gesture_version != 0 {
+                    generation
+                } else {
+                    0
+                },
+                gesture_version,
+            )?;
+            if moving_from_local && selection.target != local {
+                self.platform.set_suppress_local(true)?;
+            }
+            self.refresh_consumer_capture();
+        }
+
+        *lock(&self.pointer) = Some(selection.point);
+        if selection.target == local {
+            self.platform.place_pointer(
+                &selection.display,
+                surface.logical_point_from_desk(selection.point),
+            )?;
+            self.platform.set_suppress_local(false)?;
+        } else {
+            self.send_input_event(
+                selection.target.clone(),
+                proto::InputEvent {
+                    event: Some(proto::input_event::Event::PointerMotion(
+                        proto::PointerMotion {
+                            desk_x_um: selection.point.x,
+                            desk_y_um: selection.point.y,
+                        },
+                    )),
+                },
+            )
+            .await?;
+        }
+        self.record(
+            "gaze",
+            format!(
+                "physical pointer movement confirmed gaze target {}",
+                selection.display
+            ),
+            None,
+        );
+        *lock(&self.gaze_consumed) = Some(selection);
+        Ok(())
+    }
+
     pub(super) async fn handle_captured(
         self: &Arc<Self>,
         event: CapturedInputEvent,
@@ -842,6 +1007,8 @@ impl ArcInputRuntime {
         if lock(&self.session).is_none() {
             self.emit_idle_physical_focus()?;
         }
+        self.confirm_gaze_preselection(&event).await?;
+
         // Offline islands are not participants. Only wait for ownership
         // synchronization within the current usable screen component.
         if !self.workspace_mesh_connected() {

@@ -167,6 +167,12 @@ export type FileKind = "image" | "pdf" | "archive" | "file";
 
 export type FrontendLogEntry = { level: string, event: string, detail: string, stack: string | null, };
 
+export type GazeCameraView = { id: string, name: string, description: string, };
+
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, target: GazeTargetView | null, error: string | null, };
+
+export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, };
+
 export type GeometryConfidence = "Unknown" | "Estimated" | "HardwareReported" | "UserProvided" | "UserCalibrated";
 
 export type GestureDebugAction = "swipeLeft" | "swipeRight" | "swipeUp" | "swipeDown" | "pinchIn" | "pinchOut";
@@ -481,12 +487,15 @@ export interface CommandMap {
   add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   automation_capabilities: { args: { }; result: Array<Capability> };
+  begin_gaze_calibration: { args: { cameraId: string; }; result: GazeStatusView };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_transfer: { args: { transferId: string; }; result: null };
+  capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
   check_for_app_update: { args: { }; result: AppUpdateCheckResult };
   choose_transfer_receive_directory: { args: { }; result: TransferSnapshot };
   clear_automation_activities: { args: { }; result: null };
+  clear_gaze_calibration: { args: { }; result: GazeStatusView };
   clear_gesture_debug: { args: { }; result: GestureDebugSnapshot };
   clipboard_clear_history: { args: { }; result: null };
   clipboard_copy_record: { args: { id: number; }; result: null };
@@ -538,6 +547,7 @@ export interface CommandMap {
   execute_action: { args: { actionId: string; }; result: string };
   export_actions_text: { args: { }; result: string };
   export_diagnostic_bundle: { args: { }; result: DiagnosticBundleInfo };
+  finish_gaze_calibration: { args: { }; result: GazeStatusView };
   forget_input_peer: { args: { serviceInstanceId: string; }; result: RuntimeSnapshot };
   forget_paired_device: { args: { deviceId: string; }; result: null };
   frontend_log: { args: { entry: FrontendLogEntry; }; result: null };
@@ -548,6 +558,7 @@ export interface CommandMap {
   get_application_drag_icon_path: { args: { }; result: string };
   get_bootstrap_state: { args: { }; result: BootstrapState };
   get_clipboard_window_pinned: { args: { }; result: boolean };
+  get_gaze_status: { args: { }; result: GazeStatusView };
   get_gesture_debug_report: { args: { }; result: GestureDebugReport };
   get_gesture_debug_snapshot: { args: { }; result: GestureDebugSnapshot };
   get_input_runtime_snapshot: { args: { }; result: RuntimeSnapshot };
@@ -573,6 +584,7 @@ export interface CommandMap {
   install_remote_printer: { args: { shareId: string; sourceDeviceId: string; }; result: PrinterSharingSnapshot };
   list_automation_activities: { args: { automationId: string | null; limit: number; }; result: Array<AutomationActivity> };
   list_automations: { args: { }; result: Array<AutomationDefinition> };
+  list_gaze_cameras: { args: { }; result: Array<GazeCameraView> };
   list_installed_apps: { args: { refresh: boolean; }; result: Array<InstalledAppView> };
   list_mcp_clients: { args: { }; result: Array<McpClientView> };
   list_mcp_configuration_changes: { args: { limit: number; }; result: Array<ConfigurationChange> };
@@ -586,6 +598,7 @@ export interface CommandMap {
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
   open_accessibility_system_settings: { args: { }; result: null };
   open_automation_screen_permission: { args: { }; result: null };
+  open_camera_permission_settings: { args: { }; result: null };
   open_full_disk_access_settings: { args: { }; result: null };
   open_input_permission_settings: { args: { }; result: null };
   open_log_directory: { args: { }; result: null };
@@ -642,6 +655,7 @@ export interface CommandMap {
   set_transfer_receive_policy: { args: { automatic: boolean; peerId: string; }; result: TransferSnapshot };
   show_test_system_notification: { args: { }; result: string };
   start_clipboard_window_drag: { args: { }; result: null };
+  start_gaze_tracking: { args: { cameraId: string; }; result: GazeStatusView };
   start_gesture_debug_capture: { args: { label: string; suppress: boolean; }; result: GestureDebugSnapshot };
   start_permission_guide_window_drag: { args: { }; result: null };
   start_remote_download_entries: { args: { peerId: string; relativePaths: Array<string>; shareId: string; }; result: Array<RemoteFileTransferSession> | null };
@@ -649,6 +663,7 @@ export interface CommandMap {
   start_remote_upload: { args: { folder: boolean; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileTransferSession | null };
   start_remote_upload_paths: { args: { paths: Array<string>; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileTransferSession };
   start_screenshot_capture: { args: { }; result: string };
+  stop_gaze_tracking: { args: { }; result: GazeStatusView };
   stop_gesture_debug: { args: { }; result: GestureDebugSnapshot };
   stop_remote_edit: { args: { peerId: string; relativePath: string; shareId: string; }; result: null };
   submit_system_share_request: { args: { peerId: string; requestId: string; transferId: string; }; result: null };
@@ -685,6 +700,7 @@ export interface EventMap {
   "desktop-notification": InAppNotification;
   "desktop-runtime": DesktopRuntimeState;
   "desktop-state": BootstrapState;
+  "gaze-state": GazeStatusView;
   "input-metrics": InputMetricsView | null;
   "notification-count": number;
   "notifications-changed": null;

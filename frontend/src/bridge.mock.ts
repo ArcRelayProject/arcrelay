@@ -7,6 +7,7 @@ import type { ActionPreset, AppSettings, AppUpdateCheckResult, AppUpdateProgress
 import { mockData } from "./bridgeMockData";
 import { automationMock } from './bridge.automations.mock';
 import { transfersMock } from './bridge.transfers.mock';
+import { gazeMockBridge } from './bridge.gaze.mock';
 import { sortRemoteFileEntries, type RemoteFileSortDirection, type RemoteFileSortKey } from "./remoteFileSort";
 const inTauri = () => "__TAURI_INTERNALS__" in window;
 const stateListeners = new Set<(state: BootstrapState) => void>();
@@ -114,6 +115,7 @@ function mockRemoteFileTransfer(direction: "upload" | "download", peerId: string
     };
 }
 export const bridge = {
+    ...gazeMockBridge,
     ...mcpMockBridge,
     ...automationMock,
     async onPrintJobActivityError(_listener: (message: string) => void): Promise<UnlistenFn> { return () => { }; },
