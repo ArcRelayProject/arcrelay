@@ -32,6 +32,7 @@ mod keyboard;
 mod scroll;
 use cursor::set_hidden as set_cursor_hidden;
 const CAPTURE_QUEUE_CAPACITY: usize = 4096;
+const FIELD_EVENT_SOURCE_UNIX_PROCESS_ID: u32 = 41;
 const FIELD_EVENT_SOURCE_USER_DATA: u32 = 42;
 const FIELD_SCROLL_WHEEL_EVENT_SCROLL_PHASE: u32 = 99;
 const FIELD_SCROLL_WHEEL_EVENT_SCROLL_COUNT: u32 = 100;
@@ -342,7 +343,7 @@ unsafe extern "C" fn capture_callback(
     if event.is_null() {
         return event;
     }
-    if CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA) == ARC_INPUT_EVENT_TAG {
+    if arcrelay_injected_event(event_type, event) {
         return event;
     }
     if event_type == 12
@@ -502,6 +503,34 @@ unsafe extern "C" fn capture_callback(
         }
     }
     event
+}
+
+unsafe fn arcrelay_injected_event(event_type: u32, event: CGEventRef) -> bool {
+    // Quartz normally preserves our user-data tag, but an absolute pointer
+    // warp can be re-emitted by the HID path without that field. The source
+    // process id survives that path, so use it as a second exact marker. This
+    // avoids a time-based suppression window that could swallow real mouse
+    // movement while remote pointer events are arriving continuously.
+    let event_tag = CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA);
+    let source_process_id = CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_UNIX_PROCESS_ID);
+    arcrelay_injected_source(
+        event_type,
+        event_tag,
+        source_process_id,
+        i64::from(std::process::id()),
+    )
+}
+
+fn arcrelay_injected_source(
+    event_type: u32,
+    event_tag: i64,
+    source_process_id: i64,
+    process_id: i64,
+) -> bool {
+    event_tag == ARC_INPUT_EVENT_TAG
+        || (matches!(event_type, 5 | 6 | 7 | 27)
+            && process_id > 0
+            && source_process_id == process_id)
 }
 
 struct CaptureState {
@@ -1485,7 +1514,16 @@ mod emergency_shortcut_tests {
     use super::*;
 
     #[test]
-    fn injected_pointer_placement_does_not_become_physical_takeover_input() {
+    fn recognizes_tagged_and_same_process_injected_events() {
+        assert!(arcrelay_injected_source(10, ARC_INPUT_EVENT_TAG, 0, 42));
+        assert!(arcrelay_injected_source(5, 0, 42, 42));
+        assert!(!arcrelay_injected_source(5, 0, 7, 42));
+        assert!(!arcrelay_injected_source(5, 0, 0, 0));
+        assert!(!arcrelay_injected_source(10, 0, 42, 42));
+    }
+
+    #[test]
+    fn untagged_same_process_pointer_placement_does_not_become_physical_takeover_input() {
         let (events, receiver) = mpsc::sync_channel(4);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
@@ -1508,7 +1546,8 @@ mod emergency_shortcut_tests {
             overflowed: AtomicBool::new(false),
         };
         unsafe {
-            // Construct and invoke the callback only, without posting/moving.
+            // A Quartz event created by this process already carries its PID,
+            // even before ArcRelay's explicit user-data tag is attached.
             let event =
                 CGEventCreateMouseEvent(std::ptr::null(), 5, CGPoint { x: 100.0, y: 100.0 }, 0);
             assert!(!event.is_null());
@@ -1521,10 +1560,7 @@ mod emergency_shortcut_tests {
                 ),
                 event
             );
-            assert!(matches!(
-                receiver.try_recv(),
-                Ok(CapturedInputEvent::PointerDelta { .. })
-            ));
+            assert!(receiver.try_recv().is_err());
             CGEventSetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
             assert_eq!(
                 capture_callback(
