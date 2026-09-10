@@ -1,7 +1,17 @@
 use super::*;
 
+#[cfg(target_os = "macos")]
+pub type ClipboardPasteRecipient = Option<objc2::rc::Retained<objc2_app_kit::NSRunningApplication>>;
+
 static CLIPBOARD_IDLE_REVISION: AtomicU64 = AtomicU64::new(0);
 const CLIPBOARD_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    // Keep the actual application object, so a recycled PID cannot become the
+    // recipient. This fallback belongs only to the current panel presentation.
+    static CLIPBOARD_INVOKING_APP: std::cell::RefCell<ClipboardPasteRecipient> = const { std::cell::RefCell::new(None) };
+}
 
 pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
@@ -25,6 +35,8 @@ fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     CLIPBOARD_SCALE_RESTORE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     stop_clipboard_outside_click_monitor();
+    #[cfg(target_os = "macos")]
+    CLIPBOARD_INVOKING_APP.with(|app| app.borrow_mut().take());
 
     let window = app.get_webview_window(CLIPBOARD_WINDOW_LABEL);
     if window.is_some() {
@@ -133,6 +145,8 @@ fn show_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     {
         return Ok(());
     }
+    #[cfg(target_os = "macos")]
+    remember_clipboard_invoking_application(app);
     ensure_clipboard_window_on_main(app)?;
     let Some(window) = app.get_webview_window(CLIPBOARD_WINDOW_LABEL) else {
         return Ok(());
@@ -774,43 +788,129 @@ fn clamp_window_axis(desired: f64, origin: f64, span: f64, window_span: f64) -> 
     desired.clamp(minimum, maximum)
 }
 
-// A nonactivating panel leaves the invoking application frontmost. Snapshot it
-// with the clipboard generation so a focus/content change cancels the request.
 #[cfg(target_os = "macos")]
-pub fn clipboard_paste_target(app: &AppHandle) -> tauri::Result<(i32, isize)> {
-    dispatch_appkit(app, "capture clipboard paste target", |_| {
-        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
-            .frontmostApplication()
-            .map(|app| app.processIdentifier())
-            .unwrap_or(0);
-        if pid <= 0 || pid as u32 == std::process::id() {
-            return Err(tauri::Error::Io(std::io::Error::other(
-                "no external paste target; content remains on clipboard",
-            )));
+fn external_frontmost_application() -> ClipboardPasteRecipient {
+    objc2_app_kit::NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .filter(|app| {
+            app.processIdentifier() > 0 && app.processIdentifier() as u32 != std::process::id()
+        })
+}
+
+#[cfg(target_os = "macos")]
+fn remember_clipboard_invoking_application(app: &AppHandle) {
+    debug_assert!(objc2::MainThreadMarker::new().is_some());
+    let frontmost = external_frontmost_application();
+    let visible = app
+        .get_webview_window(CLIPBOARD_WINDOW_LABEL)
+        .is_some_and(|window| window.is_visible().unwrap_or(false));
+    // Re-showing an already visible panel must not overwrite its invoker with
+    // ArcRelay. Opening a new presentation must not reuse an old recipient.
+    if frontmost.is_some() || !visible {
+        CLIPBOARD_INVOKING_APP.with(|saved| *saved.borrow_mut() = frontmost);
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn clipboard_paste_recipient(app: &AppHandle) -> tauri::Result<ClipboardPasteRecipient> {
+    dispatch_appkit(app, "capture clipboard paste recipient", |app| {
+        let frontmost = external_frontmost_application();
+        let panel_visible = app
+            .get_webview_window(CLIPBOARD_WINDOW_LABEL)
+            .is_some_and(|window| window.is_visible().unwrap_or(false));
+        Ok(frontmost.or_else(|| {
+            panel_visible
+                .then(|| CLIPBOARD_INVOKING_APP.with(|saved| saved.borrow().clone()))
+                .flatten()
+        }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn prepare_clipboard_paste_target(
+    app: &AppHandle,
+    original: ClipboardPasteRecipient,
+) -> tauri::Result<ClipboardPasteTarget> {
+    dispatch_appkit(app, "prepare clipboard paste target", move |app| {
+        let frontmost = external_frontmost_application();
+        if let (Some(original), Some(current)) = (original.as_ref(), frontmost.as_ref()) {
+            if original.processIdentifier() != current.processIdentifier() {
+                return Err(tauri::Error::Io(std::io::Error::other(
+                    "paste target changed during clipboard preparation; paste cancelled",
+                )));
+            }
         }
-        Ok((
-            pid,
-            objc2_app_kit::NSPasteboard::generalPasteboard().changeCount(),
+        let recipient = original.or(frontmost);
+        let clipboard_version = objc2_app_kit::NSPasteboard::generalPasteboard().changeCount();
+        // Match PasteGroup's ordering: surrender key status before deciding
+        // whether the external recipient has regained focus.
+        prepare_clipboard_window_for_paste(&app)?;
+        if let Some(recipient) = recipient.as_ref() {
+            if recipient.isTerminated() {
+                return Err(tauri::Error::Io(std::io::Error::other(
+                    "paste target has quit; content remains on clipboard",
+                )));
+            }
+            match external_frontmost_application() {
+                Some(current) if current.processIdentifier() != recipient.processIdentifier() => {
+                    return Err(tauri::Error::Io(std::io::Error::other(
+                        "paste target changed; paste cancelled",
+                    )));
+                }
+                None => {
+                    // Request restoration once; later polls must never steal
+                    // focus back after the user chooses another application.
+                    use objc2_foundation::NSObjectProtocol;
+                    let current = objc2_app_kit::NSApplication::sharedApplication(
+                        objc2::MainThreadMarker::new().expect("AppKit main thread"),
+                    );
+                    if current.respondsToSelector(objc2::sel!(yieldActivationToApplication:)) {
+                        current.yieldActivationToApplication(recipient);
+                    }
+                    if !recipient
+                        .activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty())
+                    {
+                        return Err(tauri::Error::Io(std::io::Error::other(
+                            "could not restore paste target; content remains on clipboard",
+                        )));
+                    }
+                    tracing::debug!(
+                        target_pid = recipient.processIdentifier(),
+                        "requested clipboard paste target activation"
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(ClipboardPasteTarget::new(
+            recipient.map(|app| app.processIdentifier()),
+            clipboard_version,
         ))
     })
 }
 
 #[cfg(target_os = "macos")]
-pub fn clipboard_paste_target_ready(app: &AppHandle, target: (i32, isize)) -> tauri::Result<bool> {
-    dispatch_appkit(app, "check clipboard paste target", move |app| {
-        let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
-            .frontmostApplication()
-            .map(|app| app.processIdentifier());
-        if pid != Some(target.0)
-            || objc2_app_kit::NSPasteboard::generalPasteboard().changeCount() != target.1
-        {
-            return Err(tauri::Error::Io(std::io::Error::other(
-                "paste target or clipboard changed; paste cancelled",
-            )));
-        }
-        match app.get_webview_window(CLIPBOARD_WINDOW_LABEL) {
-            Some(window) => Ok(!window.is_focused()?),
-            None => Ok(true),
-        }
-    })
+pub fn clipboard_paste_target_ready(
+    app: &AppHandle,
+    target: &mut ClipboardPasteTarget,
+    elapsed: std::time::Duration,
+) -> tauri::Result<bool> {
+    let (pid, version, focused) = dispatch_appkit(app, "check clipboard paste target", |app| {
+        let pid = external_frontmost_application().map(|app| app.processIdentifier());
+        let focused = match app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
+            Ok(panel) => panel.as_panel().isKeyWindow(),
+            Err(_) => match app.get_webview_window(CLIPBOARD_WINDOW_LABEL) {
+                Some(window) => window.is_focused()?,
+                None => false,
+            },
+        };
+        Ok((
+            pid,
+            objc2_app_kit::NSPasteboard::generalPasteboard().changeCount(),
+            focused,
+        ))
+    })?;
+    target
+        .observe(pid, version, focused, elapsed)
+        .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))
 }
