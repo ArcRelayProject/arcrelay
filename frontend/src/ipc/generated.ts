@@ -175,7 +175,7 @@ export type GazeCameraView = { id: string, name: string, description: string, };
 
 export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
 
-export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
 
 export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
 
@@ -493,7 +493,7 @@ export interface CommandMap {
   add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   automation_capabilities: { args: { }; result: Array<Capability> };
-  begin_gaze_calibration: { args: { cameraId: string; }; result: GazeStatusView };
+  begin_gaze_calibration: { args: { cameraId: string; displayId: string | null; }; result: GazeStatusView };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_transfer: { args: { transferId: string; }; result: null };

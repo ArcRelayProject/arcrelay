@@ -19,6 +19,8 @@ use crate::arc_input::ArcInputRuntime;
 
 const GAZE_EVENT: &str = "gaze-state";
 const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
+const GAZE_INDICATOR_WINDOW_PREFIX: &str = "gaze-indicator-";
+static GAZE_INDICATOR_WINDOW_ID: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_gaze_ipc.rs"));
@@ -94,6 +96,7 @@ pub struct GazeStatusView {
     pub camera_id: Option<String>,
     pub camera_name: Option<String>,
     pub calibrated: bool,
+    pub calibrated_display_ids: Vec<String>,
     pub calibration_samples: usize,
     pub captured_frames: u64,
     pub inferred_frames: u64,
@@ -105,21 +108,32 @@ pub struct GazeStatusView {
     pub error: Option<String>,
 }
 
+#[derive(Clone)]
+struct CalibrationRun {
+    calibrator: Calibrator,
+    refine_display_id: Option<String>,
+    base_profile: Option<CalibrationProfile>,
+}
+
 pub struct GazeService {
     input: Arc<ArcInputRuntime>,
     profile_path: PathBuf,
     tracker: OnceCell<Arc<GazeTracker>>,
     session: Mutex<Option<TrackerSession>>,
     forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
-    calibration: Mutex<Option<Calibrator>>,
+    calibration: Mutex<Option<CalibrationRun>>,
     profile: Mutex<Option<CalibrationProfile>>,
+    indicator_display: Mutex<Option<String>>,
     snapshots: watch::Sender<TrackerSnapshot>,
     revision: AtomicU64,
+    indicator_revision: AtomicU64,
 }
 
 impl GazeService {
     pub fn new(input: Arc<ArcInputRuntime>) -> Arc<Self> {
         let profile_path = input.paths().root.join("gaze-calibration.json");
+        let profile = load_profile_from_path(&profile_path)
+            .filter(|profile| profile.version >= 3 && !profile.head_regions.is_empty());
         Arc::new(Self {
             input,
             profile_path,
@@ -127,9 +141,11 @@ impl GazeService {
             session: Mutex::new(None),
             forwarding: Mutex::new(None),
             calibration: Mutex::new(None),
-            profile: Mutex::new(None),
+            profile: Mutex::new(profile),
+            indicator_display: Mutex::new(None),
             snapshots: watch::channel(TrackerSnapshot::default()).0,
             revision: AtomicU64::new(0),
+            indicator_revision: AtomicU64::new(0),
         })
     }
 
@@ -171,12 +187,12 @@ impl GazeService {
             .configuration
             .layout
             .ok_or_else(|| "请先完成跨屏输入的屏幕布局".to_string())?;
-        let profile = self.load_profile().filter(|profile| {
-            profile.version >= 3
-                && !profile.head_regions.is_empty()
-                && profile.camera_id == camera_id
-                && profile.layout_signature == layout_signature(&layout)
-        });
+        let profile = self
+            .load_profile()
+            .and_then(|profile| compatible_profile(profile, &camera_id, &layout));
+        if let Some(profile) = profile.as_ref() {
+            self.save_profile(profile)?;
+        }
         let mapper = profile
             .clone()
             .map(|profile| WorkspaceMapper::new(layout, profile))
@@ -214,6 +230,9 @@ impl GazeService {
                         {
                             tracing::warn!(%error, "failed to activate head-selected display");
                         }
+                        if let Err(error) = service.publish_target_indicator(&stable.target).await {
+                            tracing::warn!(%error, "failed to show gaze target indicator");
+                        }
                     } else {
                         service.input.preselect_gaze_target(&stable.target);
                     }
@@ -231,6 +250,7 @@ impl GazeService {
 
     pub async fn stop(&self) -> Result<(), String> {
         self.input.clear_gaze_preselection();
+        self.indicator_display.lock().await.take();
         if let Some(mut session) = self.session.lock().await.take() {
             session.stop().await.map_err(|error| error.to_string())?;
             self.snapshots.send_replace(session.snapshot());
@@ -243,6 +263,7 @@ impl GazeService {
 
     pub async fn status(&self) -> GazeStatusView {
         let snapshot = self.snapshots.borrow().clone();
+        let profile = self.profile.lock().await.clone();
         let observation = snapshot
             .observation
             .as_ref()
@@ -271,15 +292,27 @@ impl GazeService {
         GazeStatusView {
             revision: self.revision.fetch_add(1, Ordering::AcqRel) + 1,
             state: format!("{:?}", snapshot.state).to_lowercase(),
-            camera_id: snapshot.camera_id,
+            camera_id: snapshot
+                .camera_id
+                .or_else(|| profile.as_ref().map(|profile| profile.camera_id.clone())),
             camera_name: snapshot.camera_name,
-            calibrated: self.profile.lock().await.is_some(),
+            calibrated: profile.is_some(),
+            calibrated_display_ids: profile
+                .as_ref()
+                .map(|profile| {
+                    profile
+                        .head_regions
+                        .iter()
+                        .map(|region| region.display_id.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
             calibration_samples: self
                 .calibration
                 .lock()
                 .await
                 .as_ref()
-                .map_or(0, Calibrator::sample_count),
+                .map_or(0, |run| run.calibrator.sample_count()),
             captured_frames: snapshot.captured_frames,
             inferred_frames: snapshot.inferred_frames,
             dropped_frames: snapshot.dropped_frames,
@@ -297,15 +330,44 @@ impl GazeService {
         }
     }
 
-    pub async fn begin_calibration(&self, camera_id: String) -> Result<(), String> {
+    pub async fn begin_calibration(
+        &self,
+        camera_id: String,
+        refine_display_id: Option<String>,
+    ) -> Result<(), String> {
+        self.indicator_display.lock().await.take();
         let layout = self
             .input
             .snapshot()
             .configuration
             .layout
             .ok_or_else(|| "请先完成跨屏输入的屏幕布局".to_string())?;
-        *self.calibration.lock().await =
-            Some(Calibrator::new(camera_id, layout_signature(&layout)));
+        if let Some(display_id) = refine_display_id.as_ref() {
+            if !layout
+                .displays
+                .values()
+                .any(|display| display.display_id.as_str() == display_id)
+            {
+                return Err("要优化的屏幕不在当前布局中".into());
+            }
+        }
+        let base_profile = if refine_display_id.is_some() {
+            let profile = self
+                .profile
+                .lock()
+                .await
+                .clone()
+                .and_then(|profile| compatible_profile(profile, &camera_id, &layout))
+                .ok_or_else(|| "请先完成一次全屏标定，再单独优化屏幕".to_string())?;
+            Some(profile)
+        } else {
+            None
+        };
+        *self.calibration.lock().await = Some(CalibrationRun {
+            calibrator: Calibrator::new(camera_id, layout_signature(&layout)),
+            refine_display_id,
+            base_profile,
+        });
         Ok(())
     }
 
@@ -340,10 +402,18 @@ impl GazeService {
         let calibration = calibration
             .as_mut()
             .ok_or_else(|| "尚未开始标定".to_string())?;
+        if calibration
+            .refine_display_id
+            .as_ref()
+            .is_some_and(|expected| expected != &display_id)
+        {
+            return Err("当前优化样本不属于所选屏幕".into());
+        }
         calibration
+            .calibrator
             .push_for_display(&observation, point, display_id)
             .map_err(|error| error.to_string())?;
-        Ok(calibration.sample_count())
+        Ok(calibration.calibrator.sample_count())
     }
 
     pub async fn finish_calibration(&self) -> Result<GazeStatusView, String> {
@@ -354,18 +424,32 @@ impl GazeService {
             .as_ref()
             .cloned()
             .ok_or_else(|| "尚未开始标定".to_string())?;
-        let profile = calibration.finish().map_err(|error| error.to_string())?;
+        let refined_profile = calibration
+            .calibrator
+            .finish()
+            .map_err(|error| error.to_string())?;
         let layout = self
             .input
             .snapshot()
             .configuration
             .layout
             .ok_or_else(|| "屏幕布局在标定期间被移除".to_string())?;
+        let profile = if let (Some(display_id), Some(mut base)) =
+            (calibration.refine_display_id, calibration.base_profile)
+        {
+            merge_refined_profile(
+                &mut base,
+                refined_profile,
+                &display_id,
+                layout_signature(&layout),
+            )?;
+            base
+        } else {
+            refined_profile
+        };
         let mapper =
             WorkspaceMapper::new(layout, profile.clone()).map_err(|error| error.to_string())?;
-        let bytes = serde_json::to_vec_pretty(&profile).map_err(|error| error.to_string())?;
-        crate::infrastructure::durable_file::replace_private(&self.profile_path, &bytes)
-            .map_err(|error| format!("保存眼动标定失败: {error}"))?;
+        self.save_profile(&profile)?;
         self.tracker().await?.set_workspace_mapper(Some(mapper));
         self.calibration.lock().await.take();
         *self.profile.lock().await = Some(profile);
@@ -392,14 +476,255 @@ impl GazeService {
     }
 
     fn load_profile(&self) -> Option<CalibrationProfile> {
-        let bytes = std::fs::read(&self.profile_path).ok()?;
-        match serde_json::from_slice(&bytes) {
-            Ok(profile) => Some(profile),
-            Err(error) => {
-                tracing::warn!(%error, "ignored invalid gaze calibration profile");
-                None
+        load_profile_from_path(&self.profile_path)
+    }
+
+    fn save_profile(&self, profile: &CalibrationProfile) -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(profile).map_err(|error| error.to_string())?;
+        crate::infrastructure::durable_file::replace_private(&self.profile_path, &bytes)
+            .map_err(|error| format!("保存眼动标定失败: {error}"))
+    }
+
+    async fn publish_target_indicator(
+        &self,
+        target: &arcrelay_gaze::GazeTarget,
+    ) -> Result<(), String> {
+        let mut shown_display = self.indicator_display.lock().await;
+        if shown_display.as_deref() == Some(target.display_id.as_str()) {
+            return Ok(());
+        }
+        *shown_display = Some(target.display_id.clone());
+        drop(shown_display);
+
+        let layout = self
+            .input
+            .snapshot()
+            .configuration
+            .layout
+            .ok_or_else(|| "屏幕布局不可用".to_string())?;
+        let display = layout
+            .displays
+            .values()
+            .find(|display| display.display_id.as_str() == target.display_id)
+            .ok_or_else(|| "识别到的屏幕不在当前布局中".to_string())?;
+        let mut device_displays = layout
+            .displays
+            .values()
+            .filter(|candidate| candidate.device_id == display.device_id)
+            .collect::<Vec<_>>();
+        device_displays.sort_by(|left, right| {
+            left.logical_bounds
+                .y
+                .total_cmp(&right.logical_bounds.y)
+                .then_with(|| left.logical_bounds.x.total_cmp(&right.logical_bounds.x))
+        });
+        let screen_index = device_displays
+            .iter()
+            .position(|candidate| candidate.display_id == display.display_id)
+            .ok_or_else(|| "无法定位识别到的屏幕".to_string())? as u32;
+        let sequence = self.indicator_revision.fetch_add(1, Ordering::AcqRel) + 1;
+
+        let result = self
+            .input
+            .send_gaze_calibration_overlay(GazeCalibrationOverlayEvent {
+                session_id: format!("indicator:{sequence}"),
+                stage: "indicator".into(),
+                source_device_id: self.input.identity().service_instance_id.to_string(),
+                target_device_id: display.device_id.to_string(),
+                display_id: display.display_id.to_string(),
+                screen_index,
+                next_screen_index: None,
+                screen_name: display.name.clone(),
+                next_screen_name: None,
+                target_u: 0.5,
+                target_v: 0.5,
+                dwell_progress: 0.0,
+                current: 0,
+                total: 0,
+            })
+            .await
+            .map_err(|error| error.to_string());
+        if result.is_err() {
+            let mut shown_display = self.indicator_display.lock().await;
+            if shown_display.as_deref() == Some(target.display_id.as_str()) {
+                shown_display.take();
             }
         }
+        result
+    }
+}
+
+fn load_profile_from_path(path: &std::path::Path) -> Option<CalibrationProfile> {
+    let bytes = std::fs::read(path).ok()?;
+    match serde_json::from_slice(&bytes) {
+        Ok(profile) => Some(profile),
+        Err(error) => {
+            tracing::warn!(%error, "ignored invalid gaze calibration profile");
+            None
+        }
+    }
+}
+
+fn compatible_profile(
+    mut profile: CalibrationProfile,
+    camera_id: &str,
+    layout: &arcrelay_input::WorkspaceLayout,
+) -> Option<CalibrationProfile> {
+    if profile.version < 3
+        || profile.head_regions.is_empty()
+        || profile.camera_id != camera_id
+        || profile.head_regions.iter().any(|region| {
+            !layout
+                .displays
+                .values()
+                .any(|display| display.display_id.as_str() == region.display_id)
+        })
+    {
+        return None;
+    }
+    profile.layout_signature = layout_signature(layout);
+    Some(profile)
+}
+
+fn merge_refined_profile(
+    base: &mut CalibrationProfile,
+    refined: CalibrationProfile,
+    display_id: &str,
+    layout_signature: String,
+) -> Result<(), String> {
+    let replacement = refined
+        .head_regions
+        .into_iter()
+        .find(|region| region.display_id == display_id)
+        .ok_or_else(|| "没有生成所选屏幕的头部方向样本".to_string())?;
+    base.head_regions
+        .retain(|region| region.display_id != display_id);
+    base.head_regions.push(replacement);
+    base.head_regions
+        .sort_by(|left, right| left.display_id.cmp(&right.display_id));
+    base.layout_signature = layout_signature;
+    base.sample_count = base
+        .head_regions
+        .iter()
+        .map(|region| region.sample_count)
+        .sum();
+    base.eye_sample_count = Some(0);
+    Ok(())
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use std::collections::BTreeMap;
+
+    use arcrelay_gaze::HeadRegionProfile;
+    use arcrelay_input::{
+        DeskRectUm, DisplayFingerprint, DisplayId, DisplayRotation, DisplaySurface,
+        GeometryConfidence, InventoryRevision, LogicalRect, ScaleFactor, ServiceInstanceId,
+        SizeI64, SizeU32, TopologyRevision, WorkspaceId, WorkspaceLayout,
+    };
+
+    use super::*;
+
+    fn region(display_id: &str, yaw: f64, sample_count: usize) -> HeadRegionProfile {
+        HeadRegionProfile {
+            display_id: display_id.into(),
+            centroid: [yaw, 0.0, 0.5, 0.5, 0.1],
+            scale: [0.05; 5],
+            sample_count,
+        }
+    }
+
+    fn profile(regions: Vec<HeadRegionProfile>, signature: &str) -> CalibrationProfile {
+        CalibrationProfile {
+            version: 3,
+            camera_id: "camera".into(),
+            layout_signature: signature.into(),
+            coefficients_x: [0.0; 8],
+            coefficients_y: [0.0; 8],
+            rms_error_um: 0.0,
+            sample_count: regions.iter().map(|region| region.sample_count).sum(),
+            eye_sample_count: Some(0),
+            head_coefficients_x: None,
+            head_coefficients_y: None,
+            head_rms_error_um: None,
+            head_regions: regions,
+        }
+    }
+
+    fn layout() -> WorkspaceLayout {
+        let display_id = DisplayId::parse("display-a").unwrap();
+        let display = DisplaySurface {
+            display_id: display_id.clone(),
+            device_id: ServiceInstanceId::parse("device-a").unwrap(),
+            fingerprint: DisplayFingerprint::parse("panel-a").unwrap(),
+            name: "Main".into(),
+            pixel_size: SizeU32 {
+                width: 1920,
+                height: 1080,
+            },
+            logical_bounds: LogicalRect {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+            scale_factor: ScaleFactor(1.0),
+            physical_size_um: SizeI64 {
+                width: 600_000,
+                height: 340_000,
+            },
+            rotation: DisplayRotation::Degrees0,
+            desk_rect_um: DeskRectUm {
+                x: 0,
+                y: 0,
+                width: 600_000,
+                height: 340_000,
+            },
+            geometry_confidence: GeometryConfidence::HardwareReported,
+            inventory_revision: InventoryRevision(1),
+        };
+        WorkspaceLayout {
+            workspace_id: WorkspaceId::parse("desk-after-restart").unwrap(),
+            revision: TopologyRevision(9),
+            displays: BTreeMap::from([(display_id, display)]),
+            portals: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn compatible_saved_profile_survives_a_changed_layout_signature() {
+        let layout = layout();
+        let restored = compatible_profile(
+            profile(
+                vec![region("display-a", 0.0, 9)],
+                "signature-before-restart",
+            ),
+            "camera",
+            &layout,
+        )
+        .expect("restore compatible profile");
+        assert_eq!(restored.layout_signature, layout_signature(&layout));
+        assert!(compatible_profile(restored.clone(), "different-camera", &layout).is_none());
+        let mut missing = restored;
+        missing.head_regions[0].display_id = "missing-display".into();
+        assert!(compatible_profile(missing, "camera", &layout).is_none());
+    }
+
+    #[test]
+    fn refining_one_display_preserves_every_other_region() {
+        let mut base = profile(
+            vec![region("display-a", -0.4, 9), region("display-b", 0.4, 9)],
+            "old",
+        );
+        let refined = profile(vec![region("display-b", 0.65, 12)], "temporary");
+        merge_refined_profile(&mut base, refined, "display-b", "new".into()).unwrap();
+        assert_eq!(base.layout_signature, "new");
+        assert_eq!(base.sample_count, 21);
+        assert_eq!(base.head_regions.len(), 2);
+        assert_eq!(base.head_regions[0].display_id, "display-a");
+        assert_eq!(base.head_regions[0].centroid[0], -0.4);
+        assert_eq!(base.head_regions[1].display_id, "display-b");
+        assert_eq!(base.head_regions[1].centroid[0], 0.65);
     }
 }
 
@@ -409,6 +734,99 @@ fn close_gaze_calibration_windows_inner(app: &AppHandle) {
             let _ = window.close();
         }
     }
+}
+
+fn close_gaze_indicator_windows_inner(app: &AppHandle) {
+    for (label, window) in app.webview_windows() {
+        if label.starts_with(GAZE_INDICATOR_WINDOW_PREFIX) {
+            let _ = window.close();
+        }
+    }
+}
+
+fn show_gaze_target_indicator(
+    app: &AppHandle,
+    event: &GazeCalibrationOverlayEvent,
+) -> Result<(), String> {
+    close_gaze_indicator_windows_inner(app);
+    let mut monitors = app
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+    monitors.sort_by_key(|monitor| (monitor.position().y, monitor.position().x));
+    let monitor = monitors
+        .get(event.screen_index as usize)
+        .ok_or_else(|| format!("识别提示的屏幕 {} 不可用", event.screen_index + 1))?;
+    let monitor_position = *monitor.position();
+    let monitor_size = *monitor.size();
+    let scale = monitor.scale_factor();
+    let width = (360.0 * scale).round() as u32;
+    let height = (82.0 * scale).round() as u32;
+    let x = monitor_position.x + (monitor_size.width.saturating_sub(width) / 2) as i32;
+    let y = monitor_position.y + (28.0 * scale).round() as i32;
+    let id = GAZE_INDICATOR_WINDOW_ID.fetch_add(1, Ordering::AcqRel) + 1;
+    let label = format!("{GAZE_INDICATOR_WINDOW_PREFIX}{id}");
+    let url = WebviewUrl::App(
+        format!(
+            "gaze-calibration.html?mode=indicator&screen={}",
+            event.screen_index
+        )
+        .into(),
+    );
+    let window = WebviewWindowBuilder::new(app, &label, url)
+        .title("ArcRelay 屏幕识别")
+        .inner_size(360.0, 82.0)
+        .decorations(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .transparent(true)
+        .visible(false)
+        .focused(false)
+        .build()
+        .map_err(|error| format!("创建屏幕识别提示失败: {error}"))?;
+    window
+        .set_position(Position::Physical(PhysicalPosition::new(x, y)))
+        .map_err(|error| format!("定位屏幕识别提示失败: {error}"))?;
+    window
+        .set_size(Size::Physical(PhysicalSize::new(width, height)))
+        .map_err(|error| format!("调整屏幕识别提示失败: {error}"))?;
+    let _ = window.set_ignore_cursor_events(true);
+    window
+        .show()
+        .map_err(|error| format!("显示屏幕识别提示失败: {error}"))?;
+
+    let payload = GazeCalibrationFlowPayload {
+        session_id: event.session_id.clone(),
+        source_device_id: event.source_device_id.clone(),
+        target_device_id: event.target_device_id.clone(),
+        stage: event.stage.clone(),
+        screen_index: event.screen_index,
+        next_screen_index: None,
+        screen_name: event.screen_name.clone(),
+        next_screen_name: None,
+        u: 0.5,
+        v: 0.5,
+        dwell_progress: 0.0,
+        current: 0,
+        total: 0,
+    };
+    window
+        .emit("gaze-calibration-flow", payload.clone())
+        .map_err(|error| error.to_string())?;
+    let app_for_replay = app.clone();
+    let replay_payload = payload.clone();
+    let close_label = label.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(140)).await;
+        if let Some(window) = app_for_replay.get_webview_window(&close_label) {
+            let _ = window.emit("gaze-calibration-flow", replay_payload);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(1_660)).await;
+        if let Some(window) = app_for_replay.get_webview_window(&close_label) {
+            let _ = window.close();
+        }
+    });
+    Ok(())
 }
 
 fn gaze_calibration_windows_exist(app: &AppHandle) -> bool {
@@ -497,6 +915,9 @@ pub fn apply_gaze_calibration_overlay_event(
     app: &AppHandle,
     event: &GazeCalibrationOverlayEvent,
 ) -> Result<(), String> {
+    if event.stage == "indicator" {
+        return show_gaze_target_indicator(app, event);
+    }
     if event.stage == "close" {
         close_gaze_calibration_windows_inner(app);
         return Ok(());
@@ -625,8 +1046,9 @@ pub async fn stop_gaze_tracking(
 pub async fn begin_gaze_calibration(
     service: State<'_, Arc<GazeService>>,
     camera_id: String,
+    display_id: Option<String>,
 ) -> Result<GazeStatusView, String> {
-    service.begin_calibration(camera_id).await?;
+    service.begin_calibration(camera_id, display_id).await?;
     Ok(service.status().await)
 }
 

@@ -11,6 +11,7 @@ let status: GazeStatusView = {
   cameraId: null,
   cameraName: null,
   calibrated: false,
+  calibratedDisplayIds: [],
   calibrationSamples: 0,
   capturedFrames: 0,
   inferredFrames: 0,
@@ -22,6 +23,7 @@ let status: GazeStatusView = {
   error: null,
 };
 const clone = () => structuredClone({ ...status, revision: ++status.revision });
+let refiningDisplayId: string | null = null;
 
 export const gazeMockBridge = {
   async listGazeCameras() { return [camera]; },
@@ -31,11 +33,19 @@ export const gazeMockBridge = {
     return clone();
   },
   async stopGazeTracking() { status = { ...status, state: "stopped" }; return clone(); },
-  async beginGazeCalibration(_cameraId: string) { status = { ...status, calibrationSamples: 0 }; return clone(); },
+  async beginGazeCalibration(_cameraId: string, displayId: string | null = null) { refiningDisplayId = displayId; status = { ...status, calibrationSamples: 0 }; return clone(); },
   async captureGazeCalibrationSample(_x: number, _y: number) { status = { ...status, calibrationSamples: status.calibrationSamples + 1 }; return status.calibrationSamples; },
-  async finishGazeCalibration() { status = { ...status, calibrated: true, state: "tracking" }; return clone(); },
+  async finishGazeCalibration() {
+    const allDisplays = ["browser-display", "browser-laptop", "remote-display"];
+    const calibratedDisplayIds = refiningDisplayId
+      ? [...new Set([...status.calibratedDisplayIds, refiningDisplayId])]
+      : allDisplays;
+    refiningDisplayId = null;
+    status = { ...status, calibrated: true, calibratedDisplayIds, state: "tracking" };
+    return clone();
+  },
   async cancelGazeCalibration() { status = { ...status, calibrationSamples: 0 }; return clone(); },
-  async clearGazeCalibration() { status = { ...status, calibrated: false, calibrationSamples: 0, state: "uncalibrated" }; return clone(); },
+  async clearGazeCalibration() { status = { ...status, calibrated: false, calibratedDisplayIds: [], calibrationSamples: 0, state: "uncalibrated" }; return clone(); },
   async openGazeCalibrationWindows() { return [{ index: 0, name: "内建视网膜显示器", x: 0, y: 0, width: 1728, height: 1117, scaleFactor: 2 }]; },
   async focusGazeCalibrationScreen(_index: number) {},
   async closeGazeCalibrationWindows() {},
@@ -46,6 +56,8 @@ export const gazeMockBridge = {
       if (["uncalibrated", "tracking"].includes(status.state)) {
         const frame = status.inferredFrames + 1;
         const wobble = Math.sin(frame / 4) * 0.002;
+        const displayIds = status.calibratedDisplayIds;
+        const displayId = displayIds.length ? displayIds[Math.floor(frame / 24) % displayIds.length] : null;
         status = {
           ...status,
           capturedFrames: status.capturedFrames + 3,
@@ -61,6 +73,15 @@ export const gazeMockBridge = {
             gazeY: -0.06 + wobble,
             gazeZ: 0.99,
           },
+          target: displayId ? {
+            deviceId: displayId === "remote-display" ? "remote-office-mac" : "browser-preview",
+            displayId,
+            logicalX: 640,
+            logicalY: 360,
+            confidence: 0.84,
+            stableForMs: 680,
+            source: "headFallback",
+          } : null,
         };
         listener(clone());
       }

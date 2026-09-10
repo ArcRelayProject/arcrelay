@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-  import { ArrowRight, CheckCircle } from "phosphor-svelte";
+  import { ArrowRight, CheckCircle, Eye, Monitor } from "phosphor-svelte";
   import { onMount } from "svelte";
 
   import BrandLogo from "../BrandLogo.svelte";
@@ -11,6 +11,7 @@
 
   const search = new URLSearchParams(window.location.search);
   const screenIndex = Number(search.get("screen") ?? "0");
+  const indicatorMode = search.get("mode") === "indicator";
   const isTauri = "__TAURI_INTERNALS__" in window;
   let lastFlowAt = Date.now();
   let flow: CalibrationFlowPayload = {
@@ -34,6 +35,7 @@
   $: dotStyle = `left:${flow.u * 100}%;top:${flow.v * 100}%;--dwell:${flow.dwellProgress * 360}deg`;
 
   onMount(() => {
+    document.documentElement.classList.toggle("indicator-mode", indicatorMode);
     let unlisten: (() => void) | undefined;
     if (isTauri) {
       void listen<CalibrationFlowPayload>("gaze-calibration-flow", (event) => {
@@ -41,7 +43,7 @@
         flow = event.payload;
       }).then((dispose) => { unlisten = dispose; });
     } else {
-      const stage = (search.get("stage") ?? "calibrating") as CalibrationFlowPayload["stage"];
+      const stage = (search.get("stage") ?? (indicatorMode ? "indicator" : "calibrating")) as CalibrationFlowPayload["stage"];
       flow = {
         sessionId: "preview",
         sourceDeviceId: "preview-source",
@@ -73,15 +75,25 @@
         });
       }
     };
-    window.addEventListener("keydown", cancel);
+    if (!indicatorMode) window.addEventListener("keydown", cancel);
     return () => {
       unlisten?.();
       window.clearInterval(staleWatchdog);
       window.removeEventListener("keydown", cancel);
+      document.documentElement.classList.remove("indicator-mode");
     };
   });
 </script>
 
+{#if indicatorMode || flow.stage === "indicator"}
+  <main class="indicator-shell">
+    <section class="target-indicator" role="status" aria-live="polite">
+      <span class="indicator-icon"><Eye size={25} weight="fill" /></span>
+      <div><small>ArcRelay 已识别</small><strong>正在看向 {flow.screenName || "这块屏幕"}</strong></div>
+      <Monitor size={20} weight="duotone" />
+    </section>
+  </main>
+{:else}
 <main class:active class:paused={active && flow.stage === "paused"} class:incoming>
   <header>
     <div class="brand"><BrandLogo size={20} /><strong>ArcRelay</strong><span>眼动标定</span></div>
@@ -130,3 +142,4 @@
 
   <footer>画面仅在本机内存中处理，不会保存或上传</footer>
 </main>
+{/if}

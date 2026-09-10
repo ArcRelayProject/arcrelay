@@ -1,6 +1,6 @@
 import type { GazeObservationView } from "../../ipc/generated";
 
-export type CalibrationStage = "idle" | "calibrating" | "paused" | "transition";
+export type CalibrationStage = "idle" | "calibrating" | "paused" | "transition" | "indicator";
 
 export type CalibrationFlowPayload = {
   sessionId: string;

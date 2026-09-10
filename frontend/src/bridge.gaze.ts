@@ -8,8 +8,8 @@ export const gazeBridge = {
   startGazeTracking: (cameraId: string): Promise<GazeStatusView> =>
     invoke("start_gaze_tracking", { cameraId }),
   stopGazeTracking: (): Promise<GazeStatusView> => invoke("stop_gaze_tracking"),
-  beginGazeCalibration: (cameraId: string): Promise<GazeStatusView> =>
-    invoke("begin_gaze_calibration", { cameraId }),
+  beginGazeCalibration: (cameraId: string, displayId: string | null = null): Promise<GazeStatusView> =>
+    invoke("begin_gaze_calibration", { cameraId, displayId }),
   captureGazeCalibrationSample: (deskXUm: number, deskYUm: number): Promise<number> =>
     invoke("capture_gaze_calibration_sample", { deskXUm, deskYUm }),
   finishGazeCalibration: (): Promise<GazeStatusView> => invoke("finish_gaze_calibration"),

@@ -217,6 +217,10 @@ fn gaze_stage_to_proto(stage: &str) -> Result<i32, RuntimeError> {
         "calibrating" => proto::GazeCalibrationStage::Calibrating,
         "paused" => proto::GazeCalibrationStage::Paused,
         "transition" => proto::GazeCalibrationStage::Transition,
+        // The wire message predates the lightweight target indicator. Encode
+        // it as Calibrating and let updated peers distinguish it with the
+        // reserved session-id prefix without changing the protobuf contract.
+        "indicator" => proto::GazeCalibrationStage::Calibrating,
         "close" => proto::GazeCalibrationStage::Close,
         "cancel" => proto::GazeCalibrationStage::Cancel,
         _ => {

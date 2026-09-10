@@ -52,6 +52,31 @@ async fn local_gaze_calibration_overlay_uses_the_runtime_event_path() {
     assert_eq!(event.source_device_id, local);
     assert_eq!(event.display_id, "screen-1");
     assert_eq!(event.dwell_progress, 0.25);
+
+    runtime
+        .send_gaze_calibration_overlay(GazeCalibrationOverlayEvent {
+            session_id: "indicator:1".into(),
+            stage: "indicator".into(),
+            source_device_id: String::new(),
+            target_device_id: local,
+            display_id: "screen-1".into(),
+            screen_index: 0,
+            next_screen_index: None,
+            screen_name: "Main".into(),
+            next_screen_name: None,
+            target_u: 0.5,
+            target_v: 0.5,
+            dwell_progress: 0.0,
+            current: 0,
+            total: 0,
+        })
+        .await
+        .unwrap();
+    let RuntimeEvent::GazeCalibrationOverlay(event) = events.recv().await.unwrap() else {
+        panic!("expected gaze target indicator event");
+    };
+    assert_eq!(event.stage, "indicator");
+    assert_eq!(event.session_id, "indicator:1");
 }
 
 #[tokio::test]
