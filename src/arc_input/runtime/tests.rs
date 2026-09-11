@@ -148,6 +148,96 @@ async fn gaze_preselection_never_changes_control_without_physical_confirmation()
     assert!(lock(&runtime.gaze_preselection).is_none());
 }
 
+#[tokio::test]
+async fn shared_gaze_target_is_received_and_cleared_by_its_source() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local-gaze-target").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.clone();
+    let remote = ServiceInstanceId::parse("remote-gaze-source").unwrap();
+    let local_display = test_display("local-screen", &local, 0);
+    let remote_display = test_display("remote-screen", &remote, 500_000);
+    let workspace = WorkspaceId::parse("shared-gaze-desk").unwrap();
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: workspace.clone(),
+        revision: TopologyRevision(4),
+        displays: [
+            (local_display.display_id.clone(), local_display),
+            (remote_display.display_id.clone(), remote_display),
+        ]
+        .into_iter()
+        .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+
+    let header = proto::RuntimeHeader {
+        workspace_id: workspace.to_string(),
+        topology_revision: 4,
+        control_epoch: 7,
+        source_device_id: remote.to_string(),
+        target_device_id: local.to_string(),
+        sequence: 0,
+    };
+    runtime
+        .handle_control(
+            remote.clone(),
+            proto::ControlFrame {
+                body: Some(proto::control_frame::Body::GazeTargetSelection(
+                    proto::GazeTargetSelection {
+                        header: Some(header.clone()),
+                        active: true,
+                        target_device_id: local.to_string(),
+                        target_display_id: "local-screen".into(),
+                        target_x_um: 250_000,
+                        target_y_um: 150_000,
+                    },
+                )),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        lock(&runtime.active_gaze_target).clone(),
+        Some(ActiveGazeTarget {
+            source: remote.clone(),
+            target: local,
+            display: DisplayId::parse("local-screen").unwrap(),
+            point: DeskPointUm {
+                x: 250_000,
+                y: 150_000,
+            },
+        })
+    );
+
+    runtime
+        .handle_control(
+            remote,
+            proto::ControlFrame {
+                body: Some(proto::control_frame::Body::GazeTargetSelection(
+                    proto::GazeTargetSelection {
+                        header: Some(header),
+                        active: false,
+                        target_device_id: String::new(),
+                        target_display_id: String::new(),
+                        target_x_um: 0,
+                        target_y_um: 0,
+                    },
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(lock(&runtime.active_gaze_target).is_none());
+}
+
 #[test]
 fn gaze_return_to_local_uses_the_active_route_not_the_hidden_native_pointer() {
     let local = ServiceInstanceId::parse("local-device").unwrap();

@@ -249,7 +249,7 @@ impl GazeService {
     }
 
     pub async fn stop(&self) -> Result<(), String> {
-        self.input.clear_gaze_preselection();
+        self.input.clear_active_gaze_target().await;
         self.indicator_display.lock().await.take();
         if let Some(mut session) = self.session.lock().await.take() {
             session.stop().await.map_err(|error| error.to_string())?;

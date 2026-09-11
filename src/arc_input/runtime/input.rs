@@ -331,6 +331,19 @@ impl ArcInputRuntime {
         if self.external_input_owner().is_none() {
             self.emit_workspace_focus(WorkspaceInputFocusCause::PhysicalActivity);
         }
+        if let Err(error) = self
+            .apply_active_gaze_target_as_controller(
+                "physical input ownership retained the active gaze target",
+            )
+            .await
+        {
+            self.record(
+                "gaze",
+                format!("active target restore failed: {error}"),
+                None,
+            );
+            return Err(error);
+        }
         Ok(token_epoch)
     }
 
@@ -812,6 +825,26 @@ impl ArcInputRuntime {
         lock(&self.gaze_consumed).take();
     }
 
+    pub async fn clear_active_gaze_target(&self) {
+        self.clear_gaze_preselection();
+        let local = self.identity.service_instance_id.clone();
+        let cleared = {
+            let mut active = lock(&self.active_gaze_target);
+            if active
+                .as_ref()
+                .is_some_and(|selection| selection.source == local)
+            {
+                active.take();
+                true
+            } else {
+                false
+            }
+        };
+        if cleared {
+            self.broadcast_gaze_target(None).await;
+        }
+    }
+
     pub fn clear_gaze_candidate(&self) {
         lock(&self.gaze_preselection).take();
     }
@@ -871,6 +904,49 @@ impl ArcInputRuntime {
         if Instant::now() >= selection.expires_at {
             return Ok(());
         }
+        let active = ActiveGazeTarget {
+            source: self.identity.service_instance_id.clone(),
+            target: selection.target.clone(),
+            display: selection.display.clone(),
+            point: selection.point,
+        };
+        self.publish_gaze_target(active.clone()).await;
+        let controller = lock(&self.session)
+            .as_ref()
+            .map(|session| session.controller.clone());
+        if controller.is_none() && active.target != self.identity.service_instance_id {
+            if !self.workspace_mesh_connected() {
+                return Ok(());
+            }
+            self.take_control_from_capture().await?;
+        }
+        let result = self.apply_gaze_target(active, reason).await;
+        if result.is_ok() {
+            *lock(&self.gaze_consumed) = Some(selection);
+        }
+        result
+    }
+
+    async fn apply_active_gaze_target_as_controller(
+        self: &Arc<Self>,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
+        let Some(selection) = lock(&self.active_gaze_target).clone() else {
+            return Ok(());
+        };
+        if !lock(&self.session).as_ref().is_some_and(|session| {
+            session.controller == self.identity.service_instance_id && session.held.is_empty()
+        }) {
+            return Ok(());
+        }
+        self.apply_gaze_target(selection, reason).await
+    }
+
+    async fn apply_gaze_target(
+        self: &Arc<Self>,
+        selection: ActiveGazeTarget,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
         let layout = self.store.snapshot().layout.ok_or(RuntimeError::NoLayout)?;
         let surface = layout
             .displays
@@ -903,7 +979,6 @@ impl ArcInputRuntime {
             local_pointer_on_selected_display,
         );
         if already_on_selected_display {
-            *lock(&self.gaze_consumed) = Some(selection);
             return Ok(());
         }
 
@@ -914,12 +989,12 @@ impl ArcInputRuntime {
             .as_ref()
             .is_some_and(|controller| controller != &local)
         {
-            self.take_control_from_capture().await?;
+            // The active controller receives the same workspace gaze target
+            // and performs the handoff. Stealing ownership here would race a
+            // physical mouse on that controller and reset its route to local.
+            return Ok(());
         } else if selection.target != local && controller.is_none() {
-            if !self.workspace_mesh_connected() {
-                return Ok(());
-            }
-            self.take_control_from_capture().await?;
+            return Ok(());
         }
 
         let current_target = lock(&self.session)
@@ -977,8 +1052,79 @@ impl ArcInputRuntime {
             .await?;
         }
         self.record("gaze", format!("{reason} {}", selection.display), None);
-        *lock(&self.gaze_consumed) = Some(selection);
         Ok(())
+    }
+
+    async fn publish_gaze_target(&self, selection: ActiveGazeTarget) {
+        let changed = {
+            let mut active = lock(&self.active_gaze_target);
+            if active.as_ref() == Some(&selection) {
+                false
+            } else {
+                *active = Some(selection.clone());
+                true
+            }
+        };
+        if changed {
+            self.broadcast_gaze_target(Some(&selection)).await;
+        }
+    }
+
+    async fn broadcast_gaze_target(&self, selection: Option<&ActiveGazeTarget>) {
+        for peer in self.network.connected_peers() {
+            let frame = self.gaze_target_frame(&peer, selection);
+            if let Err(error) = self.network.send_control(&peer, &frame).await {
+                self.record(
+                    "gaze",
+                    format!(
+                        "could not publish active gaze target to {}: {error}",
+                        crate::arc_input::log_peer_id(peer.as_str())
+                    ),
+                    None,
+                );
+            }
+        }
+    }
+
+    pub(super) fn gaze_target_frame(
+        &self,
+        peer: &ServiceInstanceId,
+        selection: Option<&ActiveGazeTarget>,
+    ) -> proto::ControlFrame {
+        let (active, target_device_id, target_display_id, target_x_um, target_y_um) = selection
+            .map_or_else(
+                || (false, String::new(), String::new(), 0, 0),
+                |selection| {
+                    (
+                        true,
+                        selection.target.to_string(),
+                        selection.display.to_string(),
+                        selection.point.x,
+                        selection.point.y,
+                    )
+                },
+            );
+        proto::ControlFrame {
+            body: Some(proto::control_frame::Body::GazeTargetSelection(
+                proto::GazeTargetSelection {
+                    header: Some(self.metadata_header(peer)),
+                    active,
+                    target_device_id,
+                    target_display_id,
+                    target_x_um,
+                    target_y_um,
+                },
+            )),
+        }
+    }
+
+    pub(super) async fn apply_shared_gaze_target_if_controller(
+        self: Arc<Self>,
+    ) -> Result<(), RuntimeError> {
+        self.apply_active_gaze_target_as_controller(
+            "workspace gaze selection moved the active controller",
+        )
+        .await
     }
 
     pub(super) async fn handle_captured(

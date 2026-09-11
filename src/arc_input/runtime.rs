@@ -605,6 +605,14 @@ struct GazePreselection {
     expires_at: Instant,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActiveGazeTarget {
+    source: ServiceInstanceId,
+    target: ServiceInstanceId,
+    display: DisplayId,
+    point: DeskPointUm,
+}
+
 impl HandoffReentryGuard {
     fn from_crossing(crossing: &arcrelay_input::PortalCrossing, activated_at: Instant) -> Self {
         Self {
@@ -655,6 +663,7 @@ pub struct ArcInputRuntime {
     remote_takeover_intent: Mutex<RemoteTakeoverIntent>,
     gaze_preselection: Mutex<Option<GazePreselection>>,
     gaze_consumed: Mutex<Option<GazePreselection>>,
+    active_gaze_target: Mutex<Option<ActiveGazeTarget>>,
     pointer: Mutex<Option<DeskPointUm>>,
     dwell_gate: Mutex<Option<DwellGate>>,
     standby_held: Mutex<HeldInputState>,

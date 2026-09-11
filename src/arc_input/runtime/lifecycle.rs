@@ -81,6 +81,7 @@ impl ArcInputRuntime {
             remote_takeover_intent: Mutex::new(RemoteTakeoverIntent::default()),
             gaze_preselection: Mutex::new(None),
             gaze_consumed: Mutex::new(None),
+            active_gaze_target: Mutex::new(None),
             pointer: Mutex::new(None),
             dwell_gate: Mutex::new(None),
             standby_held: Mutex::new(HeldInputState::default()),
