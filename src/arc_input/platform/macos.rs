@@ -623,7 +623,7 @@ impl NativePlatform {
         &self,
         hid_usage: u16,
         down: bool,
-        function_down: bool,
+        routed_modifiers: CGEventFlags,
     ) -> Result<CGEvent, PlatformError> {
         let keycode = hid_to_macos_keycode(hid_usage).ok_or_else(|| {
             PlatformError::Unsupported(format!("unsupported HID key 0x{hid_usage:02x}"))
@@ -631,11 +631,8 @@ impl NativePlatform {
         let event = CGEvent::new_keyboard_event(self.source()?, keycode, down)
             .map_err(|_| PlatformError::Operation("cannot create keyboard event".into()))?;
         let mut flags = event.get_flags();
-        if function_down {
-            flags.insert(CGEventFlags::CGEventFlagSecondaryFn);
-        } else {
-            flags.remove(CGEventFlags::CGEventFlagSecondaryFn);
-        }
+        flags.remove(routed_modifier_mask());
+        flags.insert(routed_modifiers);
         event.set_flags(flags);
         event.set_integer_value_field(FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
         Ok(event)
@@ -645,9 +642,9 @@ impl NativePlatform {
         &self,
         hid_usage: u16,
         down: bool,
-        function_down: bool,
+        routed_modifiers: CGEventFlags,
     ) -> Result<(), PlatformError> {
-        let event = self.key_event(hid_usage, down, function_down)?;
+        let event = self.key_event(hid_usage, down, routed_modifiers)?;
         event.post(CGEventTapLocation::HID);
         Ok(())
     }
@@ -707,10 +704,10 @@ impl NativePlatform {
                 ..ScrollEvent::default()
             });
         }
-        let pressed_keys = std::mem::take(&mut state.pressed_keys);
-        let function_was_down = pressed_keys.contains(&HID_KEY_FUNCTION);
-        for key in pressed_keys {
-            let _ = self.post_key(key, false, function_was_down && key != HID_KEY_FUNCTION);
+        let mut pressed_keys = std::mem::take(&mut state.pressed_keys);
+        for key in pressed_keys.clone() {
+            pressed_keys.remove(&key);
+            let _ = self.post_key(key, false, routed_modifier_flags(&pressed_keys));
         }
         for button in std::mem::take(&mut state.pressed_buttons) {
             let _ = self.post_button(button, false);
@@ -1134,12 +1131,8 @@ impl InputInjectionPort for NativePlatform {
         match event {
             MappedKeyboardEvent::Physical { hid_usage, down } => {
                 let mut state = lock(&self.injection);
-                let function_down = if *hid_usage == HID_KEY_FUNCTION {
-                    *down
-                } else {
-                    state.pressed_keys.contains(&HID_KEY_FUNCTION)
-                };
-                self.post_key(*hid_usage, *down, function_down)?;
+                let modifiers = routed_modifier_flags_after(&state.pressed_keys, *hid_usage, *down);
+                self.post_key(*hid_usage, *down, modifiers)?;
                 if *down {
                     state.pressed_keys.insert(*hid_usage);
                 } else {
@@ -1404,6 +1397,46 @@ fn modifier_is_down(hid_usage: u16, flags: u64) -> bool {
         _ => 0,
     };
     flags & mask != 0
+}
+
+fn routed_modifier_mask() -> CGEventFlags {
+    CGEventFlags::CGEventFlagControl
+        | CGEventFlags::CGEventFlagShift
+        | CGEventFlags::CGEventFlagAlternate
+        | CGEventFlags::CGEventFlagCommand
+        | CGEventFlags::CGEventFlagSecondaryFn
+}
+
+fn routed_modifier_flags(pressed_keys: &BTreeSet<u16>) -> CGEventFlags {
+    let mut flags = CGEventFlags::empty();
+    for (usages, flag) in [
+        ([0xe0, 0xe4], CGEventFlags::CGEventFlagControl),
+        ([0xe1, 0xe5], CGEventFlags::CGEventFlagShift),
+        ([0xe2, 0xe6], CGEventFlags::CGEventFlagAlternate),
+        ([0xe3, 0xe7], CGEventFlags::CGEventFlagCommand),
+    ] {
+        if usages.iter().any(|usage| pressed_keys.contains(usage)) {
+            flags.insert(flag);
+        }
+    }
+    if pressed_keys.contains(&HID_KEY_FUNCTION) {
+        flags.insert(CGEventFlags::CGEventFlagSecondaryFn);
+    }
+    flags
+}
+
+fn routed_modifier_flags_after(
+    pressed_keys: &BTreeSet<u16>,
+    hid_usage: u16,
+    down: bool,
+) -> CGEventFlags {
+    let mut pressed_keys = pressed_keys.clone();
+    if down {
+        pressed_keys.insert(hid_usage);
+    } else {
+        pressed_keys.remove(&hid_usage);
+    }
+    routed_modifier_flags(&pressed_keys)
 }
 
 fn macos_keycode_to_hid(keycode: u16) -> Option<u16> {
@@ -1690,18 +1723,39 @@ mod emergency_shortcut_tests {
             Some(MACOS_KEYCODE_FUNCTION)
         );
 
-        let down = platform.key_event(HID_KEY_FUNCTION, true, true).unwrap();
+        let down = platform
+            .key_event(HID_KEY_FUNCTION, true, CGEventFlags::CGEventFlagSecondaryFn)
+            .unwrap();
         assert_eq!(down.get_type() as u32, CGEventType::FlagsChanged as u32);
         assert!(modifier_is_down(HID_KEY_FUNCTION, down.get_flags().bits()));
 
-        let function_row = platform.key_event(0x3a, true, true).unwrap();
+        let function_row = platform
+            .key_event(0x3a, true, CGEventFlags::CGEventFlagSecondaryFn)
+            .unwrap();
         assert!(function_row
             .get_flags()
             .contains(CGEventFlags::CGEventFlagSecondaryFn));
 
-        let up = platform.key_event(HID_KEY_FUNCTION, false, false).unwrap();
+        let up = platform
+            .key_event(HID_KEY_FUNCTION, false, CGEventFlags::empty())
+            .unwrap();
         assert_eq!(up.get_type() as u32, CGEventType::FlagsChanged as u32);
         assert!(!modifier_is_down(HID_KEY_FUNCTION, up.get_flags().bits()));
+    }
+
+    #[test]
+    fn injected_shortcut_key_carries_routed_modifier_flags() {
+        let platform = NativePlatform::new(ServiceInstanceId::parse("test-device").unwrap());
+        let pressed_keys = BTreeSet::from([0xe3, 0xe2, 0xe1, 0xe0]);
+        let modifiers = routed_modifier_flags_after(&pressed_keys, 0x06, true);
+        let event = platform.key_event(0x06, true, modifiers).unwrap();
+
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagCommand));
+        assert!(event
+            .get_flags()
+            .contains(CGEventFlags::CGEventFlagAlternate));
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagShift));
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagControl));
     }
 
     #[test]
