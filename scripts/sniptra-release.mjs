@@ -33,20 +33,28 @@ async function request(url) {
 export async function resolveRelease(tag = '', build = '') {
   if (build && !/^\d+$/.test(build)) throw new Error('Invalid legacy Sniptra build number');
   if (tag && !/^v\d+\.\d+\.\d+-ci\.\d+$/.test(tag)) throw new Error('Invalid Sniptra release tag');
+  if (tag) {
+    const url = `https://github.com/${repository}/releases/download/${tag}/release-manifest.json`;
+    const manifest = await (await request(url)).json();
+    if (manifest.protocol_version !== 1) throw new Error('Pinned release is incompatible');
+    if (build && manifest.jenkins_build !== Number(build)) {
+      throw new Error('Pinned release does not match the requested build');
+    }
+    return validateManifest(manifest, tag);
+  }
   for (let page = 1; page <= 20; page++) {
-    const result = await (await request(tag ? `${api}/releases/tags/${tag}` : `${api}/releases?per_page=100&page=${page}`)).json();
-    const releases = tag ? [result] : result;
+    const releases = await (await request(`${api}/releases?per_page=100&page=${page}`)).json();
     if (!Array.isArray(releases)) throw new Error('Invalid release list');
     for (const r of releases) {
       if (r.draft || r.prerelease || !/^v\d+\.\d+\.\d+-ci\.\d+$/.test(r.tag_name)) continue;
       const a = r.assets.find(a => a.name === 'release-manifest.json');
-      if (!a) { if (tag) throw new Error('Pinned release has no manifest'); else continue; }
+      if (!a) continue;
       const m = await (await request(a.browser_download_url)).json();
-      if (m.protocol_version !== 1) { if (tag) throw new Error('Pinned release is incompatible'); else continue; }
+      if (m.protocol_version !== 1) continue;
       if (build && m.jenkins_build !== Number(build)) continue;
       return validateManifest(m, r.tag_name);
     }
-    if (tag || releases.length < 100) break;
+    if (releases.length < 100) break;
   }
   throw new Error('No compatible published Sniptra release');
 }
