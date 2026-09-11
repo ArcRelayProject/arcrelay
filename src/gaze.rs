@@ -1380,7 +1380,6 @@ mod profile_tests {
             "https://github.com/ArcRelayProject/arcrelay/releases/download/gaze-models-v"
         ));
         assert_eq!(MODEL_ARCHIVE_SHA256.len(), 64);
-        assert!(MODEL_ARCHIVE_SIZE > 30 * 1024 * 1024);
     }
 
     #[test]
@@ -1389,6 +1388,10 @@ mod profile_tests {
         let archive = PathBuf::from(
             std::env::var_os("ARCRELAY_GAZE_TEST_ARCHIVE")
                 .expect("ARCRELAY_GAZE_TEST_ARCHIVE must be set"),
+        );
+        assert_eq!(
+            std::fs::metadata(&archive).unwrap().len(),
+            MODEL_ARCHIVE_SIZE
         );
         let directory = tempfile::tempdir().unwrap();
         let temporary = directory.path().join("extracting");
