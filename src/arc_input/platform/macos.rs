@@ -395,14 +395,16 @@ unsafe extern "C" fn capture_callback(
             .system_gesture_format_version
             .load(Ordering::Acquire);
         let decoded = gesture::decode(event);
-        let blocked = context.gesture_gate.borrow_mut().route(
+        let (blocked, routed) = context.gesture_gate.borrow_mut().route(
             decoded,
             event_type == 29 && subtype == 0,
+            event_type == 29 && subtype == 8,
+            gesture::contact_count(),
             generation,
             format_version,
         );
         if blocked {
-            if let Some(event) = decoded {
+            if let Some(event) = routed {
                 context.emit(CapturedInputEvent::SystemGesture { event, generation });
             }
             if context.suppress_local.load(Ordering::Acquire)
@@ -823,6 +825,10 @@ impl InputCapturePort for NativePlatform {
         let thread = match std::thread::Builder::new()
             .name("arc-input-quartz-capture".into())
             .spawn(move || unsafe {
+                let contact_tracking = gesture::ContactTrackingGuard::start();
+                if !contact_tracking.available() {
+                    tracing::warn!("Arc Input could not observe trackpad contact count; legacy swipe routing remains enabled");
+                }
                 let context = Box::new(CaptureContext {
                     consumer,
                     events: events_tx,

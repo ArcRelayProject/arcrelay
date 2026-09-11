@@ -1226,7 +1226,7 @@ impl InputCapturePort for NativePlatform {
             can_inject_precision_touchpad_events: create_synthetic_pointer_device_2().is_some(),
             can_capture_system_gestures: false,
             can_inject_system_gestures: self.gestures.available(),
-            system_gesture_format_version: arcrelay_input::SYSTEM_GESTURE_FORMAT_VERSION,
+            system_gesture_format_version: arcrelay_input::MAX_SYSTEM_GESTURE_FORMAT_VERSION,
             consumer_capture_mask: arcrelay_input::ConsumerKey::ALL_MASK,
             consumer_inject_mask: arcrelay_input::ConsumerKey::ALL_MASK,
             brightness_display_ids: self.brightness.supported(),
