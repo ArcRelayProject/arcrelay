@@ -48,7 +48,7 @@ struct ObservedControlState {
 #[derive(Debug, Clone)]
 pub enum RuntimeEvent {
     SnapshotChanged,
-    GazeCalibrationOverlay(GazeCalibrationOverlayEvent),
+    GazeCalibrationOverlay(Box<GazeCalibrationOverlayEvent>),
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, ts_rs::TS)]

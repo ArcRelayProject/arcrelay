@@ -42,6 +42,12 @@ assert.match(fileProviderInfo, /FileProviderExtension/);
 const fileProviderEntitlements = read('gen/apple-macos/ArcRelayFiles/ArcRelayFiles.entitlements').toString('utf8');
 assert.match(fileProviderEntitlements, /group\.com\.arcrelay\.shared/);
 assert.match(fileProviderEntitlements, /com\.apple\.security\.network\.client/);
+const appEntitlements = read('gen/apple-macos/ArcRelay/ArcRelay.entitlements').toString('utf8');
+assert.match(
+  appEntitlements,
+  /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/,
+  'The hardened macOS application must retain camera access',
+);
 assert.equal(nsis.installMode, 'currentUser', 'Changing install scope requires an upgrade/migration review');
 assert.equal(config.identifier, 'com.arcrelay.desktop', 'Keep the existing application/data identity');
 
