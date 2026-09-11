@@ -16,6 +16,7 @@
     clampProgress, observationCanHeadCalibrate, samplesAreStable, toStabilitySample,
     type StabilitySample,
   } from "./gazeCalibration";
+  import GazeDiagnosticsPage from "./GazeDiagnosticsPage.svelte";
 
   export let snapshot: RuntimeSnapshot;
   export let notify: (message: string, error?: boolean) => void;
@@ -52,6 +53,7 @@
   let flowSending = false;
   let lastFlowSentAt = 0;
   let presenceName = "本机用户";
+  let diagnosticsOpen = false;
 
   $: running = Boolean(status && !["idle", "stopped", "failed"].includes(status.state));
   $: cameraOptions = cameras.map((camera) => ({ value: camera.id, label: camera.name }));
@@ -145,6 +147,11 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function startDiagnostics(cameraId: string): Promise<boolean> {
+    selectedCamera = cameraId;
+    return start();
   }
 
   async function stop() {
@@ -422,6 +429,19 @@
 </script>
 
 <section class="gaze-page" aria-live="polite">
+  {#if diagnosticsOpen}
+    <GazeDiagnosticsPage
+      {status}
+      {cameras}
+      {selectedCamera}
+      displays={allDisplays}
+      {busy}
+      onStart={startDiagnostics}
+      onStop={stop}
+      onClose={() => diagnosticsOpen = false}
+      {notify}
+    />
+  {:else}
   <div class="stepper" aria-label="标定步骤">
     <span class:active={phase === "ready" || phase === "checking"} class:done={phase !== "ready" && phase !== "checking"}><i>{phase === "ready" || phase === "checking" ? "1" : "✓"}</i>准备</span><b></b>
     <span class:active={phase === "calibrating" || phase === "transition"} class:done={phase === "complete"}><i>{phase === "complete" ? "✓" : "2"}</i>标定</span><b></b>
@@ -445,6 +465,7 @@
           {:else}
             <button class="text-button" disabled={busy} on:click={() => beginCalibration()}><ArrowClockwise size={15} />全部重新标定</button>
           {/if}
+          <button class="text-button" disabled={busy} on:click={() => diagnosticsOpen = true}><Camera size={15} />视觉诊断</button>
           <button class="text-button" disabled={busy} on:click={refreshCameras}><ArrowClockwise size={15} />重新检测摄像头</button>
         </div>
       </div>
@@ -536,6 +557,7 @@
   {/if}
   {#if status?.error}<div class="error-banner"><WarningCircle size={17} /><span>{status.error}</span></div>{/if}
   <div class="safety-note"><strong>自动切屏：</strong>稳定看向另一块屏幕后，ArcRelay 会移动鼠标到屏幕中央；按 ⌘⌥⇧ Esc 可随时紧急释放，不会自动点击或输入。</div>
+  {/if}
 </section>
 
 <style>

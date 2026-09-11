@@ -1,4 +1,4 @@
-import type { GazeCameraView, GazeStatusView } from "./ipc/generated";
+import type { GazeCameraView, GazePreviewView, GazeStatusView } from "./ipc/generated";
 
 const camera: GazeCameraView = {
   id: "preview-camera",
@@ -34,10 +34,21 @@ let status: GazeStatusView = {
 };
 const clone = () => structuredClone({ ...status, revision: ++status.revision });
 let refiningDisplayId: string | null = null;
+let previewEnabled = false;
+
+const previewImage = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#182236"/><stop offset="1" stop-color="#344a68"/></linearGradient></defs>
+    <rect width="640" height="360" fill="url(#g)"/>
+    <circle cx="320" cy="150" r="72" fill="#d8b59a"/>
+    <path d="M205 360c7-92 55-140 115-140s108 48 115 140" fill="#687ea0"/>
+    <circle cx="292" cy="145" r="6" fill="#28303d"/><circle cx="348" cy="145" r="6" fill="#28303d"/>
+  </svg>`)}`;
 
 export const gazeMockBridge = {
   async listGazeCameras() { return [camera]; },
   async getGazeStatus() { return clone(); },
+  async setGazePreviewEnabled(enabled: boolean) { previewEnabled = enabled; },
   async startGazeTracking(cameraId: string) {
     status = { ...status, state: "uncalibrated", cameraId, cameraName: camera.name, capturedFrames: 42, inferredFrames: 18, inferenceMs: 21.4, faceConfidence: 0.96, observation: { leftEyeOpen: true, rightEyeOpen: true, headYaw: 1.4, headPitch: -0.8, headRoll: 0.2, gazeX: 0.02, gazeY: -0.06, gazeZ: 0.99 } };
     return clone();
@@ -117,6 +128,22 @@ export const gazeMockBridge = {
         listener(clone());
       }
     }, 120);
+    return () => window.clearInterval(timer);
+  },
+  async onGazePreview(listener: (value: GazePreviewView) => void) {
+    let sequence = 0;
+    const timer = window.setInterval(() => {
+      if (!previewEnabled || !["uncalibrated", "tracking"].includes(status.state)) return;
+      listener({
+        sequence: ++sequence,
+        width: 640,
+        height: 360,
+        imageDataUrl: previewImage,
+        face: { x: 245, y: 70, width: 150, height: 190 },
+        leftEye: { x: 278, y: 130, width: 30, height: 22 },
+        rightEye: { x: 332, y: 130, width: 30, height: 22 },
+      });
+    }, 240);
     return () => window.clearInterval(timer);
   },
 };

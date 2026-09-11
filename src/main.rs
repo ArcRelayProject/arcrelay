@@ -116,6 +116,7 @@ fn main() {
             arc_input::commands::test_input_edge,
             gaze::list_gaze_cameras,
             gaze::get_gaze_status,
+            gaze::set_gaze_preview_enabled,
             gaze::start_gaze_tracking,
             gaze::stop_gaze_tracking,
             gaze::begin_gaze_calibration,

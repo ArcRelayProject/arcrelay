@@ -175,6 +175,10 @@ export type GazeCameraView = { id: string, name: string, description: string, };
 
 export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
 
+export type GazePreviewRectView = { x: number, y: number, width: number, height: number, };
+
+export type GazePreviewView = { sequence: number, width: number, height: number, imageDataUrl: string, face: GazePreviewRectView | null, leftEye: GazePreviewRectView | null, rightEye: GazePreviewRectView | null, };
+
 export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, presenceState: string, presenceFaceCount: number, presenceOwnerSimilarity: number | null, presenceStableForMs: number, presenceProfileName: string | null, presenceProfileEnrolled: boolean, presenceEnrollmentActive: boolean, presenceEnrollmentSamples: number, presenceEnrollmentRequiredSamples: number, presenceEnrollmentRejectedFrames: number, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
 
 export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
@@ -663,6 +667,7 @@ export interface CommandMap {
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };
   set_device_auto_connect: { args: { deviceId: string; enabled: boolean; }; result: null };
+  set_gaze_preview_enabled: { args: { enabled: boolean; }; result: null };
   set_input_sharing_enabled: { args: { enabled: boolean; }; result: RuntimeSnapshot };
   set_mcp_client_permissions: { args: { clientId: string; permissions: McpPermissions; }; result: null };
   set_privacy_enabled: { args: { enabled: boolean; }; result: PrivacySnapshot };
@@ -719,6 +724,7 @@ export interface EventMap {
   "desktop-state": BootstrapState;
   "gaze-calibration-cancel": string;
   "gaze-calibration-flow": JsonValue;
+  "gaze-preview": GazePreviewView;
   "gaze-state": GazeStatusView;
   "input-metrics": InputMetricsView | null;
   "notification-count": number;

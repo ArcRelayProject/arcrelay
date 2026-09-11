@@ -1,13 +1,16 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use arcrelay_automation::PresenceEvent;
 use arcrelay_gaze::{
     layout_signature, CalibrationProfile, Calibrator, GazeTracker, PresenceProfile, PresenceState,
-    TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot, WorkspaceMapper,
+    Rect, TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot, WorkspaceMapper,
 };
 use arcrelay_input::DeskPointUm;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewUrl,
@@ -19,7 +22,9 @@ use crate::arc_input::runtime::GazeCalibrationOverlayEvent;
 use crate::arc_input::ArcInputRuntime;
 
 const GAZE_EVENT: &str = "gaze-state";
+const GAZE_PREVIEW_EVENT: &str = "gaze-preview";
 const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
+const PREVIEW_INTERVAL: Duration = Duration::from_millis(200);
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_gaze_ipc.rs"));
@@ -55,6 +60,27 @@ pub struct GazeObservationView {
     pub gaze_x: f32,
     pub gaze_y: f32,
     pub gaze_z: f32,
+}
+
+#[derive(Clone, Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazePreviewRectView {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazePreviewView {
+    pub sequence: u64,
+    pub width: u32,
+    pub height: u32,
+    pub image_data_url: String,
+    pub face: Option<GazePreviewRectView>,
+    pub left_eye: Option<GazePreviewRectView>,
+    pub right_eye: Option<GazePreviewRectView>,
 }
 
 #[derive(Clone, Debug, Serialize, ts_rs::TS)]
@@ -131,12 +157,14 @@ pub struct GazeService {
     tracker: OnceCell<Arc<GazeTracker>>,
     session: Mutex<Option<TrackerSession>>,
     forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    preview_forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     calibration: Mutex<Option<CalibrationRun>>,
     profile: Mutex<Option<CalibrationProfile>>,
     presence_profile: Mutex<Option<PresenceProfile>>,
     last_presence_state: Mutex<Option<PresenceState>>,
     app: OnceCell<AppHandle>,
     snapshots: watch::Sender<TrackerSnapshot>,
+    preview_enabled: AtomicBool,
     revision: AtomicU64,
 }
 
@@ -154,12 +182,14 @@ impl GazeService {
             tracker: OnceCell::new(),
             session: Mutex::new(None),
             forwarding: Mutex::new(None),
+            preview_forwarding: Mutex::new(None),
             calibration: Mutex::new(None),
             profile: Mutex::new(profile),
             presence_profile: Mutex::new(presence_profile),
             last_presence_state: Mutex::new(None),
             app: OnceCell::new(),
             snapshots: watch::channel(TrackerSnapshot::default()).0,
+            preview_enabled: AtomicBool::new(false),
             revision: AtomicU64::new(0),
         })
     }
@@ -179,6 +209,7 @@ impl GazeService {
         tracker
             .set_presence_profile(self.presence_profile.lock().await.clone())
             .map_err(|error| error.to_string())?;
+        tracker.set_preview_enabled(self.preview_enabled.load(Ordering::Acquire));
         Ok(tracker)
     }
 
@@ -227,9 +258,44 @@ impl GazeService {
             .map_err(|error| error.to_string())?;
         self.snapshots.send_replace(session.snapshot());
         let mut snapshots = session.subscribe_snapshots();
+        let mut preview_events = session.subscribe_events();
         *self.session.lock().await = Some(session);
         let service = self.clone();
         let presence_tracker = tracker.clone();
+        let preview_service = self.clone();
+        let preview_app = app.clone();
+        let preview_forwarding = tauri::async_runtime::spawn(async move {
+            let mut last_emitted = Instant::now()
+                .checked_sub(PREVIEW_INTERVAL)
+                .unwrap_or_else(Instant::now);
+            loop {
+                let event = match preview_events.recv().await {
+                    Ok(event) => event,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                };
+                if !preview_service.preview_enabled.load(Ordering::Acquire)
+                    || last_emitted.elapsed() < PREVIEW_INTERVAL
+                {
+                    continue;
+                }
+                let Some(pixels) = event.rgb_preview else {
+                    continue;
+                };
+                last_emitted = Instant::now();
+                let snapshot = event.snapshot;
+                let preview =
+                    tokio::task::spawn_blocking(move || encode_preview(pixels, snapshot)).await;
+                match preview {
+                    Ok(Ok(preview)) => {
+                        let _ = preview_app.emit(GAZE_PREVIEW_EVENT, preview);
+                    }
+                    Ok(Err(error)) => tracing::debug!(%error, "failed to encode gaze preview"),
+                    Err(error) => tracing::debug!(%error, "gaze preview worker stopped"),
+                }
+            }
+        });
+        *self.preview_forwarding.lock().await = Some(preview_forwarding);
         let forwarding = tauri::async_runtime::spawn(async move {
             loop {
                 if snapshots.changed().await.is_err() {
@@ -283,6 +349,9 @@ impl GazeService {
         if let Some(forwarding) = self.forwarding.lock().await.take() {
             forwarding.abort();
         }
+        if let Some(forwarding) = self.preview_forwarding.lock().await.take() {
+            forwarding.abort();
+        }
         self.last_presence_state.lock().await.take();
         crate::desktop_notification::set_presence_preview_restricted(false);
         if let Some(app) = self.app.get() {
@@ -291,6 +360,13 @@ impl GazeService {
                 .set_presence_guard(false);
         }
         Ok(())
+    }
+
+    pub fn set_preview_enabled(&self, enabled: bool) {
+        self.preview_enabled.store(enabled, Ordering::Release);
+        if let Some(tracker) = self.tracker.get() {
+            tracker.set_preview_enabled(enabled);
+        }
     }
 
     pub async fn status(&self) -> GazeStatusView {
@@ -658,6 +734,38 @@ fn presence_state_token(state: PresenceState) -> &'static str {
     }
 }
 
+fn encode_preview(pixels: Arc<[u8]>, snapshot: TrackerSnapshot) -> Result<GazePreviewView, String> {
+    let image = image::RgbImage::from_raw(
+        snapshot.frame_width,
+        snapshot.frame_height,
+        pixels.as_ref().to_vec(),
+    )
+    .ok_or_else(|| "camera preview dimensions do not match its RGB buffer".to_string())?;
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 72)
+        .encode_image(&image)
+        .map_err(|error| format!("encode camera preview: {error}"))?;
+    let observation = snapshot.observation.as_ref();
+    Ok(GazePreviewView {
+        sequence: snapshot.captured_frames,
+        width: snapshot.frame_width,
+        height: snapshot.frame_height,
+        image_data_url: format!("data:image/jpeg;base64,{}", BASE64_STANDARD.encode(jpeg)),
+        face: observation.map(|observation| preview_rect(observation.face)),
+        left_eye: observation.map(|observation| preview_rect(observation.left_eye)),
+        right_eye: observation.map(|observation| preview_rect(observation.right_eye)),
+    })
+}
+
+fn preview_rect(rect: Rect) -> GazePreviewRectView {
+    GazePreviewRectView {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
 fn automation_presence_state(state: PresenceState) -> PresenceEvent {
     match state {
         PresenceState::OwnerPresent => PresenceEvent::OwnerPresent,
@@ -828,6 +936,25 @@ mod profile_tests {
         assert_eq!(base.head_regions[0].centroid[0], -0.4);
         assert_eq!(base.head_regions[1].display_id, "display-b");
         assert_eq!(base.head_regions[1].centroid[0], 0.65);
+    }
+
+    #[test]
+    fn preview_encoder_keeps_frames_in_a_bounded_data_url() {
+        let snapshot = TrackerSnapshot {
+            frame_width: 2,
+            frame_height: 1,
+            captured_frames: 7,
+            ..TrackerSnapshot::default()
+        };
+        let preview = encode_preview(Arc::from([255, 0, 0, 0, 255, 0]), snapshot).unwrap();
+        assert_eq!(preview.sequence, 7);
+        assert_eq!((preview.width, preview.height), (2, 1));
+        let encoded = preview
+            .image_data_url
+            .strip_prefix("data:image/jpeg;base64,")
+            .unwrap();
+        let decoded = BASE64_STANDARD.decode(encoded).unwrap();
+        assert_eq!(image::load_from_memory(&decoded).unwrap().width(), 2);
     }
 }
 
@@ -1029,6 +1156,15 @@ pub async fn get_gaze_status(
     service: State<'_, Arc<GazeService>>,
 ) -> Result<GazeStatusView, String> {
     Ok(service.status().await)
+}
+
+#[tauri::command]
+pub fn set_gaze_preview_enabled(
+    service: State<'_, Arc<GazeService>>,
+    enabled: bool,
+) -> Result<(), String> {
+    service.set_preview_enabled(enabled);
+    Ok(())
 }
 
 #[tauri::command]
