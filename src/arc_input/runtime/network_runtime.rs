@@ -1162,11 +1162,7 @@ impl ArcInputRuntime {
                 {
                     return Err(RuntimeError::WrongPeer);
                 }
-                let stage = if overlay.session_id.starts_with("indicator:") {
-                    "indicator"
-                } else {
-                    gaze_stage_from_proto(overlay.stage)?
-                };
+                let stage = gaze_stage_from_proto(overlay.stage)?;
                 let event = GazeCalibrationOverlayEvent {
                     session_id: overlay.session_id,
                     stage: stage.to_string(),
