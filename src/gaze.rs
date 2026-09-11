@@ -408,6 +408,14 @@ impl GazeService {
     pub async fn status(&self) -> GazeStatusView {
         let snapshot = self.snapshots.borrow().clone();
         let profile = self.profile.lock().await.clone();
+        // Take one snapshot of the biometric profile. Keeping the first mutex
+        // guard alive inside the status struct literal and locking the same
+        // mutex again for `presence_profile_enrolled` deadlocks Tokio's mutex.
+        // That also blocks tracker initialization immediately after all models
+        // have loaded, leaving the frontend on "starting" forever.
+        let presence_profile = self.presence_profile.lock().await.clone();
+        let (presence_profile_name, presence_profile_enrolled) =
+            presence_profile_status(&snapshot, presence_profile.as_ref());
         let observation = snapshot
             .observation
             .as_ref()
@@ -472,14 +480,8 @@ impl GazeService {
             presence_face_count: snapshot.presence.face_count,
             presence_owner_similarity: snapshot.presence.owner_similarity,
             presence_stable_for_ms: snapshot.presence.stable_for_ms,
-            presence_profile_name: self
-                .presence_profile
-                .lock()
-                .await
-                .as_ref()
-                .map(|profile| profile.display_name.clone()),
-            presence_profile_enrolled: snapshot.presence.profile_enrolled
-                || self.presence_profile.lock().await.is_some(),
+            presence_profile_name,
+            presence_profile_enrolled,
             presence_enrollment_active: snapshot.presence_enrollment.active,
             presence_enrollment_samples: snapshot.presence_enrollment.collected_samples,
             presence_enrollment_required_samples: snapshot.presence_enrollment.required_samples,
@@ -777,6 +779,16 @@ fn presence_state_token(state: PresenceState) -> &'static str {
     }
 }
 
+fn presence_profile_status(
+    snapshot: &TrackerSnapshot,
+    profile: Option<&PresenceProfile>,
+) -> (Option<String>, bool) {
+    (
+        profile.map(|profile| profile.display_name.clone()),
+        snapshot.presence.profile_enrolled || profile.is_some(),
+    )
+}
+
 fn encode_preview(pixels: Arc<[u8]>, snapshot: TrackerSnapshot) -> Result<GazePreviewView, String> {
     let image = image::RgbImage::from_raw(
         snapshot.frame_width,
@@ -1005,6 +1017,45 @@ mod profile_tests {
         let error = model_load_timeout_message(Duration::from_secs(17));
         assert!(error.contains("17 秒"));
         assert!(error.contains("重启 ArcRelay"));
+    }
+
+    #[test]
+    fn presence_status_uses_one_profile_snapshot() {
+        let snapshot = TrackerSnapshot::default();
+        let profile = PresenceProfile {
+            version: 1,
+            display_name: "Local owner".into(),
+            template: vec![1.0],
+            sample_count: 1,
+        };
+
+        assert_eq!(
+            presence_profile_status(&snapshot, Some(&profile)),
+            (Some("Local owner".into()), true)
+        );
+        assert_eq!(presence_profile_status(&snapshot, None), (None, false));
+    }
+
+    #[tokio::test]
+    async fn gaze_status_returns_without_relocking_presence_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        let input = ArcInputRuntime::load(
+            crate::arc_input::ProductPaths::from_root(directory.path().join("input")),
+            Arc::new(
+                crate::arc_input::ProductIdentity::from_device_id("gaze-status-test").unwrap(),
+            ),
+            Arc::new(tokio::sync::OnceCell::new()),
+        )
+        .await
+        .unwrap();
+        let service = GazeService::new(input);
+
+        let status = tokio::time::timeout(Duration::from_secs(1), service.status())
+            .await
+            .expect("gaze status must not deadlock");
+
+        assert_eq!(status.presence_profile_name, None);
+        assert!(!status.presence_profile_enrolled);
     }
 }
 
