@@ -1201,7 +1201,7 @@ impl ArcInputRuntime {
                 }
                 let _ = self
                     .events
-                    .send(RuntimeEvent::GazeCalibrationOverlay(event));
+                    .send(RuntimeEvent::GazeCalibrationOverlay(Box::new(event)));
             }
             _ => {}
         }
@@ -1498,7 +1498,7 @@ impl ArcInputRuntime {
         if target == self.identity.service_instance_id {
             let _ = self
                 .events
-                .send(RuntimeEvent::GazeCalibrationOverlay(event));
+                .send(RuntimeEvent::GazeCalibrationOverlay(Box::new(event)));
             return Ok(());
         }
         let frame = proto::ControlFrame {
