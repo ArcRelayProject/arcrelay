@@ -2,9 +2,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use arcrelay_automation::PresenceEvent;
 use arcrelay_gaze::{
-    layout_signature, CalibrationProfile, Calibrator, GazeTracker, TargetingSource, TrackerConfig,
-    TrackerSession, TrackerSnapshot, WorkspaceMapper,
+    layout_signature, CalibrationProfile, Calibrator, GazeTracker, PresenceProfile, PresenceState,
+    TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot, WorkspaceMapper,
 };
 use arcrelay_input::DeskPointUm;
 use serde::Serialize;
@@ -101,6 +102,16 @@ pub struct GazeStatusView {
     pub dropped_frames: u64,
     pub inference_ms: Option<f32>,
     pub face_confidence: Option<f32>,
+    pub presence_state: String,
+    pub presence_face_count: usize,
+    pub presence_owner_similarity: Option<f32>,
+    pub presence_stable_for_ms: u64,
+    pub presence_profile_name: Option<String>,
+    pub presence_profile_enrolled: bool,
+    pub presence_enrollment_active: bool,
+    pub presence_enrollment_samples: usize,
+    pub presence_enrollment_required_samples: usize,
+    pub presence_enrollment_rejected_frames: usize,
     pub observation: Option<GazeObservationView>,
     pub target: Option<GazeTargetView>,
     pub error: Option<String>,
@@ -116,11 +127,15 @@ struct CalibrationRun {
 pub struct GazeService {
     input: Arc<ArcInputRuntime>,
     profile_path: PathBuf,
+    presence_profile_path: PathBuf,
     tracker: OnceCell<Arc<GazeTracker>>,
     session: Mutex<Option<TrackerSession>>,
     forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     calibration: Mutex<Option<CalibrationRun>>,
     profile: Mutex<Option<CalibrationProfile>>,
+    presence_profile: Mutex<Option<PresenceProfile>>,
+    last_presence_state: Mutex<Option<PresenceState>>,
+    app: OnceCell<AppHandle>,
     snapshots: watch::Sender<TrackerSnapshot>,
     revision: AtomicU64,
 }
@@ -130,21 +145,28 @@ impl GazeService {
         let profile_path = input.paths().root.join("gaze-calibration.json");
         let profile = load_profile_from_path(&profile_path)
             .filter(|profile| profile.version >= 3 && !profile.head_regions.is_empty());
+        let presence_profile_path = input.paths().root.join("presence-profile.json");
+        let presence_profile = load_presence_profile_from_path(&presence_profile_path);
         Arc::new(Self {
             input,
             profile_path,
+            presence_profile_path,
             tracker: OnceCell::new(),
             session: Mutex::new(None),
             forwarding: Mutex::new(None),
             calibration: Mutex::new(None),
             profile: Mutex::new(profile),
+            presence_profile: Mutex::new(presence_profile),
+            last_presence_state: Mutex::new(None),
+            app: OnceCell::new(),
             snapshots: watch::channel(TrackerSnapshot::default()).0,
             revision: AtomicU64::new(0),
         })
     }
 
     async fn tracker(&self) -> Result<Arc<GazeTracker>, String> {
-        self.tracker
+        let tracker = self
+            .tracker
             .get_or_try_init(|| async {
                 tokio::task::spawn_blocking(|| GazeTracker::with_bundled_models(4))
                     .await
@@ -153,7 +175,11 @@ impl GazeService {
                     .map_err(|error| error.to_string())
             })
             .await
-            .cloned()
+            .cloned()?;
+        tracker
+            .set_presence_profile(self.presence_profile.lock().await.clone())
+            .map_err(|error| error.to_string())?;
+        Ok(tracker)
     }
 
     pub async fn cameras(&self) -> Result<Vec<GazeCameraView>, String> {
@@ -173,6 +199,7 @@ impl GazeService {
     }
 
     pub async fn start(self: &Arc<Self>, app: AppHandle, camera_id: String) -> Result<(), String> {
+        let _ = self.app.set(app.clone());
         self.stop().await?;
         let tracker = self.tracker().await?;
         let layout = self
@@ -202,6 +229,7 @@ impl GazeService {
         let mut snapshots = session.subscribe_snapshots();
         *self.session.lock().await = Some(session);
         let service = self.clone();
+        let presence_tracker = tracker.clone();
         let forwarding = tauri::async_runtime::spawn(async move {
             loop {
                 if snapshots.changed().await.is_err() {
@@ -209,6 +237,13 @@ impl GazeService {
                 }
                 let snapshot = snapshots.borrow().clone();
                 service.snapshots.send_replace(snapshot.clone());
+                if let Some(profile) = presence_tracker.take_completed_presence_profile() {
+                    if let Err(error) = service.save_presence_profile(&profile) {
+                        tracing::warn!(%error, "failed to persist presence profile");
+                    }
+                    *service.presence_profile.lock().await = Some(profile);
+                }
+                service.apply_presence(&app, &snapshot).await;
                 let calibrating = service.calibration.lock().await.is_some();
                 let automatic_head_regions = service
                     .profile
@@ -247,6 +282,13 @@ impl GazeService {
         }
         if let Some(forwarding) = self.forwarding.lock().await.take() {
             forwarding.abort();
+        }
+        self.last_presence_state.lock().await.take();
+        crate::desktop_notification::set_presence_preview_restricted(false);
+        if let Some(app) = self.app.get() {
+            app.state::<crate::backend::DesktopState>()
+                .privacy
+                .set_presence_guard(false);
         }
         Ok(())
     }
@@ -314,6 +356,22 @@ impl GazeService {
                 .observation
                 .as_ref()
                 .map(|observation| observation.face_confidence),
+            presence_state: presence_state_token(snapshot.presence.state).into(),
+            presence_face_count: snapshot.presence.face_count,
+            presence_owner_similarity: snapshot.presence.owner_similarity,
+            presence_stable_for_ms: snapshot.presence.stable_for_ms,
+            presence_profile_name: self
+                .presence_profile
+                .lock()
+                .await
+                .as_ref()
+                .map(|profile| profile.display_name.clone()),
+            presence_profile_enrolled: snapshot.presence.profile_enrolled
+                || self.presence_profile.lock().await.is_some(),
+            presence_enrollment_active: snapshot.presence_enrollment.active,
+            presence_enrollment_samples: snapshot.presence_enrollment.collected_samples,
+            presence_enrollment_required_samples: snapshot.presence_enrollment.required_samples,
+            presence_enrollment_rejected_frames: snapshot.presence_enrollment.rejected_frames,
             observation,
             target,
             error: snapshot.error,
@@ -464,6 +522,88 @@ impl GazeService {
         self.status().await
     }
 
+    pub async fn begin_presence_enrollment(
+        &self,
+        display_name: String,
+    ) -> Result<GazeStatusView, String> {
+        if self.session.lock().await.is_none() {
+            return Err("请先启动摄像头追踪，再录入本机用户".into());
+        }
+        self.tracker()
+            .await?
+            .begin_presence_enrollment(display_name)
+            .map_err(|error| error.to_string())?;
+        Ok(self.status().await)
+    }
+
+    pub async fn cancel_presence_enrollment(&self) -> GazeStatusView {
+        if let Some(tracker) = self.tracker.get() {
+            tracker.cancel_presence_enrollment();
+        }
+        self.status().await
+    }
+
+    pub async fn clear_presence_profile(&self) -> Result<GazeStatusView, String> {
+        self.presence_profile.lock().await.take();
+        self.last_presence_state.lock().await.take();
+        if let Some(tracker) = self.tracker.get() {
+            tracker.cancel_presence_enrollment();
+            tracker
+                .set_presence_profile(None)
+                .map_err(|error| error.to_string())?;
+        }
+        match std::fs::remove_file(&self.presence_profile_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("删除本机用户人脸模板失败: {error}")),
+        }
+        crate::desktop_notification::set_presence_preview_restricted(false);
+        if let Some(app) = self.app.get() {
+            app.state::<crate::backend::DesktopState>()
+                .privacy
+                .set_presence_guard(false);
+        }
+        Ok(self.status().await)
+    }
+
+    async fn apply_presence(&self, app: &AppHandle, snapshot: &TrackerSnapshot) {
+        let enrolled =
+            snapshot.presence.profile_enrolled || self.presence_profile.lock().await.is_some();
+        if !enrolled {
+            self.last_presence_state.lock().await.take();
+            crate::desktop_notification::set_presence_preview_restricted(false);
+            app.state::<crate::backend::DesktopState>()
+                .privacy
+                .set_presence_guard(false);
+            return;
+        }
+
+        let state = snapshot.presence.state;
+        crate::desktop_notification::set_presence_preview_restricted(
+            state != PresenceState::OwnerPresent,
+        );
+        app.state::<crate::backend::DesktopState>()
+            .privacy
+            .set_presence_guard(state.is_private());
+
+        let changed = {
+            let mut previous = self.last_presence_state.lock().await;
+            let changed = previous.as_ref() != Some(&state);
+            *previous = Some(state);
+            changed
+        };
+        if changed {
+            app.state::<crate::backend::DesktopState>()
+                .automations
+                .presence_event(
+                    automation_presence_state(state),
+                    snapshot.presence.face_count,
+                    snapshot.presence.owner_similarity,
+                )
+                .await;
+        }
+    }
+
     fn load_profile(&self) -> Option<CalibrationProfile> {
         load_profile_from_path(&self.profile_path)
     }
@@ -472,6 +612,12 @@ impl GazeService {
         let bytes = serde_json::to_vec_pretty(profile).map_err(|error| error.to_string())?;
         crate::infrastructure::durable_file::replace_private(&self.profile_path, &bytes)
             .map_err(|error| format!("保存眼动标定失败: {error}"))
+    }
+
+    fn save_presence_profile(&self, profile: &PresenceProfile) -> Result<(), String> {
+        let bytes = serde_json::to_vec_pretty(profile).map_err(|error| error.to_string())?;
+        crate::infrastructure::durable_file::replace_private(&self.presence_profile_path, &bytes)
+            .map_err(|error| format!("保存本机用户人脸模板失败: {error}"))
     }
 }
 
@@ -483,6 +629,42 @@ fn load_profile_from_path(path: &std::path::Path) -> Option<CalibrationProfile> 
             tracing::warn!(%error, "ignored invalid gaze calibration profile");
             None
         }
+    }
+}
+
+fn load_presence_profile_from_path(path: &std::path::Path) -> Option<PresenceProfile> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut profile: PresenceProfile = match serde_json::from_slice(&bytes) {
+        Ok(profile) => profile,
+        Err(error) => {
+            tracing::warn!(%error, "ignored invalid presence profile");
+            return None;
+        }
+    };
+    if let Err(error) = profile.validate() {
+        tracing::warn!(%error, "ignored incompatible presence profile");
+        return None;
+    }
+    Some(profile)
+}
+
+fn presence_state_token(state: PresenceState) -> &'static str {
+    match state {
+        PresenceState::OwnerPresent => "ownerPresent",
+        PresenceState::Absent => "absent",
+        PresenceState::UnknownPresent => "unknownPresent",
+        PresenceState::MultiplePeople => "multiplePeople",
+        PresenceState::Uncertain => "uncertain",
+    }
+}
+
+fn automation_presence_state(state: PresenceState) -> PresenceEvent {
+    match state {
+        PresenceState::OwnerPresent => PresenceEvent::OwnerPresent,
+        PresenceState::Absent => PresenceEvent::Absent,
+        PresenceState::UnknownPresent => PresenceEvent::UnknownPresent,
+        PresenceState::MultiplePeople => PresenceEvent::MultiplePeople,
+        PresenceState::Uncertain => PresenceEvent::Uncertain,
     }
 }
 
@@ -907,6 +1089,28 @@ pub async fn cancel_gaze_calibration(
     service: State<'_, Arc<GazeService>>,
 ) -> Result<GazeStatusView, String> {
     Ok(service.cancel_calibration().await)
+}
+
+#[tauri::command]
+pub async fn begin_presence_enrollment(
+    service: State<'_, Arc<GazeService>>,
+    display_name: String,
+) -> Result<GazeStatusView, String> {
+    service.begin_presence_enrollment(display_name).await
+}
+
+#[tauri::command]
+pub async fn cancel_presence_enrollment(
+    service: State<'_, Arc<GazeService>>,
+) -> Result<GazeStatusView, String> {
+    Ok(service.cancel_presence_enrollment().await)
+}
+
+#[tauri::command]
+pub async fn clear_presence_profile(
+    service: State<'_, Arc<GazeService>>,
+) -> Result<GazeStatusView, String> {
+    service.clear_presence_profile().await
 }
 
 #[tauri::command]

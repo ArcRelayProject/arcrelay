@@ -50,7 +50,7 @@ export type ApplicationIdentity = { id: string, name: string, path: string, };
 
 export type AutomationActivity = { id: string, automationId: string, definition: AutomationDefinition, event: AutomationEvent, status: ActivityStatus, reason: string | null, createdAt: string, finishedAt: string | null, steps: Array<StepRun>, confirmedSteps: Array<number>, runConfirmed: boolean, };
 
-export type AutomationCondition = { "type": "timeRange", weekdays: Array<number>, start: string, end: string, timezone: string, } | { "type": "applicationRunning", app: ApplicationIdentity, running: boolean, } | { "type": "deviceConnected", deviceId: string, connected: boolean, };
+export type AutomationCondition = { "type": "timeRange", weekdays: Array<number>, start: string, end: string, timezone: string, } | { "type": "applicationRunning", app: ApplicationIdentity, running: boolean, } | { "type": "deviceConnected", deviceId: string, connected: boolean, } | { "type": "presence", state: PresenceEvent, };
 
 export type AutomationDefinition = { id: string, name: string, enabled: boolean, trigger: AutomationTrigger, conditions: Array<AutomationCondition>, steps: Array<AutomationStep>, runMode: RunMode, revision: number, createdAt: string, updatedAt: string, legacyId: string | null, };
 
@@ -60,7 +60,7 @@ export type AutomationIssue = { code: string, message: string, remedy: string, s
 
 export type AutomationStep = { "type": "quickAction", actionId: string, } | { "type": "shell", shell: ShellKind, script: string, workingDirectory: string | null, timeoutSeconds: number, } | { "type": "delay", durationSeconds: number, } | { "type": "notification", title: string, body: string, sendToConnectedDevices: boolean, };
 
-export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, };
+export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
 
 export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
@@ -175,7 +175,7 @@ export type GazeCameraView = { id: string, name: string, description: string, };
 
 export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
 
-export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, presenceState: string, presenceFaceCount: number, presenceOwnerSimilarity: number | null, presenceStableForMs: number, presenceProfileName: string | null, presenceProfileEnrolled: boolean, presenceEnrollmentActive: boolean, presenceEnrollmentSamples: number, presenceEnrollmentRequiredSamples: number, presenceEnrollmentRejectedFrames: number, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
 
 export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
 
@@ -312,6 +312,8 @@ export type PortalId = string;
 
 export type PortalStatus = "Active" | "SuspendedOffline" | "NeedsReconciliation" | "UnsupportedCapability";
 
+export type PresenceEvent = "ownerPresent" | "absent" | "unknownPresent" | "multiplePeople" | "uncertain";
+
 export type PrintJobActivitySnapshot = { revision: number, received: Array<ReceivedPrintJobView>, sent: Array<OutgoingPrintJob>, };
 
 export type PrintJobState = "offered" | "receiving" | "validating" | "ready" | "submitting" | "queued" | "printing" | "completed" | "held" | "cancelled" | "failed" | "ambiguous";
@@ -330,7 +332,7 @@ export type PrinterStatus = "ready" | "busy" | "offline" | "error" | "unknown";
 
 export type PrivacySettings = { autoEnableOnMirror: boolean, allowRemoteActions: boolean, maskStyle: MaskStyle, protectedApps: Array<ProtectedApp>, };
 
-export type PrivacySnapshot = { active: boolean, manualEnabled: boolean, mirrorDetected: boolean, activationSource: string, visibleProtectedWindows: Array<ProtectedWindowView>, settings: PrivacySettings, };
+export type PrivacySnapshot = { active: boolean, manualEnabled: boolean, mirrorDetected: boolean, presenceGuard: boolean, activationSource: string, visibleProtectedWindows: Array<ProtectedWindowView>, settings: PrivacySettings, };
 
 export type ProtectedApp = { name: string, identifier: string | null, path: string | null, enabled: boolean, };
 
@@ -494,8 +496,10 @@ export interface CommandMap {
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   automation_capabilities: { args: { }; result: Array<Capability> };
   begin_gaze_calibration: { args: { cameraId: string; displayId: string | null; }; result: GazeStatusView };
+  begin_presence_enrollment: { args: { displayName: string; }; result: GazeStatusView };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
+  cancel_presence_enrollment: { args: { }; result: GazeStatusView };
   cancel_transfer: { args: { transferId: string; }; result: null };
   capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
@@ -504,6 +508,7 @@ export interface CommandMap {
   clear_automation_activities: { args: { }; result: null };
   clear_gaze_calibration: { args: { }; result: GazeStatusView };
   clear_gesture_debug: { args: { }; result: GestureDebugSnapshot };
+  clear_presence_profile: { args: { }; result: GazeStatusView };
   clipboard_clear_history: { args: { }; result: null };
   clipboard_copy_record: { args: { id: number; }; result: null };
   clipboard_copy_text: { args: { content: string; }; result: null };

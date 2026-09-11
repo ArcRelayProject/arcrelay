@@ -51,6 +51,7 @@
   let refineDisplayId: string | null = null;
   let flowSending = false;
   let lastFlowSentAt = 0;
+  let presenceName = "本机用户";
 
   $: running = Boolean(status && !["idle", "stopped", "failed"].includes(status.state));
   $: cameraOptions = cameras.map((camera) => ({ value: camera.id, label: camera.name }));
@@ -66,6 +67,15 @@
   $: samplingMode = "滤波后的头部方向采样";
   $: liveTargetName = allDisplays.find((display) => display.displayId === status?.target?.displayId)?.name;
   $: calibratedDisplayIds = new Set(status?.calibratedDisplayIds ?? []);
+  $: presenceLabel = status?.presenceState === "ownerPresent"
+    ? "本人在场"
+    : status?.presenceState === "absent"
+      ? "无人"
+      : status?.presenceState === "unknownPresent"
+        ? "陌生人在场"
+        : status?.presenceState === "multiplePeople"
+          ? "多人在场"
+          : "正在确认";
 
   function screenIndex(display: DisplaySurface): number {
     return Object.values(snapshot.configuration.layout?.displays ?? {})
@@ -329,6 +339,33 @@
     }
   }
 
+  async function beginPresenceEnrollment() {
+    if (!presenceName.trim()) return;
+    if (!running && !(await start())) return;
+    busy = true;
+    try {
+      ingestStatus(await bridge.beginPresenceEnrollment(presenceName.trim()));
+      notify("请正对摄像头并保持自然姿势，录入会自动完成。");
+    } catch (error) {
+      notify(`无法开始录入：${String(error)}`, true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function cancelPresenceEnrollment() {
+    ingestStatus(await bridge.cancelPresenceEnrollment());
+  }
+
+  async function clearPresenceProfile() {
+    if (!window.confirm("删除仅保存在本机的人脸模板？")) return;
+    try {
+      ingestStatus(await bridge.clearPresenceProfile());
+    } catch (error) {
+      notify(String(error), true);
+    }
+  }
+
   function tickCalibration() {
     const now = performance.now();
     const fresh = now - lastObservationAt <= FRESH_MS;
@@ -436,6 +473,26 @@
         <button class="delete-profile" on:click={clearCalibration}><Trash size={15} />删除全部</button>
       </section>
     {/if}
+    <section class:recognized={status?.presenceState === "ownerPresent"} class="presence-card">
+      <div class="recognition-icon"><LockKey size={22} weight="duotone" /></div>
+      <div class="profile-copy">
+        <strong>本机用户在场识别</strong>
+        <p>{status?.presenceProfileEnrolled ? `${status.presenceProfileName ?? "本机用户"} · ${presenceLabel}` : "录入后可保护隐私遮罩、通知预览并触发自动化。"}</p>
+      </div>
+      {#if status?.presenceEnrollmentActive}
+        <div class="presence-progress">
+          <span>正在录入 {status.presenceEnrollmentSamples}/{status.presenceEnrollmentRequiredSamples}</span>
+          <div class="bar"><span style={`width:${status.presenceEnrollmentSamples / Math.max(1, status.presenceEnrollmentRequiredSamples) * 100}%`}></span></div>
+        </div>
+        <button class="text-button" on:click={cancelPresenceEnrollment}>取消</button>
+      {:else if status?.presenceProfileEnrolled}
+        <div class="presence-state"><b>{presenceLabel}</b><span>{status.presenceFaceCount} 张人脸{status.presenceOwnerSimilarity == null ? "" : ` · 相似度 ${status.presenceOwnerSimilarity.toFixed(2)}`}</span></div>
+        <button class="delete-profile" on:click={clearPresenceProfile}><Trash size={15} />删除模板</button>
+      {:else}
+        <label class="presence-name"><span>显示名称</span><input bind:value={presenceName} maxlength="80" /></label>
+        <button class="start-button" disabled={busy || !selectedCamera} on:click={beginPresenceEnrollment}>开始录入</button>
+      {/if}
+    </section>
   {:else if phase === "checking"}
     <article class="state-card">
       <div class="check-visual" style={`--check-progress:${preflightProgress * 360}deg`}><Eye size={34} weight="duotone" /></div>
@@ -487,6 +544,7 @@
   .preview-panel{display:grid;align-content:center;gap:8px;padding:0 4px}.preview-panel img{display:block;width:100%;max-height:255px;object-fit:contain;filter:drop-shadow(0 16px 22px rgba(31,33,47,.12))}.preview-meta{display:flex;justify-content:space-between;gap:10px;color:var(--text-muted);font-size:10px}.preview-meta span{display:inline-flex;align-items:center;gap:5px}
   .readiness-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.readiness-grid section{display:flex;align-items:center;gap:11px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface-raised)}.readiness-grid section>span{display:grid;width:28px;height:28px;flex:none;place-items:center;border-radius:9px;color:var(--text-muted);background:var(--surface-sunken)}.readiness-grid section>span.ok{color:var(--success);background:var(--success-soft)}.readiness-grid strong{display:block;color:var(--text);font-size:11px}.readiness-grid p{margin:2px 0 0;color:var(--text-muted);font-size:10px}
   .existing-profile{display:grid;grid-template-columns:auto minmax(170px,.75fr) minmax(300px,1.25fr) auto;align-items:center;gap:12px;border:1px solid color-mix(in srgb,var(--success) 28%,var(--border));border-radius:12px;padding:12px 13px;background:color-mix(in srgb,var(--success-soft) 55%,var(--surface))}.existing-profile>:global(svg){color:var(--success)}.profile-copy strong{display:block;color:var(--text);font-size:11px}.profile-copy p{margin:2px 0 0;color:var(--text-secondary);font-size:10px}.profile-screens{display:flex;flex-wrap:wrap;gap:6px}.profile-screens>span{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--success) 22%,var(--border));border-radius:8px;padding:5px 6px 5px 8px;color:var(--text-secondary);background:var(--surface);font-size:9px}.profile-screens>span.missing{border-color:color-mix(in srgb,var(--warning) 32%,var(--border))}.profile-screens b{max-width:120px;overflow:hidden;color:var(--text);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.profile-screens button,.delete-profile{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-strong);border-radius:7px;padding:5px 7px;color:var(--text-secondary);background:var(--surface);font-size:9px}.profile-screens button{border:0;color:var(--accent-strong);background:var(--accent-soft)}
+  .presence-card{display:grid;grid-template-columns:auto minmax(180px,1fr) minmax(220px,.8fr) auto;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:12px 13px;background:var(--surface-raised)}.presence-card.recognized{border-color:color-mix(in srgb,var(--success) 35%,var(--border));background:color-mix(in srgb,var(--success-soft) 45%,var(--surface))}.presence-name{display:grid;gap:4px;color:var(--text-muted);font-size:9px}.presence-name input{border:1px solid var(--border);border-radius:8px;padding:7px 9px;color:var(--text);background:var(--surface)}.presence-state,.presence-progress{display:grid;gap:3px;color:var(--text-secondary);font-size:9px}.presence-state b{color:var(--text);font-size:11px}.presence-progress .bar{width:100%;margin:3px 0 0}.presence-card .start-button{min-height:34px;font-size:10px}
   .state-card{display:grid;min-height:390px;place-content:center;justify-items:center;border:1px solid var(--border);border-radius:18px;padding:34px;background:var(--surface-raised);box-shadow:var(--shadow-card);text-align:center}.check-visual{position:relative;display:grid;width:94px;height:94px;margin-bottom:20px;place-items:center;border-radius:50%;color:var(--accent);background:conic-gradient(var(--accent) var(--check-progress),var(--border) 0)}.check-visual:after{position:absolute;inset:7px;border-radius:50%;background:var(--surface-raised);content:""}.check-visual :global(svg){position:relative;z-index:1}.check-list{display:flex;gap:8px;margin-top:25px}.check-list span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:7px 10px;color:var(--text-muted);background:var(--surface-soft);font-size:10px}.check-list i{width:7px;height:7px;border-radius:50%;background:var(--border-strong)}.check-list span.ok{color:var(--success);background:var(--success-soft)}.check-list span.ok i{background:var(--success)}.bar{width:min(390px,70vw);height:5px;margin-top:22px;overflow:hidden;border-radius:99px;background:var(--surface-sunken)}.bar span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .1s linear}.cancel-button{display:inline-flex;align-items:center;gap:6px;margin-top:20px;border:0;color:var(--text-muted);background:transparent;font-size:10px}.running-icon{display:grid;width:76px;height:76px;margin-bottom:18px;place-items:center;border-radius:50%;color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 12px color-mix(in srgb,var(--accent-soft) 55%,transparent)}.progress-label{margin-top:8px;color:var(--accent-strong);font-size:12px;font-variant-numeric:tabular-nums}.complete-icon{display:grid;width:84px;height:84px;margin-bottom:18px;place-items:center;border-radius:50%;color:#fff;background:var(--success);box-shadow:0 0 0 12px var(--success-soft)}.screen-results{display:flex;max-width:680px;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:24px}.screen-results>span{display:flex;min-width:180px;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text-secondary);background:var(--surface-soft);font-size:10px}.screen-results strong{flex:1;color:var(--text);font-size:11px;text-align:left}.screen-results i{display:grid;width:20px;height:20px;place-items:center;border-radius:50%;color:#fff;background:var(--success)}
   .recognition-card{display:grid;grid-template-columns:auto minmax(155px,.6fr) minmax(280px,1.4fr) auto auto;align-items:center;gap:12px;border:1px solid var(--border);border-radius:14px;padding:13px 15px;background:var(--surface-raised);box-shadow:var(--shadow-card)}.recognition-card.recognized{border-color:color-mix(in srgb,var(--accent) 42%,var(--border));background:linear-gradient(110deg,color-mix(in srgb,var(--accent-soft) 62%,var(--surface-raised)),var(--surface-raised) 45%)}.recognition-icon{display:grid;width:38px;height:38px;place-items:center;border-radius:11px;color:var(--text-muted);background:var(--surface-sunken)}.recognized .recognition-icon{color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent-soft) 45%,transparent)}.recognition-copy span{display:block;color:var(--text-muted);font-size:9px;font-weight:700}.recognition-copy strong{display:block;margin-top:2px;color:var(--text);font-size:13px}.recognition-screens{display:flex;min-width:0;flex-wrap:wrap;gap:6px}.recognition-screens>span{display:inline-flex;min-width:0;align-items:center;gap:5px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--text-muted);background:var(--surface-soft);font-size:9px}.recognition-screens>span.active{border-color:var(--accent);color:var(--accent-strong);background:var(--accent-soft)}.recognition-screens b{max-width:115px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recognition-screens i{border-radius:99px;padding:2px 5px;color:#fff;background:var(--accent);font-style:normal;font-size:8px}.recognition-card dl{display:flex;gap:14px;margin:0}.recognition-card dl div{display:grid;gap:2px;font-size:8px}.recognition-card dt{color:var(--text-muted)}.recognition-card dd{margin:0;color:var(--text);font-size:9px;font-variant-numeric:tabular-nums}.stop-tracking{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-strong);border-radius:8px;padding:7px 9px;color:var(--text-secondary);background:var(--surface);font-size:9px}.error-banner{display:flex;align-items:center;gap:8px;border:1px solid color-mix(in srgb,var(--danger) 25%,var(--border));border-radius:10px;padding:9px 12px;color:var(--danger);background:var(--danger-soft);font-size:10px}.safety-note{border:1px solid color-mix(in srgb,var(--accent) 22%,var(--border));border-radius:10px;padding:9px 12px;color:var(--text-secondary);background:color-mix(in srgb,var(--accent-soft) 48%,var(--surface));font-size:10px}.safety-note strong{color:var(--text)}
   @media(max-width:900px){.hero-card{grid-template-columns:1fr}.preview-panel{display:none}.readiness-grid{grid-template-columns:1fr}.hero-card h2,.state-card h2{font-size:20px}.stepper{grid-template-columns:auto 30px auto 30px auto}.existing-profile,.recognition-card{grid-template-columns:auto 1fr}.profile-screens,.recognition-screens{grid-column:1/-1}.recognition-card dl{display:none}}

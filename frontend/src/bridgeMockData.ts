@@ -175,6 +175,7 @@ export const mockData: BridgeMockData = {
     active: false,
     manualEnabled: false,
     mirrorDetected: false,
+    presenceGuard: false,
     activationSource: "off",
     visibleProtectedWindows: [],
     settings: {

@@ -18,6 +18,16 @@ let status: GazeStatusView = {
   droppedFrames: 0,
   inferenceMs: null,
   faceConfidence: null,
+  presenceState: "uncertain",
+  presenceFaceCount: 0,
+  presenceOwnerSimilarity: null,
+  presenceStableForMs: 0,
+  presenceProfileName: null,
+  presenceProfileEnrolled: false,
+  presenceEnrollmentActive: false,
+  presenceEnrollmentSamples: 0,
+  presenceEnrollmentRequiredSamples: 12,
+  presenceEnrollmentRejectedFrames: 0,
   observation: null,
   target: null,
   error: null,
@@ -46,6 +56,15 @@ export const gazeMockBridge = {
   },
   async cancelGazeCalibration() { status = { ...status, calibrationSamples: 0 }; return clone(); },
   async clearGazeCalibration() { status = { ...status, calibrated: false, calibratedDisplayIds: [], calibrationSamples: 0, state: "uncalibrated" }; return clone(); },
+  async beginPresenceEnrollment(displayName: string) {
+    status = { ...status, presenceProfileName: displayName, presenceEnrollmentActive: true, presenceEnrollmentSamples: 0 };
+    return clone();
+  },
+  async cancelPresenceEnrollment() { status = { ...status, presenceEnrollmentActive: false }; return clone(); },
+  async clearPresenceProfile() {
+    status = { ...status, presenceProfileName: null, presenceProfileEnrolled: false, presenceEnrollmentActive: false, presenceEnrollmentSamples: 0, presenceState: "uncertain", presenceOwnerSimilarity: null };
+    return clone();
+  },
   async openGazeCalibrationWindows() { return [{ index: 0, name: "内建视网膜显示器", x: 0, y: 0, width: 1728, height: 1117, scaleFactor: 2 }]; },
   async focusGazeCalibrationScreen(_index: number) {},
   async closeGazeCalibrationWindows() {},
@@ -63,6 +82,18 @@ export const gazeMockBridge = {
           capturedFrames: status.capturedFrames + 3,
           inferredFrames: frame,
           faceConfidence: 0.96,
+          presenceState: status.presenceProfileEnrolled ? "ownerPresent" : "uncertain",
+          presenceFaceCount: 1,
+          presenceOwnerSimilarity: status.presenceProfileEnrolled ? 0.82 : null,
+          presenceStableForMs: status.presenceStableForMs + 120,
+          ...(status.presenceEnrollmentActive ? {
+            presenceEnrollmentSamples: Math.min(status.presenceEnrollmentRequiredSamples, status.presenceEnrollmentSamples + 1),
+            ...(status.presenceEnrollmentSamples + 1 >= status.presenceEnrollmentRequiredSamples ? {
+              presenceEnrollmentActive: false,
+              presenceProfileEnrolled: true,
+              presenceState: "ownerPresent",
+            } : {}),
+          } : {}),
           observation: {
             leftEyeOpen: true,
             rightEyeOpen: true,

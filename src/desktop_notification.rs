@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -156,6 +157,16 @@ pub enum DesktopNotificationDelivery {
     MainWindowActive,
 }
 
+static PRESENCE_PREVIEW_RESTRICTED: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn set_presence_preview_restricted(restricted: bool) {
+    PRESENCE_PREVIEW_RESTRICTED.store(restricted, Ordering::Release);
+}
+
+fn previews_allowed(user_enabled: bool, presence_restricted: bool) -> bool {
+    user_enabled && !presence_restricted
+}
+
 pub fn show(
     app: &AppHandle,
     settings: &SettingsManager,
@@ -166,25 +177,11 @@ pub fn show(
     if !notification.category.enabled(preferences) {
         return Ok(DesktopNotificationDelivery::Disabled);
     }
-    if preferences.only_when_inactive && crate::windowing::main_window_active() {
-        if notification.category.requires_foreground_feedback() {
-            let window = app
-                .get_webview_window("main")
-                .ok_or_else(|| "main window is active but unavailable for feedback".to_string())?;
-            window
-                .emit(
-                    "desktop-notification",
-                    InAppNotification {
-                        title: notification.title,
-                        body: notification.body,
-                        error: notification.error || notification.category.is_error(),
-                    },
-                )
-                .map_err(|error| format!("failed to show in-app notification: {error}"))?;
-        }
-        return Ok(DesktopNotificationDelivery::MainWindowActive);
-    }
-    let (title, body) = if preferences.show_previews {
+    let show_previews = previews_allowed(
+        preferences.show_previews,
+        PRESENCE_PREVIEW_RESTRICTED.load(Ordering::Acquire),
+    );
+    let (title, body) = if show_previews {
         (notification.title, notification.body)
     } else {
         (
@@ -196,6 +193,24 @@ pub fn show(
             ),
         )
     };
+    if preferences.only_when_inactive && crate::windowing::main_window_active() {
+        if notification.category.requires_foreground_feedback() {
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| "main window is active but unavailable for feedback".to_string())?;
+            window
+                .emit(
+                    "desktop-notification",
+                    InAppNotification {
+                        title,
+                        body,
+                        error: notification.error || notification.category.is_error(),
+                    },
+                )
+                .map_err(|error| format!("failed to show in-app notification: {error}"))?;
+        }
+        return Ok(DesktopNotificationDelivery::MainWindowActive);
+    }
     if let Some(action) = notification.action {
         show_actionable(app, title, body, action, snapshot.language)?;
     } else {
@@ -430,6 +445,13 @@ mod tests {
         }
         assert!(!Category::TransferCompleted.requires_foreground_feedback());
         assert!(!Category::DeviceConnection.requires_foreground_feedback());
+    }
+
+    #[test]
+    fn presence_guard_overrides_notification_preview_preference() {
+        assert!(previews_allowed(true, false));
+        assert!(!previews_allowed(true, true));
+        assert!(!previews_allowed(false, false));
     }
 
     #[test]

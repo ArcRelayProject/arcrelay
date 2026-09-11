@@ -15,6 +15,10 @@ export const gazeBridge = {
   finishGazeCalibration: (): Promise<GazeStatusView> => invoke("finish_gaze_calibration"),
   cancelGazeCalibration: (): Promise<GazeStatusView> => invoke("cancel_gaze_calibration"),
   clearGazeCalibration: (): Promise<GazeStatusView> => invoke("clear_gaze_calibration"),
+  beginPresenceEnrollment: (displayName: string): Promise<GazeStatusView> =>
+    invoke("begin_presence_enrollment", { displayName }),
+  cancelPresenceEnrollment: (): Promise<GazeStatusView> => invoke("cancel_presence_enrollment"),
+  clearPresenceProfile: (): Promise<GazeStatusView> => invoke("clear_presence_profile"),
   openGazeCalibrationWindows: (): Promise<GazeCalibrationScreenView[]> => invoke("open_gaze_calibration_windows"),
   focusGazeCalibrationScreen: (index: number): Promise<void> => invoke("focus_gaze_calibration_screen", { index }),
   closeGazeCalibrationWindows: (): Promise<void> => invoke("close_gaze_calibration_windows"),

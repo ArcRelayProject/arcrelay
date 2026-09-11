@@ -103,6 +103,7 @@ pub struct PrivacySnapshot {
     pub active: bool,
     pub manual_enabled: bool,
     pub mirror_detected: bool,
+    pub presence_guard: bool,
     pub activation_source: String,
     pub visible_protected_windows: Vec<ProtectedWindowView>,
     pub settings: PrivacySettings,
@@ -132,6 +133,7 @@ struct ForegroundApp {
 struct RuntimeState {
     manual_enabled: bool,
     mirror_detected: bool,
+    presence_guard: bool,
     suppress_auto_until_mirror_ends: bool,
     visible_windows: Vec<NativeWindow>,
     overlay_style: Option<MaskStyle>,
@@ -264,6 +266,26 @@ impl PrivacyManager {
         }
         self.emit_snapshot();
         self.request_refresh();
+    }
+
+    /// Engage privacy overlays because local presence recognition cannot confirm
+    /// that only the enrolled owner is viewing the screen. This state is kept
+    /// separate from the user's manual preference so recognition never disables
+    /// privacy that the user explicitly enabled.
+    pub fn set_presence_guard(&self, enabled: bool) {
+        let changed = {
+            let mut runtime = self
+                .runtime
+                .write()
+                .unwrap_or_else(|error| error.into_inner());
+            let changed = runtime.presence_guard != enabled;
+            runtime.presence_guard = enabled;
+            changed
+        };
+        if changed {
+            self.emit_snapshot();
+            self.request_refresh();
+        }
     }
 
     pub fn toggle_from_remote(&self) -> Result<bool, String> {
@@ -455,6 +477,7 @@ fn disable_matching_app(
 
 fn is_active(settings: &PrivacySettings, runtime: &RuntimeState) -> bool {
     runtime.manual_enabled
+        || runtime.presence_guard
         || (settings.auto_enable_on_mirror
             && runtime.mirror_detected
             && !runtime.suppress_auto_until_mirror_ends)
@@ -464,6 +487,8 @@ fn snapshot_from(settings: &PrivacySettings, runtime: &RuntimeState) -> PrivacyS
     let active = is_active(settings, runtime);
     let activation_source = if runtime.manual_enabled {
         "manual"
+    } else if runtime.presence_guard {
+        "presence"
     } else if active && runtime.mirror_detected {
         "screenMirror"
     } else {
@@ -473,6 +498,7 @@ fn snapshot_from(settings: &PrivacySettings, runtime: &RuntimeState) -> PrivacyS
         active,
         manual_enabled: runtime.manual_enabled,
         mirror_detected: runtime.mirror_detected,
+        presence_guard: runtime.presence_guard,
         activation_source: activation_source.to_string(),
         visible_protected_windows: runtime
             .visible_windows
@@ -778,6 +804,28 @@ mod tests {
             ..RuntimeState::default()
         };
 
+        assert!(is_active(&settings, &runtime));
+        assert_eq!(
+            snapshot_from(&settings, &runtime).activation_source,
+            "manual"
+        );
+    }
+
+    #[test]
+    fn presence_guard_is_independent_from_manual_privacy() {
+        let settings = PrivacySettings::default();
+        let mut runtime = RuntimeState {
+            presence_guard: true,
+            ..RuntimeState::default()
+        };
+        assert!(is_active(&settings, &runtime));
+        assert_eq!(
+            snapshot_from(&settings, &runtime).activation_source,
+            "presence"
+        );
+
+        runtime.manual_enabled = true;
+        runtime.presence_guard = false;
         assert!(is_active(&settings, &runtime));
         assert_eq!(
             snapshot_from(&settings, &runtime).activation_source,
