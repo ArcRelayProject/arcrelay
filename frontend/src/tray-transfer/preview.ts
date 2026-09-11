@@ -2,6 +2,7 @@
 import { bridge } from '../bridge';
 import type { TransferDraftFile, TransferSnapshot, TransferView } from '../types';
 import type { TrayTransferPort } from './port';
+import { visualPreviewLanguage, visualPreviewTheme } from '../visualPreview';
 
 const query = new URLSearchParams(location.search);
 const state = query.get('state') ?? 'hover';
@@ -55,6 +56,6 @@ export const port: TrayTransferPort = {
   async resume(id) { const current = snapshot.transfers.find(task => task.id === id); if (current) current.status = 'transferring'; emit(); },
   async refresh() { return structuredClone(snapshot); },
   async onTransfer(listener) { listeners.add(listener); listener(structuredClone(snapshot)); return () => { listeners.delete(listener); }; },
-  async getSettings() { return { ...await bridge.getAppSettings(), language: query.get('lang') === 'en' ? 'enUs' : 'zhCn', theme: query.get('theme') === 'dark' ? 'dark' : 'light' }; },
+  async getSettings() { return { ...await bridge.getAppSettings(), language: visualPreviewLanguage() ?? 'zhCn', theme: visualPreviewTheme() ?? 'light' }; },
   async onSettings() { return () => {}; },
 };

@@ -15,6 +15,8 @@
     "check": "svelte-check --tsconfig frontend/tsconfig.json",
     "check:installers": "node scripts/check-installers.mjs",
     "test": "node --experimental-strip-types --test frontend/src/*.test.ts frontend/src/clipboard/*.test.ts frontend/src/features/input-sharing/*.test.ts scripts/*.test.mjs",
+    "screenshots": "playwright test --config playwright.visual.config.ts && npm run screenshots:report",
+    "screenshots:report": "node scripts/visual-report.mjs",
     "test:clipboard": "node --experimental-strip-types --test frontend/src/clipboard/*.test.ts",
     "test:segments": "node --experimental-strip-types --test frontend/src/clipboard/textSegments.test.ts",
     "test:input-topology": "node --experimental-strip-types --test frontend/src/features/input-sharing/topologyGeometry.test.ts",
@@ -34,6 +36,7 @@
     "svelte": "5.56.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.10.12",
