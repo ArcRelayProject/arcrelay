@@ -2,6 +2,7 @@ import { mount } from "svelte";
 
 import ClipboardApp from "./ClipboardApp.svelte";
 import "./clipboard.css";
+import { installVisualPreviewReadiness } from "../visualPreview";
 
 // A browser tab has no native window bounds. Match the desktop panel instead
 // of stretching a compact clipboard utility across the entire viewport.
@@ -12,3 +13,5 @@ if (!("__TAURI_INTERNALS__" in window)) {
 mount(ClipboardApp, {
   target: document.getElementById("clipboard-root")!,
 });
+
+installVisualPreviewReadiness();

@@ -1284,7 +1284,9 @@ impl ArcInputRuntime {
                         true
                     }
                 }
-                CapturedInputEvent::PointerButton { hid_usage, down } => {
+                CapturedInputEvent::PointerButton {
+                    hid_usage, down, ..
+                } => {
                     let mut held = lock(&self.standby_held);
                     if *down {
                         held.held_mouse_buttons.insert(*hid_usage);
@@ -1330,7 +1332,6 @@ impl ArcInputRuntime {
                                 native_quartz_event: None,
                             },
                             true,
-                            1,
                         )
                         .await?;
                     }
@@ -1343,18 +1344,18 @@ impl ArcInputRuntime {
                             CapturedInputEvent::PointerButton {
                                 hid_usage,
                                 down: true,
+                                click_count: 1,
                             },
                             true,
-                            1,
                         )
                         .await?;
                         self.route_owned_captured_event(
                             CapturedInputEvent::PointerButton {
                                 hid_usage,
                                 down: false,
+                                click_count: 1,
                             },
                             true,
-                            1,
                         )
                         .await?;
                         tracing::info!(
@@ -1372,13 +1373,12 @@ impl ArcInputRuntime {
                         native_quartz_event,
                     },
                     true,
-                    1,
                 )
                 .await
             }
             event => {
                 lock(&self.horizontal_navigation).reset();
-                self.route_owned_captured_event(event, true, 1).await
+                self.route_owned_captured_event(event, true).await
             }
         }
     }
@@ -1404,7 +1404,6 @@ impl ArcInputRuntime {
         self: &Arc<Self>,
         event: CapturedInputEvent,
         local_event_already_applied: bool,
-        pointer_click_count: u32,
     ) -> Result<(), RuntimeError> {
         if let CapturedInputEvent::PointerDelta { x, y } = event {
             return self
@@ -1453,7 +1452,11 @@ impl ArcInputRuntime {
                         event: Some(proto::input_event::Event::ConsumerKey(event.into())),
                     }
                 }
-                CapturedInputEvent::PointerButton { hid_usage, down } => {
+                CapturedInputEvent::PointerButton {
+                    hid_usage,
+                    down,
+                    click_count,
+                } => {
                     if down {
                         session.held.held_mouse_buttons.insert(hid_usage);
                     } else {
@@ -1464,7 +1467,7 @@ impl ArcInputRuntime {
                             proto::PointerButton {
                                 hid_usage: u32::from(hid_usage),
                                 down,
-                                click_count: pointer_click_count.clamp(1, 3),
+                                click_count: u32::from(click_count.clamp(1, 3)),
                             },
                         )),
                     }
@@ -1582,7 +1585,6 @@ impl ArcInputRuntime {
                         y: f64::from(delta_y),
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1597,9 +1599,12 @@ impl ArcInputRuntime {
                     DomainMouseButton::Middle => 3,
                 };
                 self.route_owned_captured_event(
-                    CapturedInputEvent::PointerButton { hid_usage, down },
+                    CapturedInputEvent::PointerButton {
+                        hid_usage,
+                        down,
+                        click_count,
+                    },
                     false,
-                    u32::from(click_count),
                 )
                 .await
             }
@@ -1623,7 +1628,6 @@ impl ArcInputRuntime {
                         native_quartz_event: None,
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1656,7 +1660,6 @@ impl ArcInputRuntime {
                         native_quartz_event: None,
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1665,7 +1668,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::SystemGesture { event, generation },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1677,7 +1679,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::Keyboard(MappedKeyboardEvent::Physical { hid_usage, down }),
                     false,
-                    1,
                 )
                 .await
             }
@@ -1685,7 +1686,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::Keyboard(MappedKeyboardEvent::TextCommit(text)),
                     false,
-                    1,
                 )
                 .await
             }
@@ -1713,7 +1713,12 @@ impl ArcInputRuntime {
             Some(proto::input_event::Event::PointerButton(button)) => {
                 let usage = u16::try_from(button.hid_usage)
                     .map_err(|_| RuntimeError::InvalidInput("button usage".into()))?;
-                self.platform.pointer_button(usage, button.down)?;
+                let click_count = u8::try_from(button.click_count)
+                    .ok()
+                    .filter(|count| (1..=3).contains(count))
+                    .ok_or_else(|| RuntimeError::InvalidInput("button click count".into()))?;
+                self.platform
+                    .pointer_button(usage, button.down, click_count)?;
             }
             Some(proto::input_event::Event::Scroll(scroll)) => {
                 self.platform.scroll(ScrollEvent {
@@ -2476,7 +2481,7 @@ impl ArcInputRuntime {
                 })?;
         }
         for hid_usage in held.held_mouse_buttons.iter().copied() {
-            self.platform.pointer_button(hid_usage, true)?;
+            self.platform.pointer_button(hid_usage, true, 1)?;
         }
         Ok(())
     }
@@ -2486,7 +2491,7 @@ impl ArcInputRuntime {
         held: &HeldInputState,
     ) -> Result<(), RuntimeError> {
         for hid_usage in held.held_mouse_buttons.iter().copied() {
-            self.platform.pointer_button(hid_usage, false)?;
+            self.platform.pointer_button(hid_usage, false, 1)?;
         }
         for hid_usage in held.held_physical_keys.iter().rev().copied() {
             self.platform

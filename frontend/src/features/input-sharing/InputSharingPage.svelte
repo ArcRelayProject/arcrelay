@@ -28,11 +28,11 @@
   // Keep the local gesture lab implementation available for future diagnostics,
   // but do not expose or route into it from the product UI for now.
   const gestureLabVisible = false;
-  const previewSection = new URLSearchParams(window.location.search).get("inputSection");
+  const requestedSection = new URLSearchParams(window.location.search).get("inputSection");
   let section: Section = gestureLabVisible && new URLSearchParams(window.location.search).get("inputDebug") === "gestures" ? "gestureDebug"
-    : !bridge.isTauri() && previewSection === "diagnostics" ? "diagnostics"
-      : !bridge.isTauri() && previewSection === "gaze" ? "gaze"
-        : "overview";
+    : !bridge.isTauri() && ["overview", "workspace", "keyboard", "gaze", "diagnostics"].includes(requestedSection ?? "")
+      ? requestedSection as Section
+      : "overview";
   let snapshot: RuntimeSnapshot | null = null;
   let loading = true;
   let busy = false;

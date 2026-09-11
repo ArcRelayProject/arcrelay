@@ -9,6 +9,7 @@ import { automationMock } from './bridge.automations.mock';
 import { transfersMock } from './bridge.transfers.mock';
 import { gazeMockBridge } from './bridge.gaze.mock';
 import { sortRemoteFileEntries, type RemoteFileSortDirection, type RemoteFileSortKey } from "./remoteFileSort";
+import { visualPreviewEnabled, visualPreviewLanguage, visualPreviewTheme } from "./visualPreview";
 const inTauri = () => "__TAURI_INTERNALS__" in window;
 const stateListeners = new Set<(state: BootstrapState) => void>();
 const outputListeners = new Set<(event: ActionOutputEvent) => void>();
@@ -257,7 +258,10 @@ export const bridge = {
     async takePendingTrayNavigation(): Promise<string | null> { return null; },
     async onTrayNavigationPending(_listener: () => void): Promise<UnlistenFn> { return () => {}; },
     async getAppSettings(): Promise<AppSettings> {
-        mockData.appSettings.language = loadBrowserLanguage();
+        mockData.appSettings.language = visualPreviewEnabled()
+            ? visualPreviewLanguage() ?? "zhCn"
+            : loadBrowserLanguage();
+        if (visualPreviewEnabled()) mockData.appSettings.theme = visualPreviewTheme() ?? "light";
         return structuredClone(mockData.appSettings);
     },
     async updateAppSettings(patch: import("./ipc/generated").AppSettingsPatch): Promise<AppSettings> {

@@ -429,18 +429,22 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
         WM_LBUTTONDOWN | WM_LBUTTONUP => Some(CapturedInputEvent::PointerButton {
             hid_usage: 1,
             down: message == WM_LBUTTONDOWN,
+            click_count: 1,
         }),
         WM_RBUTTONDOWN | WM_RBUTTONUP => Some(CapturedInputEvent::PointerButton {
             hid_usage: 2,
             down: message == WM_RBUTTONDOWN,
+            click_count: 1,
         }),
         WM_MBUTTONDOWN | WM_MBUTTONUP => Some(CapturedInputEvent::PointerButton {
             hid_usage: 3,
             down: message == WM_MBUTTONDOWN,
+            click_count: 1,
         }),
         WM_XBUTTONDOWN | WM_XBUTTONUP => Some(CapturedInputEvent::PointerButton {
             hid_usage: if event.mouseData >> 16 == 1 { 4 } else { 5 },
             down: message == WM_XBUTTONDOWN,
+            click_count: 1,
         }),
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
             let (delta, _) = super::decode_windows_wheel(event.mouseData);
@@ -1226,7 +1230,7 @@ impl InputCapturePort for NativePlatform {
             can_inject_precision_touchpad_events: create_synthetic_pointer_device_2().is_some(),
             can_capture_system_gestures: false,
             can_inject_system_gestures: self.gestures.available(),
-            system_gesture_format_version: arcrelay_input::SYSTEM_GESTURE_FORMAT_VERSION,
+            system_gesture_format_version: arcrelay_input::MAX_SYSTEM_GESTURE_FORMAT_VERSION,
             consumer_capture_mask: arcrelay_input::ConsumerKey::ALL_MASK,
             consumer_inject_mask: arcrelay_input::ConsumerKey::ALL_MASK,
             brightness_display_ids: self.brightness.supported(),
@@ -1555,7 +1559,12 @@ impl InputInjectionPort for NativePlatform {
         }
     }
 
-    fn pointer_button(&self, usage: u16, down: bool) -> Result<(), PlatformError> {
+    fn pointer_button(
+        &self,
+        usage: u16,
+        down: bool,
+        _click_count: u8,
+    ) -> Result<(), PlatformError> {
         let (flags, data) = match (usage, down) {
             (1, true) => (MOUSEEVENTF_LEFTDOWN, 0),
             (1, false) => (MOUSEEVENTF_LEFTUP, 0),
@@ -1670,7 +1679,7 @@ impl InputInjectionPort for NativePlatform {
             let _ = Self::send(&[Self::key_input(hid_to_windows_vk(key).unwrap_or(0), false)]);
         }
         for button in buttons {
-            let _ = self.pointer_button(button, false);
+            let _ = self.pointer_button(button, false, 1);
         }
         Ok(())
     }

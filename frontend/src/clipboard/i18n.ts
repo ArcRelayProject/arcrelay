@@ -4,6 +4,7 @@ import { invoke } from '../ipc/client';
 import { listen } from "@tauri-apps/api/event";
 
 import type { AppSettings, LanguagePreference } from "../types";
+import { visualPreviewEnabled, visualPreviewLanguage, visualPreviewTheme } from "../visualPreview";
 
 export { translate as tr, localeFor } from "../i18n";
 
@@ -12,8 +13,8 @@ export async function loadAppSettings(): Promise<AppSettings> {
     return {
       revision: 0,
       deviceName: "ArcRelay",
-      theme: "system",
-      language: loadBrowserLanguage(),
+      theme: visualPreviewEnabled() ? visualPreviewTheme() ?? "light" : "system",
+      language: visualPreviewEnabled() ? visualPreviewLanguage() ?? "zhCn" : loadBrowserLanguage(),
       launchAtStartup: false,
       launchSilently: false,
       autoUpdateEnabled: true,

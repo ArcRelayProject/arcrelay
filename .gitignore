@@ -6,6 +6,8 @@
 .DS_Store
 *.log
 /arcrelay-updater.key
+/test-results/
+/playwright-report/
 
 # Development review artifacts are intentionally excluded from the public repository.
 /*-comparison*.png

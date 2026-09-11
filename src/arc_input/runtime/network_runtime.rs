@@ -1274,7 +1274,12 @@ impl ArcInputRuntime {
                 Some(proto::input_event::Event::PointerButton(button)) => {
                     let usage = u16::try_from(button.hid_usage)
                         .map_err(|_| RuntimeError::InvalidInput("button usage".into()))?;
-                    self.platform.pointer_button(usage, button.down)?;
+                    let click_count = u8::try_from(button.click_count)
+                        .ok()
+                        .filter(|count| (1..=3).contains(count))
+                        .ok_or_else(|| RuntimeError::InvalidInput("button click count".into()))?;
+                    self.platform
+                        .pointer_button(usage, button.down, click_count)?;
                     if button.down {
                         session.held.held_mouse_buttons.insert(usage);
                     } else {
