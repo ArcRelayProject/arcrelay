@@ -173,13 +173,15 @@ export type GazeCalibrationScreenView = { index: number, name: string, x: number
 
 export type GazeCameraView = { id: string, name: string, description: string, };
 
+export type GazeModelPackStatusView = { state: string, version: string | null, downloadedBytes: number, totalBytes: number, error: string | null, };
+
 export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
 
 export type GazePreviewRectView = { x: number, y: number, width: number, height: number, };
 
 export type GazePreviewView = { sequence: number, width: number, height: number, imageDataUrl: string, face: GazePreviewRectView | null, leftEye: GazePreviewRectView | null, rightEye: GazePreviewRectView | null, };
 
-export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, presenceState: string, presenceFaceCount: number, presenceOwnerSimilarity: number | null, presenceStableForMs: number, presenceProfileName: string | null, presenceProfileEnrolled: boolean, presenceEnrollmentActive: boolean, presenceEnrollmentSamples: number, presenceEnrollmentRequiredSamples: number, presenceEnrollmentRejectedFrames: number, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, };
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, presenceState: string, presenceFaceCount: number, presenceOwnerSimilarity: number | null, presenceStableForMs: number, presenceProfileName: string | null, presenceProfileEnrolled: boolean, presenceEnrollmentActive: boolean, presenceEnrollmentSamples: number, presenceEnrollmentRequiredSamples: number, presenceEnrollmentRejectedFrames: number, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, modelPack: GazeModelPackStatusView, };
 
 export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
 
@@ -599,6 +601,7 @@ export interface CommandMap {
   inspect_transfer_files: { args: { paths: Array<string>; }; result: Array<TransferDraftFile> };
   install_action_preset: { args: { presetId: string; }; result: BootstrapState };
   install_app_update: { args: { }; result: null };
+  install_gaze_models: { args: { }; result: GazeStatusView };
   install_remote_printer: { args: { shareId: string; sourceDeviceId: string; }; result: PrinterSharingSnapshot };
   list_automation_activities: { args: { automationId: string | null; limit: number; }; result: Array<AutomationActivity> };
   list_automations: { args: { }; result: Array<AutomationDefinition> };
@@ -643,6 +646,7 @@ export interface CommandMap {
   refresh_printer_sharing_state: { args: { }; result: PrinterSharingSnapshot };
   refresh_transfer_devices: { args: { }; result: TransferSnapshot };
   release_input_control: { args: { }; result: RuntimeSnapshot };
+  remove_gaze_models: { args: { }; result: GazeStatusView };
   remove_remote_file_share: { args: { shareId: string; }; result: Array<LocalSharedDirectory> };
   remove_remote_printer: { args: { bindingId: string; }; result: PrinterSharingSnapshot };
   remove_system_folder: { args: { id: string; }; result: null };

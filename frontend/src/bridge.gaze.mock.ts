@@ -31,6 +31,7 @@ let status: GazeStatusView = {
   observation: null,
   target: null,
   error: null,
+  modelPack: { state: "ready", version: "1.0.0", downloadedBytes: 37579715, totalBytes: 37579715, error: null },
 };
 const clone = () => structuredClone({ ...status, revision: ++status.revision });
 let refiningDisplayId: string | null = null;
@@ -48,6 +49,14 @@ const previewImage = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
 export const gazeMockBridge = {
   async listGazeCameras() { return [camera]; },
   async getGazeStatus() { return clone(); },
+  async installGazeModels() {
+    status = { ...status, modelPack: { state: "ready", version: "1.0.0", downloadedBytes: 37579715, totalBytes: 37579715, error: null } };
+    return clone();
+  },
+  async removeGazeModels() {
+    status = { ...status, state: "stopped", modelPack: { state: "notInstalled", version: null, downloadedBytes: 0, totalBytes: 37579715, error: null } };
+    return clone();
+  },
   async setGazePreviewEnabled(enabled: boolean) { previewEnabled = enabled; },
   async startGazeTracking(cameraId: string) {
     status = { ...status, state: "uncalibrated", cameraId, cameraName: camera.name, capturedFrames: 42, inferredFrames: 18, inferenceMs: 21.4, faceConfidence: 0.96, observation: { leftEyeOpen: true, rightEyeOpen: true, headYaw: 1.4, headPitch: -0.8, headRoll: 0.2, gazeX: 0.02, gazeY: -0.06, gazeZ: 0.99 } };

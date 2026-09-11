@@ -5,6 +5,8 @@ import type { GazeCalibrationOverlayEvent, GazeCalibrationScreenView, GazeCamera
 export const gazeBridge = {
   listGazeCameras: (): Promise<GazeCameraView[]> => invoke("list_gaze_cameras"),
   getGazeStatus: (): Promise<GazeStatusView> => invoke("get_gaze_status"),
+  installGazeModels: (): Promise<GazeStatusView> => invoke("install_gaze_models"),
+  removeGazeModels: (): Promise<GazeStatusView> => invoke("remove_gaze_models"),
   setGazePreviewEnabled: (enabled: boolean): Promise<void> => invoke("set_gaze_preview_enabled", { enabled }),
   startGazeTracking: (cameraId: string): Promise<GazeStatusView> =>
     invoke("start_gaze_tracking", { cameraId }),

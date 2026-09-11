@@ -1,21 +1,27 @@
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use arcrelay_automation::PresenceEvent;
 use arcrelay_gaze::{
     layout_signature, CalibrationProfile, Calibrator, GazeTracker, PresenceProfile, PresenceState,
     Rect, TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot, WorkspaceMapper,
+    MODEL_BUNDLE_VERSION, MODEL_FILES,
 };
 use arcrelay_input::DeskPointUm;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
+use futures_util::StreamExt;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewUrl,
     WebviewWindowBuilder,
 };
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{watch, Mutex, OnceCell};
 
 use crate::arc_input::runtime::GazeCalibrationOverlayEvent;
@@ -26,6 +32,10 @@ const GAZE_PREVIEW_EVENT: &str = "gaze-preview";
 const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
 const PREVIEW_INTERVAL: Duration = Duration::from_millis(200);
 const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const MODEL_ARCHIVE_URL: &str = "https://github.com/ArcRelayProject/arcrelay/releases/download/gaze-models-v1.0.0/arcrelay-gaze-models-v1.0.0.zip";
+const MODEL_ARCHIVE_SHA256: &str =
+    "d8faf51da81cc1fd25c203d2c010e36fc7af49632cdcbd5f4f089f4d8d6cf88c";
+const MODEL_ARCHIVE_SIZE: u64 = 37_579_715;
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_gaze_ipc.rs"));
@@ -142,6 +152,39 @@ pub struct GazeStatusView {
     pub observation: Option<GazeObservationView>,
     pub target: Option<GazeTargetView>,
     pub error: Option<String>,
+    pub model_pack: GazeModelPackStatusView,
+}
+
+#[derive(Clone, Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GazeModelPackStatusView {
+    pub state: String,
+    pub version: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub error: Option<String>,
+}
+
+impl GazeModelPackStatusView {
+    fn not_installed() -> Self {
+        Self {
+            state: "notInstalled".into(),
+            version: None,
+            downloaded_bytes: 0,
+            total_bytes: MODEL_ARCHIVE_SIZE,
+            error: None,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            state: "ready".into(),
+            version: Some(MODEL_BUNDLE_VERSION.into()),
+            downloaded_bytes: MODEL_ARCHIVE_SIZE,
+            total_bytes: MODEL_ARCHIVE_SIZE,
+            error: None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -153,9 +196,13 @@ struct CalibrationRun {
 
 pub struct GazeService {
     input: Arc<ArcInputRuntime>,
+    model_directory: PathBuf,
+    model_pack: Mutex<GazeModelPackStatusView>,
+    model_download: Mutex<()>,
     profile_path: PathBuf,
     presence_profile_path: PathBuf,
-    tracker: OnceCell<Result<Arc<GazeTracker>, String>>,
+    tracker: RwLock<Option<Arc<GazeTracker>>>,
+    tracker_loading: Mutex<()>,
     session: Mutex<Option<TrackerSession>>,
     forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     preview_forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
@@ -176,11 +223,26 @@ impl GazeService {
             .filter(|profile| profile.version >= 3 && !profile.head_regions.is_empty());
         let presence_profile_path = input.paths().root.join("presence-profile.json");
         let presence_profile = load_presence_profile_from_path(&presence_profile_path);
+        let model_directory = input
+            .paths()
+            .root
+            .join("model-packs")
+            .join("gaze")
+            .join(MODEL_BUNDLE_VERSION);
+        let model_pack = if model_directory_has_expected_files(&model_directory) {
+            GazeModelPackStatusView::ready()
+        } else {
+            GazeModelPackStatusView::not_installed()
+        };
         Arc::new(Self {
             input,
+            model_directory,
+            model_pack: Mutex::new(model_pack),
+            model_download: Mutex::new(()),
             profile_path,
             presence_profile_path,
-            tracker: OnceCell::new(),
+            tracker: RwLock::new(None),
+            tracker_loading: Mutex::new(()),
             session: Mutex::new(None),
             forwarding: Mutex::new(None),
             preview_forwarding: Mutex::new(None),
@@ -196,47 +258,71 @@ impl GazeService {
     }
 
     async fn tracker(&self) -> Result<Arc<GazeTracker>, String> {
-        let tracker = self
-            .tracker
-            .get_or_init(|| async {
+        if let Some(tracker) = self.initialized_tracker() {
+            return self.configure_tracker(tracker).await;
+        }
+        if self.model_pack.lock().await.state != "ready" {
+            return Err("请先下载眼动模型组件".into());
+        }
+        let _loading = self.tracker_loading.lock().await;
+        if let Some(tracker) = self.initialized_tracker() {
+            return self.configure_tracker(tracker).await;
+        }
+        tracing::info!(
+            timeout_seconds = MODEL_LOAD_TIMEOUT.as_secs(),
+            model_directory = %self.model_directory.display(),
+            "loading gaze and face recognition models"
+        );
+        let started = Instant::now();
+        let model_directory = self.model_directory.clone();
+        let worker = tokio::task::spawn_blocking(move || {
+            GazeTracker::from_model_directory(&model_directory, 4)
+        });
+        let tracker = match tokio::time::timeout(MODEL_LOAD_TIMEOUT, worker).await {
+            Ok(Ok(Ok(tracker))) => {
                 tracing::info!(
-                    timeout_seconds = MODEL_LOAD_TIMEOUT.as_secs(),
-                    "loading gaze and face recognition models"
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "gaze and face recognition models are ready"
                 );
-                let started = Instant::now();
-                let worker = tokio::task::spawn_blocking(|| GazeTracker::with_bundled_models(4));
-                match tokio::time::timeout(MODEL_LOAD_TIMEOUT, worker).await {
-                    Ok(Ok(Ok(tracker))) => {
-                        tracing::info!(
-                            elapsed_ms = started.elapsed().as_millis() as u64,
-                            "gaze and face recognition models are ready"
-                        );
-                        Ok(Arc::new(tracker))
-                    }
-                    Ok(Ok(Err(error))) => {
-                        let error = error.to_string();
-                        tracing::error!(%error, "failed to load gaze and face recognition models");
-                        Err(error)
-                    }
-                    Ok(Err(error)) => {
-                        let error = format!("gaze model worker failed: {error}");
-                        tracing::error!(%error, "gaze model worker stopped");
-                        Err(error)
-                    }
-                    Err(_) => {
-                        let error = model_load_timeout_message(MODEL_LOAD_TIMEOUT);
-                        tracing::error!(%error, "gaze model loading timed out");
-                        Err(error)
-                    }
-                }
-            })
-            .await
-            .clone()?;
+                Arc::new(tracker)
+            }
+            Ok(Ok(Err(error))) => {
+                let error = error.to_string();
+                tracing::error!(%error, "failed to load gaze and face recognition models");
+                self.mark_model_pack_failed(error.clone()).await;
+                return Err(error);
+            }
+            Ok(Err(error)) => {
+                let error = format!("gaze model worker failed: {error}");
+                tracing::error!(%error, "gaze model worker stopped");
+                return Err(error);
+            }
+            Err(_) => {
+                let error = model_load_timeout_message(MODEL_LOAD_TIMEOUT);
+                tracing::error!(%error, "gaze model loading timed out");
+                return Err(error);
+            }
+        };
+        *self.tracker.write().expect("gaze tracker lock poisoned") = Some(tracker.clone());
+        self.configure_tracker(tracker).await
+    }
+
+    async fn configure_tracker(
+        &self,
+        tracker: Arc<GazeTracker>,
+    ) -> Result<Arc<GazeTracker>, String> {
         tracker
             .set_presence_profile(self.presence_profile.lock().await.clone())
             .map_err(|error| error.to_string())?;
         tracker.set_preview_enabled(self.preview_enabled.load(Ordering::Acquire));
         Ok(tracker)
+    }
+
+    async fn mark_model_pack_failed(&self, error: String) {
+        let mut state = self.model_pack.lock().await;
+        state.state = "damaged".into();
+        state.version = None;
+        state.error = Some(error);
     }
 
     pub async fn cameras(&self) -> Result<Vec<GazeCameraView>, String> {
@@ -401,8 +487,168 @@ impl GazeService {
         }
     }
 
-    fn initialized_tracker(&self) -> Option<&Arc<GazeTracker>> {
-        self.tracker.get().and_then(|result| result.as_ref().ok())
+    fn initialized_tracker(&self) -> Option<Arc<GazeTracker>> {
+        self.tracker
+            .read()
+            .expect("gaze tracker lock poisoned")
+            .clone()
+    }
+
+    pub async fn install_models(
+        self: &Arc<Self>,
+        app: AppHandle,
+    ) -> Result<GazeStatusView, String> {
+        let _download = self.model_download.lock().await;
+        let model_pack_is_ready = self.model_pack.lock().await.state == "ready";
+        if model_pack_is_ready && model_directory_has_expected_files(&self.model_directory) {
+            *self.model_pack.lock().await = GazeModelPackStatusView::ready();
+            return Ok(self.status().await);
+        }
+
+        {
+            let mut state = self.model_pack.lock().await;
+            state.state = "downloading".into();
+            state.version = None;
+            state.downloaded_bytes = 0;
+            state.error = None;
+        }
+        self.emit_status(&app).await;
+
+        let parent = self
+            .model_directory
+            .parent()
+            .ok_or_else(|| "眼动模型目录无效".to_string())?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| format!("创建眼动模型目录失败: {error}"))?;
+        let download_path = parent.join(format!(
+            ".gaze-models-{}-{}.zip.partial",
+            MODEL_BUNDLE_VERSION,
+            uuid::Uuid::new_v4()
+        ));
+        let temporary_directory = parent.join(format!(
+            ".gaze-models-{}-{}",
+            MODEL_BUNDLE_VERSION,
+            uuid::Uuid::new_v4()
+        ));
+
+        let result = self
+            .download_and_install_models(&app, &download_path, &temporary_directory)
+            .await;
+        let _ = tokio::fs::remove_file(&download_path).await;
+        let _ = tokio::fs::remove_dir_all(&temporary_directory).await;
+        match result {
+            Ok(()) => {
+                *self.model_pack.lock().await = GazeModelPackStatusView::ready();
+                self.emit_status(&app).await;
+                Ok(self.status().await)
+            }
+            Err(error) => {
+                self.mark_model_pack_failed(error.clone()).await;
+                self.emit_status(&app).await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn download_and_install_models(
+        &self,
+        app: &AppHandle,
+        download_path: &Path,
+        temporary_directory: &Path,
+    ) -> Result<(), String> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::builder()
+            .user_agent(format!("ArcRelay/{}", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| format!("创建眼动模型下载器失败: {error}"))?;
+        let response = client
+            .get(MODEL_ARCHIVE_URL)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|error| format!("下载眼动模型失败: {error}"))?;
+        if response
+            .content_length()
+            .is_some_and(|size| size != MODEL_ARCHIVE_SIZE)
+        {
+            return Err("眼动模型下载大小与发布清单不一致".into());
+        }
+        let mut output = tokio::fs::File::create(download_path)
+            .await
+            .map_err(|error| format!("创建眼动模型临时文件失败: {error}"))?;
+        let mut stream = response.bytes_stream();
+        let mut digest = Sha256::new();
+        let mut downloaded = 0_u64;
+        let mut last_emitted = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|error| format!("接收眼动模型失败: {error}"))?;
+            downloaded = downloaded
+                .checked_add(chunk.len() as u64)
+                .ok_or_else(|| "眼动模型下载大小溢出".to_string())?;
+            if downloaded > MODEL_ARCHIVE_SIZE {
+                return Err("眼动模型下载超过发布清单大小".into());
+            }
+            digest.update(&chunk);
+            output
+                .write_all(&chunk)
+                .await
+                .map_err(|error| format!("写入眼动模型失败: {error}"))?;
+            self.model_pack.lock().await.downloaded_bytes = downloaded;
+            if last_emitted.elapsed() >= Duration::from_millis(150) {
+                self.emit_status(app).await;
+                last_emitted = Instant::now();
+            }
+        }
+        output
+            .flush()
+            .await
+            .map_err(|error| format!("保存眼动模型失败: {error}"))?;
+        drop(output);
+        if downloaded != MODEL_ARCHIVE_SIZE {
+            return Err(format!(
+                "眼动模型下载不完整：收到 {downloaded} 字节，预期 {MODEL_ARCHIVE_SIZE} 字节"
+            ));
+        }
+        if format!("{:x}", digest.finalize()) != MODEL_ARCHIVE_SHA256 {
+            return Err("眼动模型压缩包 SHA-256 校验失败".into());
+        }
+
+        {
+            let mut state = self.model_pack.lock().await;
+            state.state = "verifying".into();
+            state.downloaded_bytes = downloaded;
+        }
+        self.emit_status(app).await;
+        let archive = download_path.to_owned();
+        let temporary = temporary_directory.to_owned();
+        let destination = self.model_directory.clone();
+        tokio::task::spawn_blocking(move || {
+            extract_and_activate_model_bundle(&archive, &temporary, &destination)
+        })
+        .await
+        .map_err(|error| format!("眼动模型校验任务失败: {error}"))??;
+        Ok(())
+    }
+
+    pub async fn remove_models(self: &Arc<Self>, app: AppHandle) -> Result<GazeStatusView, String> {
+        let _download = self.model_download.lock().await;
+        self.stop().await?;
+        *self.tracker.write().expect("gaze tracker lock poisoned") = None;
+        match tokio::fs::remove_dir_all(&self.model_directory).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("删除眼动模型失败: {error}")),
+        }
+        *self.model_pack.lock().await = GazeModelPackStatusView::not_installed();
+        self.emit_status(&app).await;
+        Ok(self.status().await)
+    }
+
+    async fn emit_status(&self, app: &AppHandle) {
+        let _ = app.emit(GAZE_EVENT, self.status().await);
     }
 
     pub async fn status(&self) -> GazeStatusView {
@@ -489,6 +735,7 @@ impl GazeService {
             observation,
             target,
             error: snapshot.error,
+            model_pack: self.model_pack.lock().await.clone(),
         }
     }
 
@@ -740,6 +987,74 @@ fn model_load_timeout_message(timeout: Duration) -> String {
         "眼动与人脸识别模型加载超过 {} 秒；请重启 ArcRelay 后重试并导出诊断日志",
         timeout.as_secs()
     )
+}
+
+fn model_directory_has_expected_files(directory: &Path) -> bool {
+    MODEL_FILES.iter().all(|model| {
+        std::fs::metadata(directory.join(model.name))
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.size)
+    })
+}
+
+fn extract_and_activate_model_bundle(
+    archive_path: &Path,
+    temporary_directory: &Path,
+    destination: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(temporary_directory)
+        .map_err(|error| format!("创建眼动模型解压目录失败: {error}"))?;
+    let archive_file = std::fs::File::open(archive_path)
+        .map_err(|error| format!("打开眼动模型压缩包失败: {error}"))?;
+    let mut archive = zip::ZipArchive::new(archive_file)
+        .map_err(|error| format!("读取眼动模型压缩包失败: {error}"))?;
+    let mut allowed = MODEL_FILES
+        .iter()
+        .map(|model| model.name)
+        .collect::<BTreeSet<_>>();
+    allowed.extend(["model-bundle-manifest.json", "THIRD_PARTY_NOTICES.md"]);
+    let mut seen = BTreeSet::new();
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("读取眼动模型压缩条目失败: {error}"))?;
+        if entry.is_dir() {
+            return Err("眼动模型压缩包不能包含目录".into());
+        }
+        let name = entry.name().to_owned();
+        let enclosed_path = entry
+            .enclosed_name()
+            .ok_or_else(|| "眼动模型压缩包包含无效路径".to_string())?;
+        let enclosed = enclosed_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "眼动模型压缩包包含无效文件名".to_string())?;
+        if enclosed != name || !allowed.contains(enclosed) || !seen.insert(name.clone()) {
+            return Err(format!("眼动模型压缩包包含非预期条目: {name}"));
+        }
+        let output_path = temporary_directory.join(enclosed);
+        let mut output = std::fs::File::create(&output_path)
+            .map_err(|error| format!("创建 {} 失败: {error}", output_path.display()))?;
+        std::io::copy(&mut entry, &mut output)
+            .map_err(|error| format!("解压 {name} 失败: {error}"))?;
+        output
+            .flush()
+            .map_err(|error| format!("保存 {name} 失败: {error}"))?;
+    }
+    for model in MODEL_FILES {
+        if !seen.contains(model.name) {
+            return Err(format!("眼动模型压缩包缺少 {}", model.name));
+        }
+    }
+    arcrelay_gaze::OwnedModelBundle::load_from_directory(temporary_directory)
+        .map_err(|error| error.to_string())?;
+
+    if destination.exists() {
+        std::fs::remove_dir_all(destination)
+            .map_err(|error| format!("移除损坏的眼动模型失败: {error}"))?;
+    }
+    std::fs::rename(temporary_directory, destination)
+        .map_err(|error| format!("启用眼动模型失败: {error}"))?;
+    Ok(())
 }
 
 fn load_profile_from_path(path: &std::path::Path) -> Option<CalibrationProfile> {
@@ -1056,6 +1371,33 @@ mod profile_tests {
 
         assert_eq!(status.presence_profile_name, None);
         assert!(!status.presence_profile_enrolled);
+        assert_eq!(status.model_pack.state, "notInstalled");
+    }
+
+    #[test]
+    fn model_download_is_pinned_to_an_immutable_github_release() {
+        assert!(MODEL_ARCHIVE_URL.starts_with(
+            "https://github.com/ArcRelayProject/arcrelay/releases/download/gaze-models-v"
+        ));
+        assert_eq!(MODEL_ARCHIVE_SHA256.len(), 64);
+        assert!(MODEL_ARCHIVE_SIZE > 30 * 1024 * 1024);
+    }
+
+    #[test]
+    #[ignore = "requires ARCRELAY_GAZE_TEST_ARCHIVE pointing to the published release asset"]
+    fn published_model_archive_extracts_and_verifies() {
+        let archive = PathBuf::from(
+            std::env::var_os("ARCRELAY_GAZE_TEST_ARCHIVE")
+                .expect("ARCRELAY_GAZE_TEST_ARCHIVE must be set"),
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let temporary = directory.path().join("extracting");
+        let destination = directory.path().join(MODEL_BUNDLE_VERSION);
+
+        extract_and_activate_model_bundle(&archive, &temporary, &destination).unwrap();
+
+        assert!(model_directory_has_expected_files(&destination));
+        arcrelay_gaze::OwnedModelBundle::load_from_directory(&destination).unwrap();
     }
 }
 
@@ -1257,6 +1599,22 @@ pub async fn get_gaze_status(
     service: State<'_, Arc<GazeService>>,
 ) -> Result<GazeStatusView, String> {
     Ok(service.status().await)
+}
+
+#[tauri::command]
+pub async fn install_gaze_models(
+    app: AppHandle,
+    service: State<'_, Arc<GazeService>>,
+) -> Result<GazeStatusView, String> {
+    service.inner().install_models(app).await
+}
+
+#[tauri::command]
+pub async fn remove_gaze_models(
+    app: AppHandle,
+    service: State<'_, Arc<GazeService>>,
+) -> Result<GazeStatusView, String> {
+    service.inner().remove_models(app).await
 }
 
 #[tauri::command]

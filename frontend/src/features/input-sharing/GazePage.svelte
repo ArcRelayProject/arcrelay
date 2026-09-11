@@ -54,8 +54,14 @@
   let lastFlowSentAt = 0;
   let presenceName = "本机用户";
   let diagnosticsOpen = false;
+  let camerasLoaded = false;
 
   $: running = Boolean(status && !["idle", "stopped", "failed"].includes(status.state));
+  $: modelsReady = status?.modelPack.state === "ready";
+  $: modelsBusy = status?.modelPack.state === "downloading" || status?.modelPack.state === "verifying";
+  $: modelProgress = status?.modelPack.totalBytes
+    ? Math.round(status.modelPack.downloadedBytes / status.modelPack.totalBytes * 100)
+    : 0;
   $: cameraOptions = cameras.map((camera) => ({ value: camera.id, label: camera.name }));
   $: target = targetIndex >= 0 ? targets[targetIndex] : null;
   $: allDisplays = Object.values(snapshot.configuration.layout?.displays ?? {})
@@ -104,6 +110,10 @@
 
   function ingestStatus(next: GazeStatus) {
     status = next;
+    if (next.modelPack.state === "ready" && !camerasLoaded) {
+      camerasLoaded = true;
+      void refreshCameras();
+    }
     if (["idle", "stopped", "failed"].includes(next.state)
       && next.cameraId && cameras.some((camera) => camera.id === next.cameraId)) {
       selectedCamera = next.cameraId;
@@ -121,6 +131,8 @@
   }
 
   async function refreshCameras() {
+    if (status?.modelPack.state !== "ready") return;
+    camerasLoaded = true;
     busy = true;
     try {
       cameras = await bridge.listGazeCameras();
@@ -130,6 +142,33 @@
       if (!cameras.length) notify("没有检测到摄像头，请检查系统摄像头权限。", true);
     } catch (error) {
       notify(`摄像头枚举失败：${String(error)}`, true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function installModels() {
+    busy = true;
+    try {
+      ingestStatus(await bridge.installGazeModels());
+      notify("眼动模型已安装并完成校验。");
+    } catch (error) {
+      notify(`安装眼动模型失败：${String(error)}`, true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function removeModels() {
+    if (!window.confirm("移除眼动模型组件？标定资料会保留，下次使用时需要重新下载。")) return;
+    busy = true;
+    try {
+      ingestStatus(await bridge.removeGazeModels());
+      cameras = [];
+      camerasLoaded = false;
+      notify("眼动模型已移除，标定资料仍然保留。");
+    } catch (error) {
+      notify(`移除眼动模型失败：${String(error)}`, true);
     } finally {
       busy = false;
     }
@@ -412,7 +451,6 @@
       () => bridge.getGazeStatus(),
       ingestStatus,
     ).catch((error) => notify(String(error), true));
-    void refreshCameras();
     if ("__TAURI_INTERNALS__" in window) {
       void scope.add(listen<string>("gaze-calibration-cancel", (event) => {
         if (!calibrationSessionId || event.payload === calibrationSessionId) void cancelCalibration();
@@ -442,6 +480,22 @@
       {notify}
     />
   {:else}
+  {#if !modelsReady}
+    <article class="model-pack-card" class:error={status?.modelPack.state === "damaged"}>
+      <div class="model-pack-icon"><Eye size={26} weight="duotone" /></div>
+      <div>
+        <span class="eyebrow">可选组件</span>
+        <h2>{modelsBusy ? status?.modelPack.state === "verifying" ? "正在校验眼动模型" : "正在下载眼动模型" : status?.modelPack.state === "damaged" ? "眼动模型需要修复" : "下载眼动模型后启用"}</h2>
+        <p>约 36 MB，只下载一份且不随 CPU 架构重复；模型和摄像头画面均只在本机处理。</p>
+        {#if modelsBusy}
+          <div class="model-download"><div class="bar"><span style={`width:${modelProgress}%`}></span></div><b>{modelProgress}%</b></div>
+        {:else}
+          <button class="start-button" disabled={busy} on:click={installModels}>{status?.modelPack.state === "damaged" ? "重新下载" : "下载并启用"}</button>
+        {/if}
+        {#if status?.modelPack.error}<small>{status.modelPack.error}</small>{/if}
+      </div>
+    </article>
+  {/if}
   <div class="stepper" aria-label="标定步骤">
     <span class:active={phase === "ready" || phase === "checking"} class:done={phase !== "ready" && phase !== "checking"}><i>{phase === "ready" || phase === "checking" ? "1" : "✓"}</i>准备</span><b></b>
     <span class:active={phase === "calibrating" || phase === "transition"} class:done={phase === "complete"}><i>{phase === "complete" ? "✓" : "2"}</i>标定</span><b></b>
@@ -454,19 +508,20 @@
         <span class="eyebrow"><Crosshair size={15} weight="bold" />多设备头部区域标定</span>
         <h2>把头转向每块屏幕中央的圆点</h2>
         <p>ArcRelay 只学习你看向每块屏幕时的头部方向，不再依赖偏头时不稳定的眼动向量。标定后看向目标屏幕即可移动鼠标。</p>
-        <label class="camera-field"><span>用于标定的摄像头</span><AppSelect bind:value={selectedCamera} options={cameraOptions} disabled={running || busy} placeholder="未发现摄像头" aria-label="用于标定的摄像头" /></label>
+        <label class="camera-field"><span>用于标定的摄像头</span><AppSelect bind:value={selectedCamera} options={cameraOptions} disabled={!modelsReady || running || busy} placeholder={modelsReady ? "未发现摄像头" : "请先下载眼动模型"} aria-label="用于标定的摄像头" /></label>
         <div class="privacy-line"><LockKey size={15} weight="fill" /><span><strong>完全本机处理</strong>　只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。</span></div>
         <div class="hero-actions">
           {#if status?.calibrated && !running}
-            <button class="start-button" disabled={busy || !selectedCamera || !snapshot.configuration.layout} on:click={resumeTracking}><Play size={17} weight="fill" />{busy ? "正在启动…" : "启动识别"}</button>
+            <button class="start-button" disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout} on:click={resumeTracking}><Play size={17} weight="fill" />{busy ? "正在启动…" : "启动识别"}</button>
             <button class="text-button" disabled={busy} on:click={() => beginCalibration()}><ArrowClockwise size={15} />全部重新标定</button>
           {:else if !status?.calibrated}
-            <button class="start-button" disabled={busy || !selectedCamera || !snapshot.configuration.layout} on:click={() => beginCalibration()}><Play size={17} weight="fill" />{busy ? "正在启动…" : "开始标定"}</button>
+            <button class="start-button" disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout} on:click={() => beginCalibration()}><Play size={17} weight="fill" />{busy ? "正在启动…" : "开始标定"}</button>
           {:else}
             <button class="text-button" disabled={busy} on:click={() => beginCalibration()}><ArrowClockwise size={15} />全部重新标定</button>
           {/if}
-          <button class="text-button" disabled={busy} on:click={() => diagnosticsOpen = true}><Camera size={15} />视觉诊断</button>
-          <button class="text-button" disabled={busy} on:click={refreshCameras}><ArrowClockwise size={15} />重新检测摄像头</button>
+          <button class="text-button" disabled={!modelsReady || busy} on:click={() => diagnosticsOpen = true}><Camera size={15} />视觉诊断</button>
+          <button class="text-button" disabled={!modelsReady || busy} on:click={refreshCameras}><ArrowClockwise size={15} />重新检测摄像头</button>
+          {#if modelsReady}<button class="text-button" disabled={busy || running} on:click={removeModels}><Trash size={15} />移除模型</button>{/if}
         </div>
       </div>
       <div class="preview-panel" aria-hidden="true">
@@ -561,7 +616,7 @@
 </section>
 
 <style>
-  .gaze-page{display:grid;gap:12px;padding:2px 0 22px}.stepper{display:grid;grid-template-columns:auto minmax(28px,82px) auto minmax(28px,82px) auto;align-items:center;justify-content:center;gap:10px;padding:2px 0 5px;color:var(--text-muted);font-size:11px;font-weight:650}.stepper span{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.stepper i{display:grid;width:22px;height:22px;place-items:center;border:1px solid var(--border-strong);border-radius:50%;background:var(--surface);font-style:normal;font-size:10px}.stepper b{height:1px;background:var(--border)}.stepper span.active{color:var(--accent-strong)}.stepper span.active i{border-color:var(--accent);color:#fff;background:var(--accent)}.stepper span.done i{border-color:var(--success);color:#fff;background:var(--success)}
+  .gaze-page{display:grid;gap:12px;padding:2px 0 22px}.model-pack-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border));border-radius:14px;padding:17px 19px;background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface-raised))}.model-pack-card.error{border-color:color-mix(in srgb,var(--danger) 38%,var(--border));background:color-mix(in srgb,var(--danger-soft) 35%,var(--surface-raised))}.model-pack-icon{display:grid;width:48px;height:48px;place-items:center;border-radius:13px;color:var(--accent);background:var(--surface-raised)}.model-pack-card h2{margin:3px 0;color:var(--text);font-size:15px}.model-pack-card p{margin:0 0 10px;color:var(--text-secondary);font-size:10px}.model-pack-card small{display:block;margin-top:8px;color:var(--danger);font-size:9px}.model-download{display:flex;align-items:center;gap:10px}.model-download .bar{width:min(420px,70vw);margin:0}.model-download b{min-width:34px;color:var(--accent-strong);font-size:10px;font-variant-numeric:tabular-nums}.stepper{display:grid;grid-template-columns:auto minmax(28px,82px) auto minmax(28px,82px) auto;align-items:center;justify-content:center;gap:10px;padding:2px 0 5px;color:var(--text-muted);font-size:11px;font-weight:650}.stepper span{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.stepper i{display:grid;width:22px;height:22px;place-items:center;border:1px solid var(--border-strong);border-radius:50%;background:var(--surface);font-style:normal;font-size:10px}.stepper b{height:1px;background:var(--border)}.stepper span.active{color:var(--accent-strong)}.stepper span.active i{border-color:var(--accent);color:#fff;background:var(--accent)}.stepper span.done i{border-color:var(--success);color:#fff;background:var(--success)}
   .hero-card{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(310px,.88fr);gap:32px;overflow:hidden;border:1px solid var(--border);border-radius:18px;padding:26px 28px;background:var(--surface-raised);box-shadow:var(--shadow-card)}.hero-copy{align-self:center}.eyebrow{display:inline-flex;align-items:center;gap:6px;color:var(--accent-strong);font-size:11px;font-weight:750;letter-spacing:.02em}.hero-card h2,.state-card h2{margin:8px 0 7px;color:var(--text);font-size:23px;font-weight:760;line-height:1.18;letter-spacing:-.035em}.hero-copy>p,.state-card>p{max-width:590px;margin:0;color:var(--text-secondary);font-size:12px;line-height:1.7}.camera-field{display:grid;gap:7px;max-width:420px;margin-top:20px;color:var(--text-secondary);font-size:11px}.privacy-line{display:flex;align-items:flex-start;gap:8px;max-width:540px;margin-top:13px;color:var(--text-muted);font-size:10px;line-height:1.55}.privacy-line :global(svg){flex:none;margin-top:1px;color:var(--success)}.privacy-line strong{color:var(--text-secondary)}.hero-actions{display:flex;align-items:center;justify-content:center;gap:15px;margin-top:20px}.hero-copy .hero-actions{justify-content:flex-start}.start-button{display:inline-flex;min-height:39px;align-items:center;justify-content:center;gap:8px;border:1px solid var(--accent);border-radius:10px;padding:0 17px;color:#fff;background:var(--accent);font-size:12px;font-weight:720;box-shadow:0 8px 18px color-mix(in srgb,var(--accent) 20%,transparent)}.start-button:disabled{border-color:var(--border-strong);color:var(--text-muted);background:var(--surface-sunken);box-shadow:none}.text-button{display:inline-flex;align-items:center;gap:6px;border:0;padding:8px 0;color:var(--text-secondary);background:transparent;font-size:11px}
   .preview-panel{display:grid;align-content:center;gap:8px;padding:0 4px}.preview-panel img{display:block;width:100%;max-height:255px;object-fit:contain;filter:drop-shadow(0 16px 22px rgba(31,33,47,.12))}.preview-meta{display:flex;justify-content:space-between;gap:10px;color:var(--text-muted);font-size:10px}.preview-meta span{display:inline-flex;align-items:center;gap:5px}
   .readiness-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.readiness-grid section{display:flex;align-items:center;gap:11px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface-raised)}.readiness-grid section>span{display:grid;width:28px;height:28px;flex:none;place-items:center;border-radius:9px;color:var(--text-muted);background:var(--surface-sunken)}.readiness-grid section>span.ok{color:var(--success);background:var(--success-soft)}.readiness-grid strong{display:block;color:var(--text);font-size:11px}.readiness-grid p{margin:2px 0 0;color:var(--text-muted);font-size:10px}
