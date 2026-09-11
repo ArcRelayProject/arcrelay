@@ -142,6 +142,7 @@ impl InputCapturePort for NativePlatform {
                                     let _ = sender.send(CapturedInputEvent::PointerButton {
                                         hid_usage: x11_button_to_hid(button),
                                         down,
+                                        click_count: 1,
                                     });
                                 }
                             } else if let Some(keycode) = detail.and_then(x11_keycode_to_hid) {
@@ -237,7 +238,12 @@ impl InputInjectionPort for NativePlatform {
         }
     }
 
-    fn pointer_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
+    fn pointer_button(
+        &self,
+        hid_usage: u16,
+        down: bool,
+        _click_count: u8,
+    ) -> Result<(), PlatformError> {
         let button = hid_to_x11_button(hid_usage).to_string();
         self.run_xdotool(&[(if down { "mousedown" } else { "mouseup" }).into(), button])
     }

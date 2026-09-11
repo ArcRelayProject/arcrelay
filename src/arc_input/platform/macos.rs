@@ -433,6 +433,8 @@ unsafe extern "C" fn capture_callback(
             Some(CapturedInputEvent::PointerButton {
                 hid_usage: button,
                 down: matches!(event_type, 1 | 3 | 25),
+                click_count: CGEventGetIntegerValueField(event, EventField::MOUSE_EVENT_CLICK_STATE)
+                    .clamp(1, 3) as u8,
             })
         }
         22 if context.options.capture_pointer => {
@@ -625,7 +627,12 @@ impl NativePlatform {
         Ok(())
     }
 
-    fn post_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
+    fn post_button(
+        &self,
+        hid_usage: u16,
+        down: bool,
+        click_count: u8,
+    ) -> Result<(), PlatformError> {
         if hid_usage == 0 {
             return Err(PlatformError::Unsupported("mouse button usage 0".into()));
         }
@@ -649,6 +656,11 @@ impl NativePlatform {
                 ));
             }
             CGEventSetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
+            CGEventSetIntegerValueField(
+                event,
+                EventField::MOUSE_EVENT_CLICK_STATE,
+                i64::from(click_count.clamp(1, 3)),
+            );
             CGEventPost(0, event);
             CFRelease(event);
         }
@@ -686,7 +698,7 @@ impl NativePlatform {
             let _ = self.post_key(key, false, function_was_down && key != HID_KEY_FUNCTION);
         }
         for button in std::mem::take(&mut state.pressed_buttons) {
-            let _ = self.post_button(button, false);
+            let _ = self.post_button(button, false, 1);
         }
         state.scroll_gesture_active = false;
         state.scroll_momentum_active = false;
@@ -1173,8 +1185,13 @@ impl InputInjectionPort for NativePlatform {
         Ok(())
     }
 
-    fn pointer_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
-        self.post_button(hid_usage, down)?;
+    fn pointer_button(
+        &self,
+        hid_usage: u16,
+        down: bool,
+        click_count: u8,
+    ) -> Result<(), PlatformError> {
+        self.post_button(hid_usage, down, click_count)?;
         let mut state = lock(&self.injection);
         state.function_tap.cancel();
         if down {
@@ -1490,10 +1507,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 mod emergency_shortcut_tests {
     use super::*;
 
-    #[test]
-    fn injected_pointer_placement_does_not_become_physical_takeover_input() {
-        let (events, receiver) = mpsc::sync_channel(4);
-        let mut context = CaptureContext {
+    fn capture_context(events: SyncSender<CapturedInputEvent>) -> CaptureContext {
+        CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
             events,
             options: CaptureOptions {
@@ -1512,7 +1527,44 @@ mod emergency_shortcut_tests {
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
-        };
+        }
+    }
+
+    #[test]
+    fn captured_pointer_button_preserves_quartz_double_click_count() {
+        let (events, receiver) = mpsc::sync_channel(2);
+        let mut context = capture_context(events);
+        unsafe {
+            let event =
+                CGEventCreateMouseEvent(std::ptr::null(), 1, CGPoint { x: 100.0, y: 100.0 }, 0);
+            assert!(!event.is_null());
+            CGEventSetIntegerValueField(event, EventField::MOUSE_EVENT_CLICK_STATE, 2);
+
+            assert_eq!(
+                capture_callback(
+                    std::ptr::null(),
+                    1,
+                    event,
+                    (&mut context as *mut CaptureContext).cast()
+                ),
+                event
+            );
+            assert_eq!(
+                receiver.try_recv(),
+                Ok(CapturedInputEvent::PointerButton {
+                    hid_usage: 1,
+                    down: true,
+                    click_count: 2,
+                })
+            );
+            CFRelease(event);
+        }
+    }
+
+    #[test]
+    fn injected_pointer_placement_does_not_become_physical_takeover_input() {
+        let (events, receiver) = mpsc::sync_channel(4);
+        let mut context = capture_context(events);
         unsafe {
             // Construct and invoke the callback only, without posting/moving.
             let event =
