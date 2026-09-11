@@ -491,7 +491,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=44431c5f90d466ea23ae3fc639f2eaa38fd32966#44431c5f90d466ea23ae3fc639f2eaa38fd32966"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=29203deb253a663d18ecc56757271f51797424fb#29203deb253a663d18ecc56757271f51797424fb"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
