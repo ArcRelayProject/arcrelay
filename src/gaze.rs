@@ -25,6 +25,7 @@ const GAZE_EVENT: &str = "gaze-state";
 const GAZE_PREVIEW_EVENT: &str = "gaze-preview";
 const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
 const PREVIEW_INTERVAL: Duration = Duration::from_millis(200);
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_gaze_ipc.rs"));
@@ -154,7 +155,7 @@ pub struct GazeService {
     input: Arc<ArcInputRuntime>,
     profile_path: PathBuf,
     presence_profile_path: PathBuf,
-    tracker: OnceCell<Arc<GazeTracker>>,
+    tracker: OnceCell<Result<Arc<GazeTracker>, String>>,
     session: Mutex<Option<TrackerSession>>,
     forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     preview_forwarding: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
@@ -197,15 +198,40 @@ impl GazeService {
     async fn tracker(&self) -> Result<Arc<GazeTracker>, String> {
         let tracker = self
             .tracker
-            .get_or_try_init(|| async {
-                tokio::task::spawn_blocking(|| GazeTracker::with_bundled_models(4))
-                    .await
-                    .map_err(|error| format!("gaze model worker failed: {error}"))?
-                    .map(Arc::new)
-                    .map_err(|error| error.to_string())
+            .get_or_init(|| async {
+                tracing::info!(
+                    timeout_seconds = MODEL_LOAD_TIMEOUT.as_secs(),
+                    "loading gaze and face recognition models"
+                );
+                let started = Instant::now();
+                let worker = tokio::task::spawn_blocking(|| GazeTracker::with_bundled_models(4));
+                match tokio::time::timeout(MODEL_LOAD_TIMEOUT, worker).await {
+                    Ok(Ok(Ok(tracker))) => {
+                        tracing::info!(
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "gaze and face recognition models are ready"
+                        );
+                        Ok(Arc::new(tracker))
+                    }
+                    Ok(Ok(Err(error))) => {
+                        let error = error.to_string();
+                        tracing::error!(%error, "failed to load gaze and face recognition models");
+                        Err(error)
+                    }
+                    Ok(Err(error)) => {
+                        let error = format!("gaze model worker failed: {error}");
+                        tracing::error!(%error, "gaze model worker stopped");
+                        Err(error)
+                    }
+                    Err(_) => {
+                        let error = model_load_timeout_message(MODEL_LOAD_TIMEOUT);
+                        tracing::error!(%error, "gaze model loading timed out");
+                        Err(error)
+                    }
+                }
             })
             .await
-            .cloned()?;
+            .clone()?;
         tracker
             .set_presence_profile(self.presence_profile.lock().await.clone())
             .map_err(|error| error.to_string())?;
@@ -230,6 +256,7 @@ impl GazeService {
     }
 
     pub async fn start(self: &Arc<Self>, app: AppHandle, camera_id: String) -> Result<(), String> {
+        tracing::info!(%camera_id, "gaze tracking start requested");
         let _ = self.app.set(app.clone());
         self.stop().await?;
         let tracker = self.tracker().await?;
@@ -252,10 +279,15 @@ impl GazeService {
             .map_err(|error| error.to_string())?;
         tracker.set_workspace_mapper(mapper);
         *self.profile.lock().await = profile;
-        let session = tracker
-            .start(&camera_id, TrackerConfig::default())
-            .await
-            .map_err(|error| error.to_string())?;
+        tracing::info!(%camera_id, "opening gaze camera");
+        let session = match tracker.start(&camera_id, TrackerConfig::default()).await {
+            Ok(session) => session,
+            Err(error) => {
+                tracing::error!(%camera_id, %error, "failed to open gaze camera");
+                return Err(error.to_string());
+            }
+        };
+        tracing::info!(%camera_id, "gaze camera started");
         self.snapshots.send_replace(session.snapshot());
         let mut snapshots = session.subscribe_snapshots();
         let mut preview_events = session.subscribe_events();
@@ -364,9 +396,13 @@ impl GazeService {
 
     pub fn set_preview_enabled(&self, enabled: bool) {
         self.preview_enabled.store(enabled, Ordering::Release);
-        if let Some(tracker) = self.tracker.get() {
+        if let Some(tracker) = self.initialized_tracker() {
             tracker.set_preview_enabled(enabled);
         }
+    }
+
+    fn initialized_tracker(&self) -> Option<&Arc<GazeTracker>> {
+        self.tracker.get().and_then(|result| result.as_ref().ok())
     }
 
     pub async fn status(&self) -> GazeStatusView {
@@ -582,7 +618,7 @@ impl GazeService {
     pub async fn clear_calibration(&self) -> Result<GazeStatusView, String> {
         self.calibration.lock().await.take();
         self.profile.lock().await.take();
-        if let Some(tracker) = self.tracker.get() {
+        if let Some(tracker) = self.initialized_tracker() {
             tracker.set_workspace_mapper(None);
         }
         match std::fs::remove_file(&self.profile_path) {
@@ -613,7 +649,7 @@ impl GazeService {
     }
 
     pub async fn cancel_presence_enrollment(&self) -> GazeStatusView {
-        if let Some(tracker) = self.tracker.get() {
+        if let Some(tracker) = self.initialized_tracker() {
             tracker.cancel_presence_enrollment();
         }
         self.status().await
@@ -622,7 +658,7 @@ impl GazeService {
     pub async fn clear_presence_profile(&self) -> Result<GazeStatusView, String> {
         self.presence_profile.lock().await.take();
         self.last_presence_state.lock().await.take();
-        if let Some(tracker) = self.tracker.get() {
+        if let Some(tracker) = self.initialized_tracker() {
             tracker.cancel_presence_enrollment();
             tracker
                 .set_presence_profile(None)
@@ -695,6 +731,13 @@ impl GazeService {
         crate::infrastructure::durable_file::replace_private(&self.presence_profile_path, &bytes)
             .map_err(|error| format!("保存本机用户人脸模板失败: {error}"))
     }
+}
+
+fn model_load_timeout_message(timeout: Duration) -> String {
+    format!(
+        "眼动与人脸识别模型加载超过 {} 秒；请重启 ArcRelay 后重试并导出诊断日志",
+        timeout.as_secs()
+    )
 }
 
 fn load_profile_from_path(path: &std::path::Path) -> Option<CalibrationProfile> {
@@ -955,6 +998,13 @@ mod profile_tests {
             .unwrap();
         let decoded = BASE64_STANDARD.decode(encoded).unwrap();
         assert_eq!(image::load_from_memory(&decoded).unwrap().width(), 2);
+    }
+
+    #[test]
+    fn model_load_timeout_is_reported_without_a_runtime() {
+        let error = model_load_timeout_message(Duration::from_secs(17));
+        assert!(error.contains("17 秒"));
+        assert!(error.contains("重启 ArcRelay"));
     }
 }
 
