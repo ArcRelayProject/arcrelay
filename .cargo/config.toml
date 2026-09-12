@@ -1,2 +1,10 @@
 [net]
 git-fetch-with-cli = true
+
+# Tauri and ocr-rs both link the static MSVC runtime. Keep Rust and all native
+# gaze/MNN dependencies on the same CRT so Windows release links are ABI-safe.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
