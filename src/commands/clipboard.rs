@@ -829,18 +829,27 @@ async fn prepare_window_and_wait_for_paste(
     #[cfg(target_os = "macos")]
     {
         let started = std::time::Instant::now();
+        let mut ready_since = None;
         // Yield to AppKit before observing resignation of the panel's key status.
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             if crate::windowing::clipboard_paste_target_ready(app, &mut target, started.elapsed())
                 .map_err(|error| error.to_string())?
             {
+                // Key-window resignation precedes the target editor becoming
+                // ready. Require another 50ms of stable focus/content.
+                let ready = ready_since.get_or_insert_with(std::time::Instant::now);
+                if ready.elapsed() < std::time::Duration::from_millis(50) {
+                    continue;
+                }
                 tracing::debug!(
                     target_pid = ?target.pid,
                     wait_ms = started.elapsed().as_millis() as u64,
                     "clipboard paste target ready"
                 );
                 break;
+            } else {
+                ready_since = None;
             }
             if started.elapsed() >= std::time::Duration::from_millis(500) {
                 if target.pid.is_none() {
