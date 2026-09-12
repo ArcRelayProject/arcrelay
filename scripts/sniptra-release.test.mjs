@@ -27,7 +27,7 @@ test('skips incompatible releases, resolves once, and rejects incompatible pins'
       { tag_name: 'v0.2.0-ci.17', assets: [{ name: 'release-manifest.json', browser_download_url: 'https://test/new' }] },
       { tag_name: tag, assets: [{ name: 'release-manifest.json', browser_download_url: 'https://test/old' }] },
     ];
-    else if (url.includes('/tags/')) data = { tag_name: tag, assets: [{ name: 'release-manifest.json', browser_download_url: 'https://test/new' }] };
+    else if (url.endsWith(`/${tag}/release-manifest.json`)) data = { ...manifest(), protocol_version: 2 };
     else data = url.endsWith('/new') ? { protocol_version: 2 } : manifest();
     return { ok: true, json: async () => data };
   };
@@ -35,6 +35,7 @@ test('skips incompatible releases, resolves once, and rejects incompatible pins'
     assert.equal((await resolveRelease()).release, tag);
     assert.equal(calls.length, 3);
     await assert.rejects(resolveRelease(tag), /incompatible/);
+    assert.equal(calls[3], `https://github.com/ArcRelayProject/sniptra/releases/download/${tag}/release-manifest.json`);
   } finally { globalThis.fetch = oldFetch; }
 });
 
