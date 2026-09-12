@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { ArrowClockwise, Check, CheckCircle, Clock, DeviceMobile, Laptop, PaperPlaneTilt, Plus, WarningCircle, X } from 'phosphor-svelte';
   import BrandLogo from '../BrandLogo.svelte';
   import TransferFileVisual from '../TransferFileVisual.svelte';
@@ -7,6 +7,7 @@
   import { SubscriptionScope, createInvalidationLoader } from '../subscriptions';
   import { language, setLanguage, t } from '../i18n';
   import { trayTransferBytes as bytes, trayTransferProgress, trayTransferStatus } from '../trayTransferState';
+  import { trayTransferPanelHeight } from '../trayTransferPanelSize';
   import type { AppSettings, TransferSnapshot } from '../types';
   import type { TrayTransferPort } from './port';
 
@@ -40,7 +41,20 @@
   $: hasContent = Boolean(transferId || $draft.files.length || sending);
   $: mode = transferId ? 'task' : $draft.files.length ? 'choose' : 'hover';
   $: title = mode === 'hover' ? '附近传输' : completed ? '发送完成' : transferId ? (terminal ? '发送结果' : '正在发送') : '发送文件';
-  $: if (ready) void port.updatePanel(Math.min(640, Math.ceil(frame?.getBoundingClientRect().height ?? 220)), hasContent).catch(report);
+  $: panelLayoutKey = [mode, files.length, snapshot.peers.length, selectedPeerId, task?.status ?? '', sending, error].join(':');
+  $: if (ready && panelLayoutKey) void tick().then(() => { if (!scope.disposed) return resizePanel(); });
+
+  function measuredPanelHeight() {
+    const renderedHeight = frame?.getBoundingClientRect().height ?? 220;
+    return trayTransferPanelHeight({
+      renderedHeight,
+      clientHeight: frame?.clientHeight ?? renderedHeight,
+      scrollHeight: frame?.scrollHeight ?? renderedHeight,
+    });
+  }
+  function resizePanel() {
+    return port.updatePanel(measuredPanelHeight(), hasContent).catch(report);
+  }
 
   function report(cause: unknown) {
     const messages: Partial<Record<DraftError['code'], string>> = {
@@ -116,7 +130,7 @@
   onMount(() => {
     ready = true;
     const resize = new ResizeObserver(() => {
-      if (!scope.disposed) void port.updatePanel(Math.ceil(frame.getBoundingClientRect().height), hasContent).catch(report);
+      if (!scope.disposed) void resizePanel();
     });
     resize.observe(frame);
     media.addEventListener('change', applyTheme);

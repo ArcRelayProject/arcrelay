@@ -160,6 +160,8 @@ export type DiagnosticBundleInfo = import('./ipc/generated').DiagnosticBundleInf
 export type NearbyInputPeer = import('./ipc/generated').NearbyPeerView;
 
 export type InputRuntimeSnapshot = import('./ipc/generated').RuntimeSnapshot;
+export type GazeCamera = import('./ipc/generated').GazeCameraView;
+export type GazeStatus = import('./ipc/generated').GazeStatusView;
 
 export type EdgeTestResult = import('./ipc/generated').EdgeTestResult;
 

@@ -12,6 +12,7 @@
     MagnifyingGlass,
     CheckCircle,
     Info,
+    Eye,
   } from "phosphor-svelte";
   import { bridge } from "../bridge";
   import InstalledAppIcon from "../InstalledAppIcon.svelte";
@@ -22,6 +23,7 @@
     weekdays,
     dayNames,
     formatDate,
+    presenceLabels,
   } from "../automation";
   import { captureActionShortcut } from "../actionShortcutCapture";
   import { errorMessage } from "../app_helpers";
@@ -45,6 +47,7 @@
     { name: "应用", icon: AppWindow },
     { name: "系统", icon: Desktop },
     { name: "时间", icon: Clock },
+    { name: "在场", icon: Eye },
     { name: "ArcRelay", icon: Devices },
     { name: "手动", icon: Keyboard },
   ];
@@ -55,6 +58,8 @@
         ? "系统"
         : trigger.type === "schedule"
           ? "时间"
+          : trigger.type === "presence"
+            ? "在场"
           : ["device", "transfer"].includes(trigger.type)
             ? "ArcRelay"
             : "手动";
@@ -284,6 +289,16 @@
         ></button
       >{/each}
   </div>
+{:else if trigger.type === "presence"}
+  <div class="au-choice-list">
+    {#each triggerChoices.filter((choice) => choice.category === "在场") as choice}<button
+        class:chosen={choice.capability === `presence.${trigger.state}`}
+        disabled={!capability(choice.capability)?.available}
+        on:click={() => (trigger = choice.trigger())}
+        ><Eye size={21} /><span><strong>{uiTranslate(choice.label, $uiLanguage)}</strong><small>{uiTranslate("状态稳定后触发；原始人脸特征不会写入自动化。", $uiLanguage)}</small></span></button
+      >{/each}
+  </div>
+  <p class="au-note"><Info size={16} />{uiTranslate(`当前选择：${presenceLabels[trigger.state]}。需要先在眼动设置中录入本机用户。`, $uiLanguage)}</p>
 {:else if trigger.type === "device" || trigger.type === "transfer"}
   <label class="au-field"
     >{uiTranslate("何时触发", $uiLanguage)}<AppSelect value={trigger.type === "device"

@@ -32,6 +32,7 @@ mod keyboard;
 mod scroll;
 use cursor::set_hidden as set_cursor_hidden;
 const CAPTURE_QUEUE_CAPACITY: usize = 4096;
+const FIELD_EVENT_SOURCE_UNIX_PROCESS_ID: u32 = 41;
 const FIELD_EVENT_SOURCE_USER_DATA: u32 = 42;
 const FIELD_SCROLL_WHEEL_EVENT_SCROLL_PHASE: u32 = 99;
 const FIELD_SCROLL_WHEEL_EVENT_SCROLL_COUNT: u32 = 100;
@@ -342,7 +343,7 @@ unsafe extern "C" fn capture_callback(
     if event.is_null() {
         return event;
     }
-    if CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA) == ARC_INPUT_EVENT_TAG {
+    if arcrelay_injected_event(event_type, event) {
         return event;
     }
     if event_type == 12
@@ -395,14 +396,16 @@ unsafe extern "C" fn capture_callback(
             .system_gesture_format_version
             .load(Ordering::Acquire);
         let decoded = gesture::decode(event);
-        let blocked = context.gesture_gate.borrow_mut().route(
+        let (blocked, routed) = context.gesture_gate.borrow_mut().route(
             decoded,
             event_type == 29 && subtype == 0,
+            event_type == 29 && subtype == 8,
+            gesture::contact_count(),
             generation,
             format_version,
         );
         if blocked {
-            if let Some(event) = decoded {
+            if let Some(event) = routed {
                 context.emit(CapturedInputEvent::SystemGesture { event, generation });
             }
             if context.suppress_local.load(Ordering::Acquire)
@@ -431,6 +434,8 @@ unsafe extern "C" fn capture_callback(
             Some(CapturedInputEvent::PointerButton {
                 hid_usage: button,
                 down: matches!(event_type, 1 | 3 | 25),
+                click_count: CGEventGetIntegerValueField(event, EventField::MOUSE_EVENT_CLICK_STATE)
+                    .clamp(1, 3) as u8,
             })
         }
         22 if context.options.capture_pointer => {
@@ -502,6 +507,34 @@ unsafe extern "C" fn capture_callback(
         }
     }
     event
+}
+
+unsafe fn arcrelay_injected_event(event_type: u32, event: CGEventRef) -> bool {
+    // Quartz normally preserves our user-data tag, but an absolute pointer
+    // warp can be re-emitted by the HID path without that field. The source
+    // process id survives that path, so use it as a second exact marker. This
+    // avoids a time-based suppression window that could swallow real mouse
+    // movement while remote pointer events are arriving continuously.
+    let event_tag = CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA);
+    let source_process_id = CGEventGetIntegerValueField(event, FIELD_EVENT_SOURCE_UNIX_PROCESS_ID);
+    arcrelay_injected_source(
+        event_type,
+        event_tag,
+        source_process_id,
+        i64::from(std::process::id()),
+    )
+}
+
+fn arcrelay_injected_source(
+    event_type: u32,
+    event_tag: i64,
+    source_process_id: i64,
+    process_id: i64,
+) -> bool {
+    event_tag == ARC_INPUT_EVENT_TAG
+        || (matches!(event_type, 5 | 6 | 7 | 27)
+            && process_id > 0
+            && source_process_id == process_id)
 }
 
 struct CaptureState {
@@ -594,7 +627,7 @@ impl NativePlatform {
         &self,
         hid_usage: u16,
         down: bool,
-        function_down: bool,
+        routed_modifiers: CGEventFlags,
     ) -> Result<CGEvent, PlatformError> {
         let keycode = hid_to_macos_keycode(hid_usage).ok_or_else(|| {
             PlatformError::Unsupported(format!("unsupported HID key 0x{hid_usage:02x}"))
@@ -602,11 +635,8 @@ impl NativePlatform {
         let event = CGEvent::new_keyboard_event(self.source()?, keycode, down)
             .map_err(|_| PlatformError::Operation("cannot create keyboard event".into()))?;
         let mut flags = event.get_flags();
-        if function_down {
-            flags.insert(CGEventFlags::CGEventFlagSecondaryFn);
-        } else {
-            flags.remove(CGEventFlags::CGEventFlagSecondaryFn);
-        }
+        flags.remove(routed_modifier_mask());
+        flags.insert(routed_modifiers);
         event.set_flags(flags);
         event.set_integer_value_field(FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
         Ok(event)
@@ -616,14 +646,19 @@ impl NativePlatform {
         &self,
         hid_usage: u16,
         down: bool,
-        function_down: bool,
+        routed_modifiers: CGEventFlags,
     ) -> Result<(), PlatformError> {
-        let event = self.key_event(hid_usage, down, function_down)?;
+        let event = self.key_event(hid_usage, down, routed_modifiers)?;
         event.post(CGEventTapLocation::HID);
         Ok(())
     }
 
-    fn post_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
+    fn post_button(
+        &self,
+        hid_usage: u16,
+        down: bool,
+        click_count: u8,
+    ) -> Result<(), PlatformError> {
         if hid_usage == 0 {
             return Err(PlatformError::Unsupported("mouse button usage 0".into()));
         }
@@ -647,6 +682,11 @@ impl NativePlatform {
                 ));
             }
             CGEventSetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
+            CGEventSetIntegerValueField(
+                event,
+                EventField::MOUSE_EVENT_CLICK_STATE,
+                i64::from(click_count.clamp(1, 3)),
+            );
             CGEventPost(0, event);
             CFRelease(event);
         }
@@ -678,13 +718,13 @@ impl NativePlatform {
                 ..ScrollEvent::default()
             });
         }
-        let pressed_keys = std::mem::take(&mut state.pressed_keys);
-        let function_was_down = pressed_keys.contains(&HID_KEY_FUNCTION);
-        for key in pressed_keys {
-            let _ = self.post_key(key, false, function_was_down && key != HID_KEY_FUNCTION);
+        let mut pressed_keys = std::mem::take(&mut state.pressed_keys);
+        for key in pressed_keys.clone() {
+            pressed_keys.remove(&key);
+            let _ = self.post_key(key, false, routed_modifier_flags(&pressed_keys));
         }
         for button in std::mem::take(&mut state.pressed_buttons) {
-            let _ = self.post_button(button, false);
+            let _ = self.post_button(button, false, 1);
         }
         state.scroll_gesture_active = false;
         state.scroll_momentum_active = false;
@@ -823,6 +863,10 @@ impl InputCapturePort for NativePlatform {
         let thread = match std::thread::Builder::new()
             .name("arc-input-quartz-capture".into())
             .spawn(move || unsafe {
+                let contact_tracking = gesture::ContactTrackingGuard::start();
+                if !contact_tracking.available() {
+                    tracing::warn!("Arc Input could not observe trackpad contact count; legacy swipe routing remains enabled");
+                }
                 let context = Box::new(CaptureContext {
                     consumer,
                     events: events_tx,
@@ -1105,12 +1149,8 @@ impl InputInjectionPort for NativePlatform {
         match event {
             MappedKeyboardEvent::Physical { hid_usage, down } => {
                 let mut state = lock(&self.injection);
-                let function_down = if *hid_usage == HID_KEY_FUNCTION {
-                    *down
-                } else {
-                    state.pressed_keys.contains(&HID_KEY_FUNCTION)
-                };
-                self.post_key(*hid_usage, *down, function_down)?;
+                let modifiers = routed_modifier_flags_after(&state.pressed_keys, *hid_usage, *down);
+                self.post_key(*hid_usage, *down, modifiers)?;
                 if *down {
                     state.pressed_keys.insert(*hid_usage);
                 } else {
@@ -1167,8 +1207,13 @@ impl InputInjectionPort for NativePlatform {
         Ok(())
     }
 
-    fn pointer_button(&self, hid_usage: u16, down: bool) -> Result<(), PlatformError> {
-        self.post_button(hid_usage, down)?;
+    fn pointer_button(
+        &self,
+        hid_usage: u16,
+        down: bool,
+        click_count: u8,
+    ) -> Result<(), PlatformError> {
+        self.post_button(hid_usage, down, click_count)?;
         let mut state = lock(&self.injection);
         state.function_tap.cancel();
         if down {
@@ -1377,6 +1422,46 @@ fn modifier_is_down(hid_usage: u16, flags: u64) -> bool {
     flags & mask != 0
 }
 
+fn routed_modifier_mask() -> CGEventFlags {
+    CGEventFlags::CGEventFlagControl
+        | CGEventFlags::CGEventFlagShift
+        | CGEventFlags::CGEventFlagAlternate
+        | CGEventFlags::CGEventFlagCommand
+        | CGEventFlags::CGEventFlagSecondaryFn
+}
+
+fn routed_modifier_flags(pressed_keys: &BTreeSet<u16>) -> CGEventFlags {
+    let mut flags = CGEventFlags::empty();
+    for (usages, flag) in [
+        ([0xe0, 0xe4], CGEventFlags::CGEventFlagControl),
+        ([0xe1, 0xe5], CGEventFlags::CGEventFlagShift),
+        ([0xe2, 0xe6], CGEventFlags::CGEventFlagAlternate),
+        ([0xe3, 0xe7], CGEventFlags::CGEventFlagCommand),
+    ] {
+        if usages.iter().any(|usage| pressed_keys.contains(usage)) {
+            flags.insert(flag);
+        }
+    }
+    if pressed_keys.contains(&HID_KEY_FUNCTION) {
+        flags.insert(CGEventFlags::CGEventFlagSecondaryFn);
+    }
+    flags
+}
+
+fn routed_modifier_flags_after(
+    pressed_keys: &BTreeSet<u16>,
+    hid_usage: u16,
+    down: bool,
+) -> CGEventFlags {
+    let mut pressed_keys = pressed_keys.clone();
+    if down {
+        pressed_keys.insert(hid_usage);
+    } else {
+        pressed_keys.remove(&hid_usage);
+    }
+    routed_modifier_flags(&pressed_keys)
+}
+
 fn macos_keycode_to_hid(keycode: u16) -> Option<u16> {
     if keycode == MACOS_KEYCODE_FUNCTION {
         return Some(HID_KEY_FUNCTION);
@@ -1484,10 +1569,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 mod emergency_shortcut_tests {
     use super::*;
 
-    #[test]
-    fn injected_pointer_placement_does_not_become_physical_takeover_input() {
-        let (events, receiver) = mpsc::sync_channel(4);
-        let mut context = CaptureContext {
+    fn capture_context(events: SyncSender<CapturedInputEvent>) -> CaptureContext {
+        CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
             events,
             options: CaptureOptions {
@@ -1506,9 +1589,56 @@ mod emergency_shortcut_tests {
             tap: AtomicUsize::new(0),
             gesture_tap: AtomicUsize::new(0),
             overflowed: AtomicBool::new(false),
-        };
+        }
+    }
+
+    #[test]
+    fn recognizes_tagged_and_same_process_injected_events() {
+        assert!(arcrelay_injected_source(10, ARC_INPUT_EVENT_TAG, 0, 42));
+        assert!(arcrelay_injected_source(5, 0, 42, 42));
+        assert!(!arcrelay_injected_source(5, 0, 7, 42));
+        assert!(!arcrelay_injected_source(5, 0, 0, 0));
+        assert!(!arcrelay_injected_source(10, 0, 42, 42));
+    }
+
+    #[test]
+    fn captured_pointer_button_preserves_quartz_double_click_count() {
+        let (events, receiver) = mpsc::sync_channel(2);
+        let mut context = capture_context(events);
         unsafe {
-            // Construct and invoke the callback only, without posting/moving.
+            let event =
+                CGEventCreateMouseEvent(std::ptr::null(), 1, CGPoint { x: 100.0, y: 100.0 }, 0);
+            assert!(!event.is_null());
+            CGEventSetIntegerValueField(event, EventField::MOUSE_EVENT_CLICK_STATE, 2);
+
+            assert_eq!(
+                capture_callback(
+                    std::ptr::null(),
+                    1,
+                    event,
+                    (&mut context as *mut CaptureContext).cast()
+                ),
+                event
+            );
+            assert_eq!(
+                receiver.try_recv(),
+                Ok(CapturedInputEvent::PointerButton {
+                    hid_usage: 1,
+                    down: true,
+                    click_count: 2,
+                })
+            );
+            CFRelease(event);
+        }
+    }
+
+    #[test]
+    fn injected_pointer_placement_does_not_become_physical_takeover_input() {
+        let (events, receiver) = mpsc::sync_channel(4);
+        let mut context = capture_context(events);
+        unsafe {
+            // A Quartz event created by this process already carries its PID,
+            // even before ArcRelay's explicit user-data tag is attached.
             let event =
                 CGEventCreateMouseEvent(std::ptr::null(), 5, CGPoint { x: 100.0, y: 100.0 }, 0);
             assert!(!event.is_null());
@@ -1521,10 +1651,7 @@ mod emergency_shortcut_tests {
                 ),
                 event
             );
-            assert!(matches!(
-                receiver.try_recv(),
-                Ok(CapturedInputEvent::PointerDelta { .. })
-            ));
+            assert!(receiver.try_recv().is_err());
             CGEventSetIntegerValueField(event, FIELD_EVENT_SOURCE_USER_DATA, ARC_INPUT_EVENT_TAG);
             assert_eq!(
                 capture_callback(
@@ -1654,18 +1781,39 @@ mod emergency_shortcut_tests {
             Some(MACOS_KEYCODE_FUNCTION)
         );
 
-        let down = platform.key_event(HID_KEY_FUNCTION, true, true).unwrap();
+        let down = platform
+            .key_event(HID_KEY_FUNCTION, true, CGEventFlags::CGEventFlagSecondaryFn)
+            .unwrap();
         assert_eq!(down.get_type() as u32, CGEventType::FlagsChanged as u32);
         assert!(modifier_is_down(HID_KEY_FUNCTION, down.get_flags().bits()));
 
-        let function_row = platform.key_event(0x3a, true, true).unwrap();
+        let function_row = platform
+            .key_event(0x3a, true, CGEventFlags::CGEventFlagSecondaryFn)
+            .unwrap();
         assert!(function_row
             .get_flags()
             .contains(CGEventFlags::CGEventFlagSecondaryFn));
 
-        let up = platform.key_event(HID_KEY_FUNCTION, false, false).unwrap();
+        let up = platform
+            .key_event(HID_KEY_FUNCTION, false, CGEventFlags::empty())
+            .unwrap();
         assert_eq!(up.get_type() as u32, CGEventType::FlagsChanged as u32);
         assert!(!modifier_is_down(HID_KEY_FUNCTION, up.get_flags().bits()));
+    }
+
+    #[test]
+    fn injected_shortcut_key_carries_routed_modifier_flags() {
+        let platform = NativePlatform::new(ServiceInstanceId::parse("test-device").unwrap());
+        let pressed_keys = BTreeSet::from([0xe3, 0xe2, 0xe1, 0xe0]);
+        let modifiers = routed_modifier_flags_after(&pressed_keys, 0x06, true);
+        let event = platform.key_event(0x06, true, modifiers).unwrap();
+
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagCommand));
+        assert!(event
+            .get_flags()
+            .contains(CGEventFlags::CGEventFlagAlternate));
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagShift));
+        assert!(event.get_flags().contains(CGEventFlags::CGEventFlagControl));
     }
 
     #[test]

@@ -3,7 +3,7 @@
   import { weekdayName } from "../automation";
   import { translate as uiTranslate, language as uiLanguage } from "../i18n";
   import { Plus, Trash, Info } from "phosphor-svelte";
-  import { weekdays, dayNames, identity } from "../automation";
+  import { weekdays, dayNames, identity, presenceLabels } from "../automation";
   import type {
     AutomationCondition,
     ConnectedDeviceView,
@@ -30,7 +30,9 @@
               app: { id: "", name: "", path: "" },
               running: true,
             }
-          : { type: "deviceConnected", deviceId: "", connected: true },
+          : kind === "device"
+            ? { type: "deviceConnected", deviceId: "", connected: true }
+            : { type: "presence", state: "ownerPresent" },
     ];
   }
 </script>
@@ -47,7 +49,9 @@
           ? "星期和时间范围"
           : condition.type === "applicationRunning"
             ? "应用运行状态"
-            : "设备连接状态", $uiLanguage)}
+            : condition.type === "deviceConnected"
+              ? "设备连接状态"
+              : "本机用户在场状态", $uiLanguage)}
       </h3>
       <button
         class="au-icon danger"
@@ -113,7 +117,7 @@
           /></label
         >
       </div>
-    {:else}
+    {:else if condition.type === "deviceConnected"}
       <div class="au-two-fields">
         <label class="au-field"
           >{uiTranslate("设备", $uiLanguage)}<AppSelect bind:value={condition.deviceId} aria-label={uiTranslate("设备", $uiLanguage)}
@@ -133,6 +137,11 @@
         >
       </div>
       <p class="au-note">{uiTranslate("这是运行所需的条件，不是设备当前的实时状态。", $uiLanguage)}</p>
+    {:else}
+      <label class="au-field">{uiTranslate("要求状态", $uiLanguage)}<AppSelect bind:value={condition.state} aria-label={uiTranslate("在场状态", $uiLanguage)}
+        options={Object.entries(presenceLabels).map(([value, label]) => ({ value, label: uiTranslate(label, $uiLanguage) }))}
+      /></label>
+      <p class="au-note">{uiTranslate("状态由本机摄像头处理，只使用分类结果，不读取或同步人脸特征。", $uiLanguage)}</p>
     {/if}
   </div>
 {/each}
@@ -142,6 +151,7 @@
       { value: "time", label: uiTranslate("星期和时间范围", $uiLanguage) },
       { value: "app", label: uiTranslate("应用运行状态", $uiLanguage) },
       { value: "device", label: uiTranslate("设备连接状态", $uiLanguage) },
+      { value: "presence", label: uiTranslate("本机用户在场状态", $uiLanguage) },
     ]}
   /><button class="au-button" disabled={conditions.length >= 16} on:click={add}
     ><Plus size={18} />{uiTranslate("添加条件", $uiLanguage)}</button

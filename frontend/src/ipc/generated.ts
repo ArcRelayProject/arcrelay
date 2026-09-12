@@ -50,7 +50,7 @@ export type ApplicationIdentity = { id: string, name: string, path: string, };
 
 export type AutomationActivity = { id: string, automationId: string, definition: AutomationDefinition, event: AutomationEvent, status: ActivityStatus, reason: string | null, createdAt: string, finishedAt: string | null, steps: Array<StepRun>, confirmedSteps: Array<number>, runConfirmed: boolean, };
 
-export type AutomationCondition = { "type": "timeRange", weekdays: Array<number>, start: string, end: string, timezone: string, } | { "type": "applicationRunning", app: ApplicationIdentity, running: boolean, } | { "type": "deviceConnected", deviceId: string, connected: boolean, };
+export type AutomationCondition = { "type": "timeRange", weekdays: Array<number>, start: string, end: string, timezone: string, } | { "type": "applicationRunning", app: ApplicationIdentity, running: boolean, } | { "type": "deviceConnected", deviceId: string, connected: boolean, } | { "type": "presence", state: PresenceEvent, };
 
 export type AutomationDefinition = { id: string, name: string, enabled: boolean, trigger: AutomationTrigger, conditions: Array<AutomationCondition>, steps: Array<AutomationStep>, runMode: RunMode, revision: number, createdAt: string, updatedAt: string, legacyId: string | null, };
 
@@ -60,7 +60,7 @@ export type AutomationIssue = { code: string, message: string, remedy: string, s
 
 export type AutomationStep = { "type": "quickAction", actionId: string, } | { "type": "shell", shell: ShellKind, script: string, workingDirectory: string | null, timeoutSeconds: number, } | { "type": "delay", durationSeconds: number, } | { "type": "notification", title: string, body: string, sendToConnectedDevices: boolean, };
 
-export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, };
+export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
 
 export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
@@ -166,6 +166,24 @@ export type EdgeTestResult = { displayId: string, pointXUm: number, pointYUm: nu
 export type FileKind = "image" | "pdf" | "archive" | "file";
 
 export type FrontendLogEntry = { level: string, event: string, detail: string, stack: string | null, };
+
+export type GazeCalibrationOverlayEvent = { sessionId: string, stage: string, sourceDeviceId: string, targetDeviceId: string, displayId: string, screenIndex: number, nextScreenIndex: number | null, screenName: string, nextScreenName: string | null, targetU: number, targetV: number, dwellProgress: number, current: number, total: number, };
+
+export type GazeCalibrationScreenView = { index: number, name: string, x: number, y: number, width: number, height: number, scaleFactor: number, };
+
+export type GazeCameraView = { id: string, name: string, description: string, };
+
+export type GazeModelPackStatusView = { state: string, version: string | null, downloadedBytes: number, totalBytes: number, error: string | null, };
+
+export type GazeObservationView = { leftEyeOpen: boolean, rightEyeOpen: boolean, headYaw: number, headPitch: number, headRoll: number, gazeX: number, gazeY: number, gazeZ: number, };
+
+export type GazePreviewRectView = { x: number, y: number, width: number, height: number, };
+
+export type GazePreviewView = { sequence: number, width: number, height: number, imageDataUrl: string, face: GazePreviewRectView | null, leftEye: GazePreviewRectView | null, rightEye: GazePreviewRectView | null, };
+
+export type GazeStatusView = { revision: number, state: string, cameraId: string | null, cameraName: string | null, calibrated: boolean, calibratedDisplayIds: Array<string>, calibrationSamples: number, capturedFrames: number, inferredFrames: number, droppedFrames: number, inferenceMs: number | null, faceConfidence: number | null, presenceState: string, presenceFaceCount: number, presenceOwnerSimilarity: number | null, presenceStableForMs: number, presenceProfileName: string | null, presenceProfileEnrolled: boolean, presenceEnrollmentActive: boolean, presenceEnrollmentSamples: number, presenceEnrollmentRequiredSamples: number, presenceEnrollmentRejectedFrames: number, observation: GazeObservationView | null, target: GazeTargetView | null, error: string | null, modelPack: GazeModelPackStatusView, };
+
+export type GazeTargetView = { deviceId: string, displayId: string, logicalX: number, logicalY: number, confidence: number, stableForMs: number, source: string, };
 
 export type GeometryConfidence = "Unknown" | "Estimated" | "HardwareReported" | "UserProvided" | "UserCalibrated";
 
@@ -300,6 +318,8 @@ export type PortalId = string;
 
 export type PortalStatus = "Active" | "SuspendedOffline" | "NeedsReconciliation" | "UnsupportedCapability";
 
+export type PresenceEvent = "ownerPresent" | "absent" | "unknownPresent" | "multiplePeople" | "uncertain";
+
 export type PrintJobActivitySnapshot = { revision: number, received: Array<ReceivedPrintJobView>, sent: Array<OutgoingPrintJob>, };
 
 export type PrintJobState = "offered" | "receiving" | "validating" | "ready" | "submitting" | "queued" | "printing" | "completed" | "held" | "cancelled" | "failed" | "ambiguous";
@@ -318,7 +338,7 @@ export type PrinterStatus = "ready" | "busy" | "offline" | "error" | "unknown";
 
 export type PrivacySettings = { autoEnableOnMirror: boolean, allowRemoteActions: boolean, maskStyle: MaskStyle, protectedApps: Array<ProtectedApp>, };
 
-export type PrivacySnapshot = { active: boolean, manualEnabled: boolean, mirrorDetected: boolean, activationSource: string, visibleProtectedWindows: Array<ProtectedWindowView>, settings: PrivacySettings, };
+export type PrivacySnapshot = { active: boolean, manualEnabled: boolean, mirrorDetected: boolean, presenceGuard: boolean, activationSource: string, visibleProtectedWindows: Array<ProtectedWindowView>, settings: PrivacySettings, };
 
 export type ProtectedApp = { name: string, identifier: string | null, path: string | null, enabled: boolean, };
 
@@ -481,13 +501,20 @@ export interface CommandMap {
   add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   automation_capabilities: { args: { }; result: Array<Capability> };
+  begin_gaze_calibration: { args: { cameraId: string; displayId: string | null; }; result: GazeStatusView };
+  begin_presence_enrollment: { args: { displayName: string; }; result: GazeStatusView };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
+  cancel_gaze_calibration: { args: { }; result: GazeStatusView };
+  cancel_presence_enrollment: { args: { }; result: GazeStatusView };
   cancel_transfer: { args: { transferId: string; }; result: null };
+  capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
   check_for_app_update: { args: { }; result: AppUpdateCheckResult };
   choose_transfer_receive_directory: { args: { }; result: TransferSnapshot };
   clear_automation_activities: { args: { }; result: null };
+  clear_gaze_calibration: { args: { }; result: GazeStatusView };
   clear_gesture_debug: { args: { }; result: GestureDebugSnapshot };
+  clear_presence_profile: { args: { }; result: GazeStatusView };
   clipboard_clear_history: { args: { }; result: null };
   clipboard_copy_record: { args: { id: number; }; result: null };
   clipboard_copy_text: { args: { content: string; }; result: null };
@@ -517,6 +544,7 @@ export interface CommandMap {
   clipboard_thumbnail: { args: { id: number; }; result: string | null };
   clipboard_timeline: { args: { limit: number | null; position: ClipboardTimelinePositionInput; sortBy: ClipboardSortPreference; }; result: ClipboardTimelineView | null };
   clipboard_update_label: { args: { color: string; labelId: string; name: string; }; result: null };
+  close_gaze_calibration_windows: { args: { }; result: null };
   close_input_permission_guide: { args: { }; result: null };
   confirm_automation_activity: { args: { activityId: string; }; result: null };
   connect_desktop_address: { args: { host: string; port: number | null; }; result: string };
@@ -538,6 +566,8 @@ export interface CommandMap {
   execute_action: { args: { actionId: string; }; result: string };
   export_actions_text: { args: { }; result: string };
   export_diagnostic_bundle: { args: { }; result: DiagnosticBundleInfo };
+  finish_gaze_calibration: { args: { }; result: GazeStatusView };
+  focus_gaze_calibration_screen: { args: { index: number; }; result: null };
   forget_input_peer: { args: { serviceInstanceId: string; }; result: RuntimeSnapshot };
   forget_paired_device: { args: { deviceId: string; }; result: null };
   frontend_log: { args: { entry: FrontendLogEntry; }; result: null };
@@ -548,6 +578,7 @@ export interface CommandMap {
   get_application_drag_icon_path: { args: { }; result: string };
   get_bootstrap_state: { args: { }; result: BootstrapState };
   get_clipboard_window_pinned: { args: { }; result: boolean };
+  get_gaze_status: { args: { }; result: GazeStatusView };
   get_gesture_debug_report: { args: { }; result: GestureDebugReport };
   get_gesture_debug_snapshot: { args: { }; result: GestureDebugSnapshot };
   get_input_runtime_snapshot: { args: { }; result: RuntimeSnapshot };
@@ -570,9 +601,11 @@ export interface CommandMap {
   inspect_transfer_files: { args: { paths: Array<string>; }; result: Array<TransferDraftFile> };
   install_action_preset: { args: { presetId: string; }; result: BootstrapState };
   install_app_update: { args: { }; result: null };
+  install_gaze_models: { args: { }; result: GazeStatusView };
   install_remote_printer: { args: { shareId: string; sourceDeviceId: string; }; result: PrinterSharingSnapshot };
   list_automation_activities: { args: { automationId: string | null; limit: number; }; result: Array<AutomationActivity> };
   list_automations: { args: { }; result: Array<AutomationDefinition> };
+  list_gaze_cameras: { args: { }; result: Array<GazeCameraView> };
   list_installed_apps: { args: { refresh: boolean; }; result: Array<InstalledAppView> };
   list_mcp_clients: { args: { }; result: Array<McpClientView> };
   list_mcp_configuration_changes: { args: { limit: number; }; result: Array<ConfigurationChange> };
@@ -586,7 +619,9 @@ export interface CommandMap {
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
   open_accessibility_system_settings: { args: { }; result: null };
   open_automation_screen_permission: { args: { }; result: null };
+  open_camera_permission_settings: { args: { }; result: null };
   open_full_disk_access_settings: { args: { }; result: null };
+  open_gaze_calibration_windows: { args: { }; result: Array<GazeCalibrationScreenView> };
   open_input_permission_settings: { args: { }; result: null };
   open_log_directory: { args: { }; result: null };
   open_remote_entry: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileOpenResult };
@@ -611,10 +646,12 @@ export interface CommandMap {
   refresh_printer_sharing_state: { args: { }; result: PrinterSharingSnapshot };
   refresh_transfer_devices: { args: { }; result: TransferSnapshot };
   release_input_control: { args: { }; result: RuntimeSnapshot };
+  remove_gaze_models: { args: { }; result: GazeStatusView };
   remove_remote_file_share: { args: { shareId: string; }; result: Array<LocalSharedDirectory> };
   remove_remote_printer: { args: { bindingId: string; }; result: PrinterSharingSnapshot };
   remove_system_folder: { args: { id: string; }; result: null };
   rename_remote_entry: { args: { newName: string; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileEntry };
+  request_gaze_calibration_cancel: { args: { sessionId: string; sourceDeviceId: string; }; result: null };
   reset_sound_preferences: { args: { }; result: AppSettings };
   respond_pairing: { args: { accepted: boolean; approvedGrantIds: Array<string> | null; }; result: null };
   respond_transfer: { args: { accepted: boolean; automaticReceive: boolean; transferId: string; }; result: null };
@@ -626,6 +663,7 @@ export interface CommandMap {
   save_action: { args: { action: QuickAction; }; result: BootstrapState };
   save_automation: { args: { definition: AutomationDefinition; }; result: AutomationDefinition };
   save_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: RuntimeSnapshot };
+  send_gaze_calibration_overlay: { args: { event: GazeCalibrationOverlayEvent; }; result: null };
   send_system_share_transfer: { args: { paths: Array<string>; peerId: string; requestIds: Array<string>; }; result: string };
   send_transfer: { args: { paths: Array<string>; peerId: string; }; result: string };
   set_automation_enabled: { args: { automationId: string; enabled: boolean; }; result: null };
@@ -633,6 +671,7 @@ export interface CommandMap {
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };
   set_device_auto_connect: { args: { deviceId: string; enabled: boolean; }; result: null };
+  set_gaze_preview_enabled: { args: { enabled: boolean; }; result: null };
   set_input_sharing_enabled: { args: { enabled: boolean; }; result: RuntimeSnapshot };
   set_mcp_client_permissions: { args: { clientId: string; permissions: McpPermissions; }; result: null };
   set_privacy_enabled: { args: { enabled: boolean; }; result: PrivacySnapshot };
@@ -642,6 +681,7 @@ export interface CommandMap {
   set_transfer_receive_policy: { args: { automatic: boolean; peerId: string; }; result: TransferSnapshot };
   show_test_system_notification: { args: { }; result: string };
   start_clipboard_window_drag: { args: { }; result: null };
+  start_gaze_tracking: { args: { cameraId: string; }; result: GazeStatusView };
   start_gesture_debug_capture: { args: { label: string; suppress: boolean; }; result: GestureDebugSnapshot };
   start_permission_guide_window_drag: { args: { }; result: null };
   start_remote_download_entries: { args: { peerId: string; relativePaths: Array<string>; shareId: string; }; result: Array<RemoteFileTransferSession> | null };
@@ -649,6 +689,7 @@ export interface CommandMap {
   start_remote_upload: { args: { folder: boolean; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileTransferSession | null };
   start_remote_upload_paths: { args: { paths: Array<string>; peerId: string; relativePath: string; shareId: string; }; result: RemoteFileTransferSession };
   start_screenshot_capture: { args: { }; result: string };
+  stop_gaze_tracking: { args: { }; result: GazeStatusView };
   stop_gesture_debug: { args: { }; result: GestureDebugSnapshot };
   stop_remote_edit: { args: { peerId: string; relativePath: string; shareId: string; }; result: null };
   submit_system_share_request: { args: { peerId: string; requestId: string; transferId: string; }; result: null };
@@ -685,6 +726,10 @@ export interface EventMap {
   "desktop-notification": InAppNotification;
   "desktop-runtime": DesktopRuntimeState;
   "desktop-state": BootstrapState;
+  "gaze-calibration-cancel": string;
+  "gaze-calibration-flow": JsonValue;
+  "gaze-preview": GazePreviewView;
+  "gaze-state": GazeStatusView;
   "input-metrics": InputMetricsView | null;
   "notification-count": number;
   "notifications-changed": null;

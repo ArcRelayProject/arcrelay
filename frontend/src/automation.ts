@@ -9,6 +9,7 @@ import type {
   ActivityStatus,
   ActionView,
   AutomationActivity,
+  PresenceEvent,
 } from "./ipc/generated";
 export const weekdays = [1, 2, 3, 4, 5, 6, 7];
 export const dayNames = ["", "一", "二", "三", "四", "五", "六", "日"];
@@ -34,6 +35,13 @@ export const systemLabels = {
   sleeping: "进入睡眠",
   resumed: "从睡眠恢复",
   started: "ArcRelay 启动",
+};
+export const presenceLabels: Record<PresenceEvent, string> = {
+  ownerPresent: "本人在场",
+  absent: "无人",
+  unknownPresent: "陌生人在场",
+  multiplePeople: "多人在场",
+  uncertain: "无法确认身份",
 };
 export function newDefinition(
   trigger: AutomationTrigger,
@@ -69,6 +77,8 @@ export function triggerSummary(trigger: AutomationTrigger, language: LanguagePre
       return t("当文件{event}完成时", language, { event: translate(trigger.received ? "接收" : "发送", language) });
     case "hotkey":
       return t("当按下 {shortcut} 时", language, { shortcut: trigger.shortcut || translate("快捷键", language) });
+    case "presence":
+      return t("当{state}时", language, { state: translate(presenceLabels[trigger.state], language) });
   }
 }
 export function conditionSummary(condition: AutomationCondition, language: LanguagePreference = "zhCn") {
@@ -79,6 +89,8 @@ export function conditionSummary(condition: AutomationCondition, language: Langu
       return t("{app} {state}", language, { app: condition.app.name, state: translate(condition.running ? "正在运行" : "未运行", language) });
     case "deviceConnected":
       return translate(condition.connected ? "所选设备已连接" : "所选设备未连接", language);
+    case "presence":
+      return t("在场状态为{state}", language, { state: translate(presenceLabels[condition.state], language) });
   }
 }
 export function stepSummary(step: AutomationStep, actions: ActionView[], language: LanguagePreference = "zhCn") {
@@ -129,6 +141,12 @@ export function variables(trigger: AutomationTrigger): [string, string][] {
       ["计划时间", "event.schedule.plannedAt"],
       ["实际触发时间", "event.schedule.actualAt"],
     ];
+  if (trigger.type === "presence")
+    return [
+      ["在场状态", "event.presence.state"],
+      ["人脸数量", "event.presence.faceCount"],
+      ["本人相似度", "event.presence.ownerSimilarity"],
+    ];
   return [];
 }
 export function identity(app: {
@@ -162,6 +180,14 @@ export const triggerChoices: {
       label: systemLabels[event],
       capability: `system.${event}`,
       trigger: () => ({ type: "system" as const, event }),
+    }),
+  ),
+  ...(["ownerPresent", "absent", "unknownPresent", "multiplePeople", "uncertain"] as const).map(
+    (state) => ({
+      category: "在场",
+      label: presenceLabels[state],
+      capability: `presence.${state}`,
+      trigger: () => ({ type: "presence" as const, state }),
     }),
   ),
   {

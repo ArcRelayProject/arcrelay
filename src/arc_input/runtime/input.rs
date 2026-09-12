@@ -47,6 +47,19 @@ pub(super) fn local_pointer_location<'a>(
     Some((display, display.desk_point_from_logical(point)))
 }
 
+pub(super) fn gaze_target_is_active(
+    active_route: Option<&(ServiceInstanceId, DisplayId)>,
+    local: &ServiceInstanceId,
+    selected_target: &ServiceInstanceId,
+    selected_display: &DisplayId,
+    local_pointer_on_selected_display: bool,
+) -> bool {
+    match active_route {
+        Some((target, display)) => target == selected_target && display == selected_display,
+        None => selected_target == local && local_pointer_on_selected_display,
+    }
+}
+
 impl ArcInputRuntime {
     pub(super) fn disable_consumer_capture(&self) {
         *lock(&self.consumer_route) = None;
@@ -317,6 +330,19 @@ impl ArcInputRuntime {
         );
         if self.external_input_owner().is_none() {
             self.emit_workspace_focus(WorkspaceInputFocusCause::PhysicalActivity);
+        }
+        if let Err(error) = self
+            .apply_active_gaze_target_as_controller(
+                "physical input ownership retained the active gaze target",
+            )
+            .await
+        {
+            self.record(
+                "gaze",
+                format!("active target restore failed: {error}"),
+                None,
+            );
+            return Err(error);
         }
         Ok(token_epoch)
     }
@@ -754,6 +780,353 @@ impl ArcInputRuntime {
         )?)
     }
 
+    /// Record a stable gaze candidate. This never changes input ownership on
+    /// its own; a deliberate physical pointer movement must confirm it.
+    pub fn preselect_gaze_target(&self, target: &arcrelay_gaze::GazeTarget) {
+        let Ok(device) = ServiceInstanceId::parse(target.device_id.clone()) else {
+            return;
+        };
+        let Ok(display) = DisplayId::parse(target.display_id.clone()) else {
+            return;
+        };
+        let point = DeskPointUm {
+            x: target.desk_x_um,
+            y: target.desk_y_um,
+        };
+        let valid = self.store.snapshot().layout.is_some_and(|layout| {
+            layout.displays.get(&display).is_some_and(|surface| {
+                surface.device_id == device && surface.desk_rect_um.contains(point)
+            })
+        });
+        if !valid {
+            return;
+        }
+        let far_from_consumed = lock(&self.gaze_consumed).as_ref().is_none_or(|consumed| {
+            consumed.target != device
+                || consumed.display != display
+                || (consumed.point.x.saturating_sub(point.x) as f64)
+                    .hypot(consumed.point.y.saturating_sub(point.y) as f64)
+                    >= 50_000.0
+        });
+        if !far_from_consumed {
+            return;
+        }
+        lock(&self.gaze_consumed).take();
+        *lock(&self.gaze_preselection) = Some(GazePreselection {
+            target: device,
+            display,
+            point,
+            expires_at: Instant::now() + Duration::from_millis(900),
+        });
+    }
+
+    pub fn clear_gaze_preselection(&self) {
+        lock(&self.gaze_preselection).take();
+        lock(&self.gaze_consumed).take();
+    }
+
+    pub async fn clear_active_gaze_target(&self) {
+        self.clear_gaze_preselection();
+        let local = self.identity.service_instance_id.clone();
+        let cleared = {
+            let mut active = lock(&self.active_gaze_target);
+            if active
+                .as_ref()
+                .is_some_and(|selection| selection.source == local)
+            {
+                active.take();
+                true
+            } else {
+                false
+            }
+        };
+        if cleared {
+            self.broadcast_gaze_target(None).await;
+        }
+    }
+
+    pub fn clear_gaze_candidate(&self) {
+        lock(&self.gaze_preselection).take();
+    }
+
+    /// Move Arc Input ownership and the pointer to a stable head-selected
+    /// display. Held keys or buttons always block the automatic transition.
+    pub async fn activate_gaze_target(
+        self: &Arc<Self>,
+        target: &arcrelay_gaze::GazeTarget,
+    ) -> Result<(), RuntimeError> {
+        if !self.input_sharing_enabled() {
+            return Ok(());
+        }
+        self.preselect_gaze_target(target);
+        if lock(&self.session)
+            .as_ref()
+            .is_some_and(|session| !session.held.is_empty())
+        {
+            return Ok(());
+        }
+        self.activate_gaze_preselection("stable head direction selected gaze target")
+            .await
+    }
+
+    async fn confirm_gaze_preselection(
+        self: &Arc<Self>,
+        event: &CapturedInputEvent,
+    ) -> Result<(), RuntimeError> {
+        let CapturedInputEvent::PointerDelta { x, y } = event else {
+            return Ok(());
+        };
+        // A small amount of camera noise must never move input ownership. The
+        // confirmation gesture is harmless pointer movement, not a click/key.
+        if (*x).hypot(*y) < 3.0 {
+            return Ok(());
+        }
+        // Never migrate a drag or keyboard chord between machines. Keep the
+        // candidate armed briefly so a later pointer move can confirm it once
+        // all physical keys and buttons have been released.
+        if lock(&self.session)
+            .as_ref()
+            .is_some_and(|session| !session.held.is_empty())
+        {
+            return Ok(());
+        }
+        self.activate_gaze_preselection("physical pointer movement confirmed gaze target")
+            .await
+    }
+
+    async fn activate_gaze_preselection(
+        self: &Arc<Self>,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
+        let Some(selection) = lock(&self.gaze_preselection).take() else {
+            return Ok(());
+        };
+        if Instant::now() >= selection.expires_at {
+            return Ok(());
+        }
+        let active = ActiveGazeTarget {
+            source: self.identity.service_instance_id.clone(),
+            target: selection.target.clone(),
+            display: selection.display.clone(),
+            point: selection.point,
+        };
+        self.publish_gaze_target(active.clone()).await;
+        let controller = lock(&self.session)
+            .as_ref()
+            .map(|session| session.controller.clone());
+        if controller.is_none() && active.target != self.identity.service_instance_id {
+            if !self.workspace_mesh_connected() {
+                return Ok(());
+            }
+            self.take_control_from_capture().await?;
+        }
+        let result = self.apply_gaze_target(active, reason).await;
+        if result.is_ok() {
+            *lock(&self.gaze_consumed) = Some(selection);
+        }
+        result
+    }
+
+    async fn apply_active_gaze_target_as_controller(
+        self: &Arc<Self>,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
+        let Some(selection) = lock(&self.active_gaze_target).clone() else {
+            return Ok(());
+        };
+        if !lock(&self.session).as_ref().is_some_and(|session| {
+            session.controller == self.identity.service_instance_id && session.held.is_empty()
+        }) {
+            return Ok(());
+        }
+        self.apply_gaze_target(selection, reason).await
+    }
+
+    async fn apply_gaze_target(
+        self: &Arc<Self>,
+        selection: ActiveGazeTarget,
+        reason: &'static str,
+    ) -> Result<(), RuntimeError> {
+        let layout = self.store.snapshot().layout.ok_or(RuntimeError::NoLayout)?;
+        let surface = layout
+            .displays
+            .get(&selection.display)
+            .filter(|surface| {
+                surface.device_id == selection.target
+                    && surface.desk_rect_um.contains(selection.point)
+            })
+            .cloned()
+            .ok_or(RuntimeError::NoDisplay)?;
+        let local = self.identity.service_instance_id.clone();
+        let active_route = lock(&self.session).as_ref().map(|session| {
+            (
+                session.current_target.clone(),
+                session.current_display.clone(),
+            )
+        });
+        let local_pointer_on_selected_display = active_route.is_none()
+            && selection.target == local
+            && self
+                .platform
+                .current_pointer_position()
+                .ok()
+                .is_some_and(|point| surface.contains_logical_point(point));
+        let already_on_selected_display = gaze_target_is_active(
+            active_route.as_ref(),
+            &local,
+            &selection.target,
+            &selection.display,
+            local_pointer_on_selected_display,
+        );
+        if already_on_selected_display {
+            return Ok(());
+        }
+
+        let controller = lock(&self.session)
+            .as_ref()
+            .map(|session| session.controller.clone());
+        if controller
+            .as_ref()
+            .is_some_and(|controller| controller != &local)
+        {
+            // The active controller receives the same workspace gaze target
+            // and performs the handoff. Stealing ownership here would race a
+            // physical mouse on that controller and reset its route to local.
+            return Ok(());
+        } else if selection.target != local && controller.is_none() {
+            return Ok(());
+        }
+
+        let current_target = lock(&self.session)
+            .as_ref()
+            .map(|session| session.current_target.clone());
+        if current_target
+            .as_ref()
+            .is_some_and(|target| target != &selection.target)
+        {
+            let moving_from_local = current_target.as_ref() == Some(&local);
+            self.disable_consumer_capture();
+            self.handoff_to(selection.target.clone(), selection.display.clone())
+                .await?;
+            self.platform.set_native_quartz_capture_enabled(
+                selection.target != local && self.native_quartz_target_supported(&selection.target),
+            )?;
+            let generation = self
+                .system_gesture_generation
+                .fetch_add(1, Ordering::AcqRel)
+                + 1;
+            let gesture_version = self.system_gesture_target_version(&selection.target);
+            self.platform.set_system_gesture_capture_generation(
+                if selection.target != local && gesture_version != 0 {
+                    generation
+                } else {
+                    0
+                },
+                gesture_version,
+            )?;
+            if moving_from_local && selection.target != local {
+                self.platform.set_suppress_local(true)?;
+            }
+            self.refresh_consumer_capture();
+        }
+
+        *lock(&self.pointer) = Some(selection.point);
+        if selection.target == local {
+            self.platform.place_pointer(
+                &selection.display,
+                surface.logical_point_from_desk(selection.point),
+            )?;
+            self.platform.set_suppress_local(false)?;
+        } else {
+            self.send_input_event(
+                selection.target.clone(),
+                proto::InputEvent {
+                    event: Some(proto::input_event::Event::PointerMotion(
+                        proto::PointerMotion {
+                            desk_x_um: selection.point.x,
+                            desk_y_um: selection.point.y,
+                        },
+                    )),
+                },
+            )
+            .await?;
+        }
+        self.record("gaze", format!("{reason} {}", selection.display), None);
+        Ok(())
+    }
+
+    async fn publish_gaze_target(&self, selection: ActiveGazeTarget) {
+        let changed = {
+            let mut active = lock(&self.active_gaze_target);
+            if active.as_ref() == Some(&selection) {
+                false
+            } else {
+                *active = Some(selection.clone());
+                true
+            }
+        };
+        if changed {
+            self.broadcast_gaze_target(Some(&selection)).await;
+        }
+    }
+
+    async fn broadcast_gaze_target(&self, selection: Option<&ActiveGazeTarget>) {
+        for peer in self.network.connected_peers() {
+            let frame = self.gaze_target_frame(&peer, selection);
+            if let Err(error) = self.network.send_control(&peer, &frame).await {
+                self.record(
+                    "gaze",
+                    format!(
+                        "could not publish active gaze target to {}: {error}",
+                        crate::arc_input::log_peer_id(peer.as_str())
+                    ),
+                    None,
+                );
+            }
+        }
+    }
+
+    pub(super) fn gaze_target_frame(
+        &self,
+        peer: &ServiceInstanceId,
+        selection: Option<&ActiveGazeTarget>,
+    ) -> proto::ControlFrame {
+        let (active, target_device_id, target_display_id, target_x_um, target_y_um) = selection
+            .map_or_else(
+                || (false, String::new(), String::new(), 0, 0),
+                |selection| {
+                    (
+                        true,
+                        selection.target.to_string(),
+                        selection.display.to_string(),
+                        selection.point.x,
+                        selection.point.y,
+                    )
+                },
+            );
+        proto::ControlFrame {
+            body: Some(proto::control_frame::Body::GazeTargetSelection(
+                proto::GazeTargetSelection {
+                    header: Some(self.metadata_header(peer)),
+                    active,
+                    target_device_id,
+                    target_display_id,
+                    target_x_um,
+                    target_y_um,
+                },
+            )),
+        }
+    }
+
+    pub(super) async fn apply_shared_gaze_target_if_controller(
+        self: Arc<Self>,
+    ) -> Result<(), RuntimeError> {
+        self.apply_active_gaze_target_as_controller(
+            "workspace gaze selection moved the active controller",
+        )
+        .await
+    }
+
     pub(super) async fn handle_captured(
         self: &Arc<Self>,
         event: CapturedInputEvent,
@@ -842,6 +1215,8 @@ impl ArcInputRuntime {
         if lock(&self.session).is_none() {
             self.emit_idle_physical_focus()?;
         }
+        self.confirm_gaze_preselection(&event).await?;
+
         // Offline islands are not participants. Only wait for ownership
         // synchronization within the current usable screen component.
         if !self.workspace_mesh_connected() {
@@ -909,7 +1284,9 @@ impl ArcInputRuntime {
                         true
                     }
                 }
-                CapturedInputEvent::PointerButton { hid_usage, down } => {
+                CapturedInputEvent::PointerButton {
+                    hid_usage, down, ..
+                } => {
                     let mut held = lock(&self.standby_held);
                     if *down {
                         held.held_mouse_buttons.insert(*hid_usage);
@@ -955,7 +1332,6 @@ impl ArcInputRuntime {
                                 native_quartz_event: None,
                             },
                             true,
-                            1,
                         )
                         .await?;
                     }
@@ -968,18 +1344,18 @@ impl ArcInputRuntime {
                             CapturedInputEvent::PointerButton {
                                 hid_usage,
                                 down: true,
+                                click_count: 1,
                             },
                             true,
-                            1,
                         )
                         .await?;
                         self.route_owned_captured_event(
                             CapturedInputEvent::PointerButton {
                                 hid_usage,
                                 down: false,
+                                click_count: 1,
                             },
                             true,
-                            1,
                         )
                         .await?;
                         tracing::info!(
@@ -997,13 +1373,12 @@ impl ArcInputRuntime {
                         native_quartz_event,
                     },
                     true,
-                    1,
                 )
                 .await
             }
             event => {
                 lock(&self.horizontal_navigation).reset();
-                self.route_owned_captured_event(event, true, 1).await
+                self.route_owned_captured_event(event, true).await
             }
         }
     }
@@ -1029,7 +1404,6 @@ impl ArcInputRuntime {
         self: &Arc<Self>,
         event: CapturedInputEvent,
         local_event_already_applied: bool,
-        pointer_click_count: u32,
     ) -> Result<(), RuntimeError> {
         if let CapturedInputEvent::PointerDelta { x, y } = event {
             return self
@@ -1078,7 +1452,11 @@ impl ArcInputRuntime {
                         event: Some(proto::input_event::Event::ConsumerKey(event.into())),
                     }
                 }
-                CapturedInputEvent::PointerButton { hid_usage, down } => {
+                CapturedInputEvent::PointerButton {
+                    hid_usage,
+                    down,
+                    click_count,
+                } => {
                     if down {
                         session.held.held_mouse_buttons.insert(hid_usage);
                     } else {
@@ -1089,7 +1467,7 @@ impl ArcInputRuntime {
                             proto::PointerButton {
                                 hid_usage: u32::from(hid_usage),
                                 down,
-                                click_count: pointer_click_count.clamp(1, 3),
+                                click_count: u32::from(click_count.clamp(1, 3)),
                             },
                         )),
                     }
@@ -1207,7 +1585,6 @@ impl ArcInputRuntime {
                         y: f64::from(delta_y),
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1222,9 +1599,12 @@ impl ArcInputRuntime {
                     DomainMouseButton::Middle => 3,
                 };
                 self.route_owned_captured_event(
-                    CapturedInputEvent::PointerButton { hid_usage, down },
+                    CapturedInputEvent::PointerButton {
+                        hid_usage,
+                        down,
+                        click_count,
+                    },
                     false,
-                    u32::from(click_count),
                 )
                 .await
             }
@@ -1248,7 +1628,6 @@ impl ArcInputRuntime {
                         native_quartz_event: None,
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1281,7 +1660,6 @@ impl ArcInputRuntime {
                         native_quartz_event: None,
                     },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1290,7 +1668,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::SystemGesture { event, generation },
                     false,
-                    1,
                 )
                 .await
             }
@@ -1302,7 +1679,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::Keyboard(MappedKeyboardEvent::Physical { hid_usage, down }),
                     false,
-                    1,
                 )
                 .await
             }
@@ -1310,7 +1686,6 @@ impl ArcInputRuntime {
                 self.route_owned_captured_event(
                     CapturedInputEvent::Keyboard(MappedKeyboardEvent::TextCommit(text)),
                     false,
-                    1,
                 )
                 .await
             }
@@ -1338,7 +1713,12 @@ impl ArcInputRuntime {
             Some(proto::input_event::Event::PointerButton(button)) => {
                 let usage = u16::try_from(button.hid_usage)
                     .map_err(|_| RuntimeError::InvalidInput("button usage".into()))?;
-                self.platform.pointer_button(usage, button.down)?;
+                let click_count = u8::try_from(button.click_count)
+                    .ok()
+                    .filter(|count| (1..=3).contains(count))
+                    .ok_or_else(|| RuntimeError::InvalidInput("button click count".into()))?;
+                self.platform
+                    .pointer_button(usage, button.down, click_count)?;
             }
             Some(proto::input_event::Event::Scroll(scroll)) => {
                 self.platform.scroll(ScrollEvent {
@@ -2101,7 +2481,7 @@ impl ArcInputRuntime {
                 })?;
         }
         for hid_usage in held.held_mouse_buttons.iter().copied() {
-            self.platform.pointer_button(hid_usage, true)?;
+            self.platform.pointer_button(hid_usage, true, 1)?;
         }
         Ok(())
     }
@@ -2111,7 +2491,7 @@ impl ArcInputRuntime {
         held: &HeldInputState,
     ) -> Result<(), RuntimeError> {
         for hid_usage in held.held_mouse_buttons.iter().copied() {
-            self.platform.pointer_button(hid_usage, false)?;
+            self.platform.pointer_button(hid_usage, false, 1)?;
         }
         for hid_usage in held.held_physical_keys.iter().rev().copied() {
             self.platform

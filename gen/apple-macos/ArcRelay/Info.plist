@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ArcRelay uses your local network to discover and securely connect your devices.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ArcRelay uses the selected camera for local gaze estimation. Camera frames are not saved or uploaded.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSScreenCaptureUsageDescription</key>
