@@ -172,7 +172,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-automation"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=43ef3a35b339fd1a13880cd2c8d0249371ea3cfe#43ef3a35b339fd1a13880cd2c8d0249371ea3cfe"
+source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=960fac070308e1df1d8563ab10fc305763c73960#960fac070308e1df1d8563ab10fc305763c73960"
 dependencies = [
  "async-trait",
  "chrono",
@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=19dbedb132204035ca5bab4e12186856c4d65769#19dbedb132204035ca5bab4e12186856c4d65769"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=765047c34fa21f73fa1e17a3be76ae2bad4bde6e#765047c34fa21f73fa1e17a3be76ae2bad4bde6e"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -303,6 +303,7 @@ dependencies = [
  "rmcp",
  "rodio",
  "roxmltree",
+ "rustls",
  "schemars 1.2.2",
  "semver",
  "serde",
@@ -374,10 +375,10 @@ dependencies = [
 [[package]]
 name = "arcrelay-gaze"
 version = "0.1.0"
-source = "git+https://gitea.czbrcj.cn/ArcRelay/arcrelay-gaze.git?rev=e7ea415a922ffb192ebdcbd60c025b31b67d8977#e7ea415a922ffb192ebdcbd60c025b31b67d8977"
+source = "git+https://gitea.czbrcj.cn/ArcRelay/arcrelay-gaze.git?rev=dade00e0e0c21b5a82e1a46784f9d48b3a5047fc#dade00e0e0c21b5a82e1a46784f9d48b3a5047fc"
 dependencies = [
  "arcrelay-input",
- "camera",
+ "camera-rs",
  "image",
  "imageproc",
  "mnn-runtime",
@@ -392,7 +393,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=e15d533c462d8a0301c1954102246d3b36b56cea#e15d533c462d8a0301c1954102246d3b36b56cea"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=1114b32ec72c0e9ce93fca61e6d215c173f54e9d#1114b32ec72c0e9ce93fca61e6d215c173f54e9d"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",
@@ -483,7 +484,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=a3de32edf68f64a32c9d7575b8dcef78f82b6f9b#a3de32edf68f64a32c9d7575b8dcef78f82b6f9b"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=af438bac74b525d0187312d196e1ee57e5fbca75#af438bac74b525d0187312d196e1ee57e5fbca75"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -510,7 +511,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=44431c5f90d466ea23ae3fc639f2eaa38fd32966#44431c5f90d466ea23ae3fc639f2eaa38fd32966"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=29203deb253a663d18ecc56757271f51797424fb#29203deb253a663d18ecc56757271f51797424fb"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -1185,9 +1186,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "camera"
-version = "0.3.0"
-source = "git+https://gitea.czbrcj.cn/Medivh/camera-rs.git?rev=c5b8ce3f1237a5334ceb3f5d8257067c0a12c5ed#c5b8ce3f1237a5334ceb3f5d8257067c0a12c5ed"
+name = "camera-rs"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec21dc0bae1e191d3c66b5bc5f164f0878e6d26aea8d68f728dcd46c4a218587"
 dependencies = [
  "block2 0.6.2",
  "cc",
@@ -2032,7 +2034,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2328,7 +2330,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3271,7 +3273,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.56.0",
 ]
 
 [[package]]
@@ -3559,7 +3561,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4215,7 +4217,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.20",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4410,7 +4412,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5507,7 +5509,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -5722,7 +5724,7 @@ dependencies = [
  "once_cell",
  "socket2 0.5.10",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6243,7 +6245,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6256,7 +6258,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6313,7 +6315,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7008,7 +7010,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7860,10 +7862,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8338,7 +8340,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.20",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8428,7 +8430,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8912,7 +8914,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
