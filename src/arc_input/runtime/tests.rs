@@ -4,6 +4,249 @@ use super::*;
 mod workspace_sync;
 
 #[tokio::test]
+async fn local_gaze_calibration_overlay_uses_the_runtime_event_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local-gaze-overlay").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.to_string();
+    let local_id = runtime.identity.service_instance_id.clone();
+    let display = test_display("screen-1", &local_id, 0);
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: WorkspaceId::parse("gaze-overlay-desk").unwrap(),
+        revision: TopologyRevision(1),
+        displays: [(display.display_id.clone(), display)]
+            .into_iter()
+            .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+    let mut events = runtime.subscribe();
+    runtime
+        .send_gaze_calibration_overlay(GazeCalibrationOverlayEvent {
+            session_id: "session-1".into(),
+            stage: "calibrating".into(),
+            source_device_id: String::new(),
+            target_device_id: local.clone(),
+            display_id: "screen-1".into(),
+            screen_index: 0,
+            next_screen_index: None,
+            screen_name: "Main".into(),
+            next_screen_name: None,
+            target_u: 0.5,
+            target_v: 0.5,
+            dwell_progress: 0.25,
+            current: 1,
+            total: 9,
+        })
+        .await
+        .unwrap();
+    let RuntimeEvent::GazeCalibrationOverlay(event) = events.recv().await.unwrap() else {
+        panic!("expected gaze calibration overlay event");
+    };
+    assert_eq!(event.source_device_id, local);
+    assert_eq!(event.display_id, "screen-1");
+    assert_eq!(event.dwell_progress, 0.25);
+}
+
+#[tokio::test]
+async fn gaze_preselection_never_changes_control_without_physical_confirmation() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.clone();
+    let display = test_display("local-screen", &local, 0);
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: WorkspaceId::parse("gaze-desk").unwrap(),
+        revision: TopologyRevision(1),
+        displays: [(display.display_id.clone(), display)]
+            .into_iter()
+            .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 250_000,
+        desk_y_um: 150_000,
+        logical_x: 960.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
+    });
+
+    assert!(lock(&runtime.gaze_preselection).is_some());
+    assert!(lock(&runtime.session).is_none());
+
+    let consumed = lock(&runtime.gaze_preselection).take().unwrap();
+    *lock(&runtime.gaze_consumed) = Some(consumed);
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 260_000,
+        desk_y_um: 150_000,
+        logical_x: 998.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
+    });
+    assert!(lock(&runtime.gaze_preselection).is_none());
+    assert!(lock(&runtime.gaze_consumed).is_some());
+
+    runtime.preselect_gaze_target(&arcrelay_gaze::GazeTarget {
+        device_id: local.to_string(),
+        display_id: "local-screen".into(),
+        desk_x_um: 320_000,
+        desk_y_um: 150_000,
+        logical_x: 1229.0,
+        logical_y: 540.0,
+        confidence: 0.9,
+        source: arcrelay_gaze::TargetingSource::Eye,
+    });
+    assert!(lock(&runtime.gaze_preselection).is_some());
+    assert!(lock(&runtime.gaze_consumed).is_none());
+
+    runtime.clear_gaze_preselection();
+    assert!(lock(&runtime.gaze_preselection).is_none());
+}
+
+#[tokio::test]
+async fn shared_gaze_target_is_received_and_cleared_by_its_source() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local-gaze-target").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.clone();
+    let remote = ServiceInstanceId::parse("remote-gaze-source").unwrap();
+    let local_display = test_display("local-screen", &local, 0);
+    let remote_display = test_display("remote-screen", &remote, 500_000);
+    let workspace = WorkspaceId::parse("shared-gaze-desk").unwrap();
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: workspace.clone(),
+        revision: TopologyRevision(4),
+        displays: [
+            (local_display.display_id.clone(), local_display),
+            (remote_display.display_id.clone(), remote_display),
+        ]
+        .into_iter()
+        .collect(),
+        portals: Vec::new(),
+    });
+    runtime.store.save(configuration).unwrap();
+
+    let header = proto::RuntimeHeader {
+        workspace_id: workspace.to_string(),
+        topology_revision: 4,
+        control_epoch: 7,
+        source_device_id: remote.to_string(),
+        target_device_id: local.to_string(),
+        sequence: 0,
+    };
+    runtime
+        .handle_control(
+            remote.clone(),
+            proto::ControlFrame {
+                body: Some(proto::control_frame::Body::GazeTargetSelection(
+                    proto::GazeTargetSelection {
+                        header: Some(header.clone()),
+                        active: true,
+                        target_device_id: local.to_string(),
+                        target_display_id: "local-screen".into(),
+                        target_x_um: 250_000,
+                        target_y_um: 150_000,
+                    },
+                )),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        lock(&runtime.active_gaze_target).clone(),
+        Some(ActiveGazeTarget {
+            source: remote.clone(),
+            target: local,
+            display: DisplayId::parse("local-screen").unwrap(),
+            point: DeskPointUm {
+                x: 250_000,
+                y: 150_000,
+            },
+        })
+    );
+
+    runtime
+        .handle_control(
+            remote,
+            proto::ControlFrame {
+                body: Some(proto::control_frame::Body::GazeTargetSelection(
+                    proto::GazeTargetSelection {
+                        header: Some(header),
+                        active: false,
+                        target_device_id: String::new(),
+                        target_display_id: String::new(),
+                        target_x_um: 0,
+                        target_y_um: 0,
+                    },
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(lock(&runtime.active_gaze_target).is_none());
+}
+
+#[test]
+fn gaze_return_to_local_uses_the_active_route_not_the_hidden_native_pointer() {
+    let local = ServiceInstanceId::parse("local-device").unwrap();
+    let remote = ServiceInstanceId::parse("remote-device").unwrap();
+    let local_display = DisplayId::parse("local-display").unwrap();
+    let remote_display = DisplayId::parse("remote-display").unwrap();
+    let remote_route = (remote, remote_display);
+
+    assert!(!super::input::gaze_target_is_active(
+        Some(&remote_route),
+        &local,
+        &local,
+        &local_display,
+        true,
+    ));
+    assert!(super::input::gaze_target_is_active(
+        None,
+        &local,
+        &local,
+        &local_display,
+        true,
+    ));
+
+    let local_route = (local.clone(), local_display.clone());
+    assert!(super::input::gaze_target_is_active(
+        Some(&local_route),
+        &local,
+        &local,
+        &local_display,
+        false,
+    ));
+}
+
+#[tokio::test]
 async fn windows_gesture_target_uses_negotiated_capabilities_and_falls_back_when_unavailable() {
     let directory = tempfile::tempdir().unwrap();
     let identity = Arc::new(ProductIdentity::from_device_id("windows-gesture-gateway").unwrap());
@@ -734,6 +977,7 @@ async fn system_gesture_requires_current_owner_epoch_and_negotiated_capabilities
                     velocity_x: 0.0,
                     velocity_y: 0.0,
                     inverted_from_device: false,
+                    finger_count: 0,
                 }
                 .into(),
             )),

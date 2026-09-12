@@ -53,8 +53,8 @@ fn emoji_events(platform: &NativePlatform) -> Result<[CGEvent; 2], PlatformError
     // CGEvent Fn edges do not invoke the hardware-only Globe action. Use the
     // standard Character Viewer shortcut with explicit flags on both edges;
     // keep ArcRelay in the background and preserve the external text target.
-    let down = platform.key_event(0x2c, true, false)?;
-    let up = platform.key_event(0x2c, false, false)?;
+    let down = platform.key_event(0x2c, true, CGEventFlags::empty())?;
+    let up = platform.key_event(0x2c, false, CGEventFlags::empty())?;
     let flags = CGEventFlags::CGEventFlagControl | CGEventFlags::CGEventFlagCommand;
     down.set_flags(flags);
     up.set_flags(flags);

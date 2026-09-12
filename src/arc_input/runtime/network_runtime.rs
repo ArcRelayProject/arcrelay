@@ -173,6 +173,18 @@ impl ArcInputRuntime {
                         .await?;
                 }
                 self.send_workspace_sync(&service_instance_id).await?;
+                let active_gaze = lock(&self.active_gaze_target)
+                    .as_ref()
+                    .filter(|selection| selection.source == self.identity.service_instance_id)
+                    .cloned();
+                if let Some(selection) = active_gaze.as_ref() {
+                    self.network
+                        .send_control(
+                            &service_instance_id,
+                            &self.gaze_target_frame(&service_instance_id, Some(selection)),
+                        )
+                        .await?;
+                }
                 let _ = self.events.send(RuntimeEvent::SnapshotChanged);
             }
             NetworkEvent::Disconnected {
@@ -206,6 +218,15 @@ impl ArcInputRuntime {
                 write(&self.remote_capabilities).remove(&service_instance_id);
                 write(&self.remote_inventories).remove(&service_instance_id);
                 write(&self.remote_sharing_enabled).remove(&service_instance_id);
+                {
+                    let mut active = lock(&self.active_gaze_target);
+                    if active
+                        .as_ref()
+                        .is_some_and(|selection| selection.source == service_instance_id)
+                    {
+                        active.take();
+                    }
+                }
                 self.suspend_offline_portals(&service_instance_id)?;
                 let should_release = lock(&self.session).as_ref().is_some_and(|session| {
                     session.controller == service_instance_id
@@ -1048,6 +1069,140 @@ impl ArcInputRuntime {
                 }
                 self.release_control_local(session)?;
             }
+            Some(proto::control_frame::Body::GazeTargetSelection(selection)) => {
+                let header = selection.header.ok_or(RuntimeError::MissingHeader)?;
+                validate_metadata_header(Some(&header), &peer, &self.identity.service_instance_id)?;
+                let layout = self.store.snapshot().layout.ok_or(RuntimeError::NoLayout)?;
+                if layout.workspace_id.as_str() != header.workspace_id
+                    || !layout
+                        .displays
+                        .values()
+                        .any(|display| display.device_id == peer)
+                {
+                    return Err(RuntimeError::WrongPeer);
+                }
+                if !selection.active {
+                    {
+                        let mut active = lock(&self.active_gaze_target);
+                        if active
+                            .as_ref()
+                            .is_some_and(|selection| selection.source == peer)
+                        {
+                            active.take();
+                        }
+                    }
+                    tracing::info!(
+                        event = "input.gaze.target_cleared",
+                        peer_id = %crate::arc_input::log_peer_id(peer.as_str()),
+                        "Arc Input cleared the shared gaze target"
+                    );
+                    return Ok(());
+                }
+                let target = ServiceInstanceId::parse(selection.target_device_id)?;
+                let display = DisplayId::parse(selection.target_display_id)?;
+                let point = DeskPointUm {
+                    x: selection.target_x_um,
+                    y: selection.target_y_um,
+                };
+                if !layout.displays.get(&display).is_some_and(|surface| {
+                    surface.device_id == target && surface.desk_rect_um.contains(point)
+                }) {
+                    return Err(RuntimeError::InvalidInput(
+                        "shared gaze target is outside the workspace".into(),
+                    ));
+                }
+                let active = ActiveGazeTarget {
+                    source: peer.clone(),
+                    target,
+                    display,
+                    point,
+                };
+                let changed = {
+                    let mut current = lock(&self.active_gaze_target);
+                    if current.as_ref() == Some(&active) {
+                        false
+                    } else {
+                        *current = Some(active.clone());
+                        true
+                    }
+                };
+                tracing::info!(
+                    event = "input.gaze.target_received",
+                    peer_id = %crate::arc_input::log_peer_id(peer.as_str()),
+                    target_peer = %crate::arc_input::log_peer_id(active.target.as_str()),
+                    display_id = %active.display,
+                    "Arc Input received the shared gaze target"
+                );
+                if changed
+                    && lock(&self.session).as_ref().is_some_and(|session| {
+                        session.controller == self.identity.service_instance_id
+                            && session.held.is_empty()
+                    })
+                {
+                    let runtime = self.clone();
+                    self.runtime_handle.spawn(async move {
+                        if let Err(error) = runtime
+                            .clone()
+                            .apply_shared_gaze_target_if_controller()
+                            .await
+                        {
+                            runtime.record(
+                                "gaze",
+                                format!("shared target handoff failed: {error}"),
+                                None,
+                            );
+                        }
+                    });
+                }
+            }
+            Some(proto::control_frame::Body::GazeCalibrationOverlay(overlay)) => {
+                let header = overlay.header.ok_or(RuntimeError::MissingHeader)?;
+                if header.source_device_id != peer.as_str()
+                    || header.target_device_id != self.identity.service_instance_id.as_str()
+                {
+                    return Err(RuntimeError::WrongPeer);
+                }
+                let stage = gaze_stage_from_proto(overlay.stage)?;
+                let event = GazeCalibrationOverlayEvent {
+                    session_id: overlay.session_id,
+                    stage: stage.to_string(),
+                    source_device_id: header.source_device_id,
+                    target_device_id: header.target_device_id,
+                    display_id: overlay.display_id,
+                    screen_index: overlay.screen_index,
+                    next_screen_index: overlay.next_screen_index,
+                    screen_name: overlay.screen_name,
+                    next_screen_name: (!overlay.next_screen_name.is_empty())
+                        .then_some(overlay.next_screen_name),
+                    target_u: overlay.target_u,
+                    target_v: overlay.target_v,
+                    dwell_progress: overlay.dwell_progress,
+                    current: overlay.current,
+                    total: overlay.total,
+                };
+                validate_gaze_calibration_event(&event)?;
+                let configuration = self.store.snapshot();
+                let layout = configuration.layout.ok_or_else(|| {
+                    RuntimeError::InvalidInput(
+                        "gaze calibration requires a workspace layout".into(),
+                    )
+                })?;
+                if !layout
+                    .displays
+                    .values()
+                    .any(|display| display.device_id == peer)
+                    || (!matches!(event.stage.as_str(), "close" | "cancel")
+                        && !layout.displays.values().any(|display| {
+                            display.device_id == self.identity.service_instance_id
+                                && display.display_id.as_str() == event.display_id
+                        }))
+                {
+                    return Err(RuntimeError::WrongPeer);
+                }
+                let _ = self
+                    .events
+                    .send(RuntimeEvent::GazeCalibrationOverlay(Box::new(event)));
+            }
             _ => {}
         }
         let _ = self.events.send(RuntimeEvent::SnapshotChanged);
@@ -1119,7 +1274,12 @@ impl ArcInputRuntime {
                 Some(proto::input_event::Event::PointerButton(button)) => {
                     let usage = u16::try_from(button.hid_usage)
                         .map_err(|_| RuntimeError::InvalidInput("button usage".into()))?;
-                    self.platform.pointer_button(usage, button.down)?;
+                    let click_count = u8::try_from(button.click_count)
+                        .ok()
+                        .filter(|count| (1..=3).contains(count))
+                        .ok_or_else(|| RuntimeError::InvalidInput("button click count".into()))?;
+                    self.platform
+                        .pointer_button(usage, button.down, click_count)?;
                     if button.down {
                         session.held.held_mouse_buttons.insert(usage);
                     } else {
@@ -1318,6 +1478,55 @@ impl ArcInputRuntime {
             target_device_id: peer.to_string(),
             sequence: 0,
         }
+    }
+
+    pub async fn send_gaze_calibration_overlay(
+        &self,
+        mut event: GazeCalibrationOverlayEvent,
+    ) -> Result<(), RuntimeError> {
+        validate_gaze_calibration_event(&event)?;
+        let target = ServiceInstanceId::parse(event.target_device_id.clone())?;
+        let configuration = self.store.snapshot();
+        let layout = configuration.layout.ok_or_else(|| {
+            RuntimeError::InvalidInput("gaze calibration requires a workspace layout".into())
+        })?;
+        if !layout
+            .displays
+            .values()
+            .any(|display| display.device_id == target)
+        {
+            return Err(RuntimeError::InvalidInput(
+                "gaze calibration target is outside the workspace".into(),
+            ));
+        }
+        event.source_device_id = self.identity.service_instance_id.to_string();
+        if target == self.identity.service_instance_id {
+            let _ = self
+                .events
+                .send(RuntimeEvent::GazeCalibrationOverlay(Box::new(event)));
+            return Ok(());
+        }
+        let frame = proto::ControlFrame {
+            body: Some(proto::control_frame::Body::GazeCalibrationOverlay(
+                proto::GazeCalibrationOverlay {
+                    header: Some(self.metadata_header(&target)),
+                    session_id: event.session_id,
+                    stage: gaze_stage_to_proto(&event.stage)?,
+                    display_id: event.display_id,
+                    screen_index: event.screen_index,
+                    next_screen_index: event.next_screen_index,
+                    screen_name: event.screen_name,
+                    next_screen_name: event.next_screen_name.unwrap_or_default(),
+                    target_u: event.target_u,
+                    target_v: event.target_v,
+                    dwell_progress: event.dwell_progress,
+                    current: event.current,
+                    total: event.total,
+                },
+            )),
+        };
+        self.network.send_control(&target, &frame).await?;
+        Ok(())
     }
 
     pub(super) fn peer_route_snapshot_frame(

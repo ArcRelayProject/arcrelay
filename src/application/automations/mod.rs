@@ -265,6 +265,32 @@ impl DesktopAutomations {
             tracing::warn!(%error,"session automation dispatch failed");
         }
     }
+    pub async fn presence_event(
+        &self,
+        state: PresenceEvent,
+        face_count: usize,
+        owner_similarity: Option<f32>,
+    ) {
+        self.runner
+            .state
+            .write()
+            .unwrap_or_else(|error| error.into_inner())
+            .presence_state = Some(state);
+        let mut event = AutomationEvent::new(format!("presence.{}", state.token()));
+        event.variables.extend([
+            ("event.presence.state".into(), state.token().into()),
+            ("event.presence.faceCount".into(), face_count.to_string()),
+            (
+                "event.presence.ownerSimilarity".into(),
+                owner_similarity
+                    .map(|similarity| format!("{similarity:.4}"))
+                    .unwrap_or_default(),
+            ),
+        ]);
+        if let Err(error) = self.engine.dispatch(event).await {
+            tracing::warn!(%error, "presence automation dispatch failed");
+        }
+    }
     fn recent_origin(&self) -> Option<String> {
         self.runner
             .origin
@@ -368,6 +394,11 @@ impl AutomationRunner for DesktopRunner {
             "transfer.received",
             "transfer.sent",
             "system.started",
+            "presence.ownerPresent",
+            "presence.absent",
+            "presence.unknownPresent",
+            "presence.multiplePeople",
+            "presence.uncertain",
             "shell.system",
         ] {
             result.push(Capability {

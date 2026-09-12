@@ -36,6 +36,7 @@ targets:
           - _arcrelay._udp
         NSHighResolutionCapable: true
         NSLocalNetworkUsageDescription: ArcRelay uses your local network to discover and securely connect your devices.
+        NSCameraUsageDescription: ArcRelay uses the selected camera for local gaze estimation. Camera frames are not saved or uploaded.
         NSPrincipalClass: NSApplication
         NSScreenCaptureUsageDescription: ArcRelay uses screen capture only when you start a screenshot action.
     entitlements:

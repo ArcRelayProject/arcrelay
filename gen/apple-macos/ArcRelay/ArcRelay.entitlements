@@ -6,5 +6,7 @@
 	<array>
 		<string>group.com.arcrelay.shared</string>
 	</array>
+	<key>com.apple.security.device.camera</key>
+	<true/>
 </dict>
 </plist>

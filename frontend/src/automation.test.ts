@@ -153,5 +153,5 @@ test("only variables available for the selected trigger are offered", () => {
   assert.ok(keys(true).includes("event.file.directory"));
   assert.ok(!keys(false).includes("event.file.directory"));
   assert.deepEqual(variables({ type: "manual" }), []);
-  assert.equal(new Set(triggerChoices.map((c) => c.category)).size, 5);
+  assert.equal(new Set(triggerChoices.map((c) => c.category)).size, 6);
 });

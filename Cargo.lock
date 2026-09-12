@@ -172,7 +172,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-automation"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=1487b7f0759d6bd0eff6683ce90f540dc208f97f#1487b7f0759d6bd0eff6683ce90f540dc208f97f"
+source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=960fac070308e1df1d8563ab10fc305763c73960#960fac070308e1df1d8563ab10fc305763c73960"
 dependencies = [
  "async-trait",
  "chrono",
@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=0e2049c89e46efc00a02c4ab693bb8577807eb10#0e2049c89e46efc00a02c4ab693bb8577807eb10"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=765047c34fa21f73fa1e17a3be76ae2bad4bde6e#765047c34fa21f73fa1e17a3be76ae2bad4bde6e"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -258,6 +258,7 @@ dependencies = [
  "arcrelay-core",
  "arcrelay-desktop-ipc",
  "arcrelay-files",
+ "arcrelay-gaze",
  "arcrelay-input",
  "arcrelay-network",
  "arcrelay-peer",
@@ -302,6 +303,7 @@ dependencies = [
  "rmcp",
  "rodio",
  "roxmltree",
+ "rustls",
  "schemars 1.2.2",
  "semver",
  "serde",
@@ -371,9 +373,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcrelay-gaze"
+version = "0.1.0"
+source = "git+https://github.com/ArcRelayProject/arcrelay-gaze.git?rev=65ab6d38daa65501de015aa84c0c3e9b6a3dca14#65ab6d38daa65501de015aa84c0c3e9b6a3dca14"
+dependencies = [
+ "arcrelay-input",
+ "camera-rs",
+ "image",
+ "imageproc",
+ "mnn-runtime",
+ "parking_lot",
+ "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=09fb762cb3e12a358bb1b095858479ea5093a91e#09fb762cb3e12a358bb1b095858479ea5093a91e"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=1114b32ec72c0e9ce93fca61e6d215c173f54e9d#1114b32ec72c0e9ce93fca61e6d215c173f54e9d"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",
@@ -464,7 +484,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=2142ba0afdd96047a388be7b8487c50dc7064941#2142ba0afdd96047a388be7b8487c50dc7064941"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=af438bac74b525d0187312d196e1ee57e5fbca75#af438bac74b525d0187312d196e1ee57e5fbca75"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -491,7 +511,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=44431c5f90d466ea23ae3fc639f2eaa38fd32966#44431c5f90d466ea23ae3fc639f2eaa38fd32966"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=29203deb253a663d18ecc56757271f51797424fb#29203deb253a663d18ecc56757271f51797424fb"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
@@ -1163,6 +1183,31 @@ dependencies = [
  "glib-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "camera-rs"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec21dc0bae1e191d3c66b5bc5f164f0878e6d26aea8d68f728dcd46c4a218587"
+dependencies = [
+ "block2 0.6.2",
+ "cc",
+ "dispatch2",
+ "libc",
+ "log",
+ "objc2 0.6.4",
+ "objc2-av-foundation",
+ "objc2-core-media",
+ "objc2-core-video",
+ "objc2-foundation 0.3.2",
+ "once_cell",
+ "parking_lot",
+ "thiserror 1.0.69",
+ "tokio",
+ "turbojpeg",
+ "windows 0.58.0",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -2285,7 +2330,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2621,6 +2666,12 @@ dependencies = [
  "pin-project-lite",
  "slab",
 ]
+
+[[package]]
+name = "gcd"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 
 [[package]]
 name = "gdk"
@@ -3202,7 +3253,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -3510,7 +3561,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4116,6 +4167,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnn-runtime"
+version = "0.1.0"
+source = "git+https://github.com/zibo-chen/mnn-runtime-rs?rev=2d88f779744a9029859743db9a55b5d00a2622c8#2d88f779744a9029859743db9a55b5d00a2622c8"
+dependencies = [
+ "mnn-runtime-sys",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "mnn-runtime-sys"
+version = "0.1.0"
+source = "git+https://github.com/zibo-chen/mnn-runtime-rs?rev=2d88f779744a9029859743db9a55b5d00a2622c8#2d88f779744a9029859743db9a55b5d00a2622c8"
+dependencies = [
+ "cc",
+ "cmake",
+ "flate2",
+ "sha2 0.10.9",
+ "tar",
+ "zip 0.6.6",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4533,6 +4607,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-av-foundation"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "478ae33fcac9df0a18db8302387c666b8ef08a3e2d62b510ca4fc278a384b6c0"
+dependencies = [
+ "bitflags 2.13.1",
+ "block2 0.6.2",
+ "dispatch2",
+ "objc2 0.6.4",
+ "objc2-core-media",
+ "objc2-core-video",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "objc2-avf-audio"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4655,6 +4744,21 @@ checksum = "ca347214e24bc973fc025fd0d36ebb179ff30536ed1f80252706db19ee452009"
 dependencies = [
  "objc2 0.6.4",
  "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-core-media"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05ec576860167a15dd9fce7fbee7512beb4e31f532159d3482d1f9c6caedf31d"
+dependencies = [
+ "bitflags 2.13.1",
+ "dispatch2",
+ "objc2 0.6.4",
+ "objc2-core-audio",
+ "objc2-core-audio-types",
+ "objc2-core-foundation",
+ "objc2-core-video",
 ]
 
 [[package]]
@@ -5580,7 +5684,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.3",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -5618,9 +5722,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6141,7 +6245,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6154,7 +6258,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6211,7 +6315,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7761,7 +7865,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8277,6 +8381,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
+name = "turbojpeg"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81313fcd64aaa30ddfd59eaa122968136b2dd9cd41d9619b126cf71e67a01702"
+dependencies = [
+ "gcd",
+ "libc",
+ "thiserror 1.0.69",
+ "turbojpeg-sys",
+]
+
+[[package]]
+name = "turbojpeg-sys"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49b5a974bc59382d35927e3a07eef2ba9a24fe7227cefe52ec44b508e1b90f86"
+dependencies = [
+ "anyhow",
+ "cmake",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "typed-path"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8786,7 +8914,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9824,6 +9952,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "zip"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "760394e246e4c28189f19d488c058bf16f564016aefac5d32bb1f3b51d5e9261"
+dependencies = [
+ "byteorder",
+ "crc32fast",
+ "crossbeam-utils",
+ "flate2",
 ]
 
 [[package]]

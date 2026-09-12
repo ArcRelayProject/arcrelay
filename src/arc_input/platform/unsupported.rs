@@ -61,7 +61,7 @@ impl InputInjectionPort for NativePlatform {
     fn apply_keyboard(&self, _: &MappedKeyboardEvent) -> Result<(), PlatformError> {
         Err(Self::unsupported())
     }
-    fn pointer_button(&self, _: u16, _: bool) -> Result<(), PlatformError> {
+    fn pointer_button(&self, _: u16, _: bool, _: u8) -> Result<(), PlatformError> {
         Err(Self::unsupported())
     }
     fn scroll(&self, _: ScrollEvent) -> Result<(), PlatformError> {

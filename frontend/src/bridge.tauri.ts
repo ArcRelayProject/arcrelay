@@ -6,4 +6,5 @@ import { printingBridge } from './bridge.printing';
 import { filesBridge } from './bridge.files';
 import { actionsBridge } from './bridge.actions';
 import { automationsBridge } from './bridge.automations';
-export const bridge = { ...systemBridge, ...mcpBridge, ...inputBridge, ...transfersBridge, ...printingBridge, ...filesBridge, ...actionsBridge, ...automationsBridge };
+import { gazeBridge } from './bridge.gaze';
+export const bridge = { ...systemBridge, ...mcpBridge, ...inputBridge, ...gazeBridge, ...transfersBridge, ...printingBridge, ...filesBridge, ...actionsBridge, ...automationsBridge };
