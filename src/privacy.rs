@@ -49,6 +49,8 @@ pub struct PrivacySettings {
     #[serde(default = "default_true")]
     pub auto_enable_on_mirror: bool,
     #[serde(default = "default_true")]
+    pub auto_enable_on_untrusted_presence: bool,
+    #[serde(default = "default_true")]
     pub allow_remote_actions: bool,
     #[serde(default)]
     pub mask_style: MaskStyle,
@@ -60,6 +62,7 @@ impl Default for PrivacySettings {
     fn default() -> Self {
         Self {
             auto_enable_on_mirror: true,
+            auto_enable_on_untrusted_presence: true,
             allow_remote_actions: true,
             mask_style: MaskStyle::Frosted,
             protected_apps: default_protected_apps(),
@@ -477,7 +480,7 @@ fn disable_matching_app(
 
 fn is_active(settings: &PrivacySettings, runtime: &RuntimeState) -> bool {
     runtime.manual_enabled
-        || runtime.presence_guard
+        || (settings.auto_enable_on_untrusted_presence && runtime.presence_guard)
         || (settings.auto_enable_on_mirror
             && runtime.mirror_detected
             && !runtime.suppress_auto_until_mirror_ends)
@@ -487,7 +490,7 @@ fn snapshot_from(settings: &PrivacySettings, runtime: &RuntimeState) -> PrivacyS
     let active = is_active(settings, runtime);
     let activation_source = if runtime.manual_enabled {
         "manual"
-    } else if runtime.presence_guard {
+    } else if settings.auto_enable_on_untrusted_presence && runtime.presence_guard {
         "presence"
     } else if active && runtime.mirror_detected {
         "screenMirror"
@@ -831,6 +834,20 @@ mod tests {
             snapshot_from(&settings, &runtime).activation_source,
             "manual"
         );
+    }
+
+    #[test]
+    fn presence_guard_can_be_disabled_without_changing_manual_privacy() {
+        let settings = PrivacySettings {
+            auto_enable_on_untrusted_presence: false,
+            ..PrivacySettings::default()
+        };
+        let runtime = RuntimeState {
+            presence_guard: true,
+            ..RuntimeState::default()
+        };
+        assert!(!is_active(&settings, &runtime));
+        assert_eq!(snapshot_from(&settings, &runtime).activation_source, "off");
     }
 
     #[test]

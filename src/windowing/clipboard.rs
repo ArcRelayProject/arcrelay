@@ -141,7 +141,10 @@ fn show_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     if app
         .try_state::<crate::backend::DesktopState>()
-        .is_some_and(|state| !state.settings.snapshot().clipboard_enabled)
+        .is_some_and(|state| {
+            !state.settings.snapshot().clipboard_enabled
+                || crate::presence_access::clipboard_locked(&state)
+        })
     {
         return Ok(());
     }

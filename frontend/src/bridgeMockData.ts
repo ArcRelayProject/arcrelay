@@ -180,6 +180,7 @@ export const mockData: BridgeMockData = {
     visibleProtectedWindows: [],
     settings: {
       autoEnableOnMirror: true,
+      autoEnableOnUntrustedPresence: true,
       allowRemoteActions: true,
       maskStyle: "frosted",
       protectedApps: [
@@ -228,6 +229,7 @@ export const mockData: BridgeMockData = {
   clipboardSyncUpdateSystemClipboard: true,
   clipboardSyncEditsAndDeletes: true,
   clipboardSyncFavorites: true,
+  clipboardLockWhenOwnerUnconfirmed: false,
   nearbyDiscoverable: true,
   enhancedScreenshotEnabled: false,
   screenshotShortcut: "CmdOrCtrl+Shift+A",

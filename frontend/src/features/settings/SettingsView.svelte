@@ -18,6 +18,7 @@
     HandTap,
     Keyboard,
     LinkSimpleHorizontal,
+    LockKey,
     MagnifyingGlass,
     Palette,
     PencilSimple,
@@ -556,6 +557,17 @@
               <span class="row-icon accent-icon"><ClipboardText size={21} /></span>
               <span class="row-copy"><strong>{uiTranslate("保存剪贴板历史", $uiLanguage)}</strong><small>{uiTranslate("保存复制过的文本、图片和文件，方便稍后再次使用。", $uiLanguage)}</small></span>
               <span class:checked={appSettings.clipboardEnabled} class="switch-control"><span></span></span>
+            </button>
+            <button
+              class="settings-row settings-toggle-row"
+              role="switch"
+              aria-checked={appSettings.clipboardLockWhenOwnerUnconfirmed}
+              disabled={settingsSaving || !appSettings.clipboardEnabled}
+              on:click={() => patchAppSettings({ clipboardLockWhenOwnerUnconfirmed: !appSettings.clipboardLockWhenOwnerUnconfirmed }, "设置已保存")}
+            >
+              <span class="row-icon"><LockKey size={21} /></span>
+              <span class="row-copy"><strong>{uiTranslate("非本人在场时锁定剪贴板", $uiLanguage)}</strong><small>{uiTranslate("眼动检测运行时，暂停历史记录和跨设备同步，并禁止查看、复制或粘贴，直到重新确认本机用户。", $uiLanguage)}</small></span>
+              <span class:checked={appSettings.clipboardLockWhenOwnerUnconfirmed} class="switch-control"><span></span></span>
             </button>
             <label class:disabled={!appSettings.clipboardEnabled} class="settings-row setting-field-row">
               <span class="row-icon"><Keyboard size={21} /></span>

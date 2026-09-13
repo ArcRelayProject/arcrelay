@@ -48,6 +48,7 @@ export async function loadAppSettings(): Promise<AppSettings> {
       clipboardSyncUpdateSystemClipboard: true,
       clipboardSyncEditsAndDeletes: true,
       clipboardSyncFavorites: true,
+      clipboardLockWhenOwnerUnconfirmed: false,
       nearbyDiscoverable: true,
       enhancedScreenshotEnabled: false,
       screenshotShortcut: "CmdOrCtrl+Shift+A",

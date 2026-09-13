@@ -375,7 +375,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-gaze"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-gaze.git?rev=b992232784254ea2f80977157494ce8515b84bcc#b992232784254ea2f80977157494ce8515b84bcc"
+source = "git+https://github.com/ArcRelayProject/arcrelay-gaze.git?rev=67b82ab036a5436f75491d1b47e6414b13213034#67b82ab036a5436f75491d1b47e6414b13213034"
 dependencies = [
  "arcrelay-input",
  "camera-rs",
