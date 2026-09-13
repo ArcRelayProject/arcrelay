@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 
 use arcrelay_automation::PresenceEvent;
 use arcrelay_gaze::{
-    layout_signature, CalibrationProfile, Calibrator, GazeTracker, PresenceProfile, PresenceState,
-    Rect, TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot, WorkspaceMapper,
-    MODEL_BUNDLE_VERSION, MODEL_FILES,
+    layout_signature, CalibrationProfile, Calibrator, GazeTracker, PresencePose, PresenceProfile,
+    PresenceState, Rect, TargetingSource, TrackerConfig, TrackerSession, TrackerSnapshot,
+    WorkspaceMapper, MODEL_BUNDLE_VERSION, MODEL_FILES,
 };
 use arcrelay_input::DeskPointUm;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -32,6 +32,7 @@ const GAZE_PREVIEW_EVENT: &str = "gaze-preview";
 const GAZE_CALIBRATION_WINDOW_PREFIX: &str = "gaze-calibration-";
 const PREVIEW_INTERVAL: Duration = Duration::from_millis(200);
 const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const AUTOMATIC_GAZE_CONFIDENCE: f32 = 0.55;
 const MODEL_ARCHIVE_URL: &str = "https://github.com/ArcRelayProject/arcrelay/releases/download/gaze-models-v1.0.0/arcrelay-gaze-models-v1.0.0.zip";
 const MODEL_ARCHIVE_SHA256: &str =
     "d8faf51da81cc1fd25c203d2c010e36fc7af49632cdcbd5f4f089f4d8d6cf88c";
@@ -149,6 +150,7 @@ pub struct GazeStatusView {
     pub presence_enrollment_samples: usize,
     pub presence_enrollment_required_samples: usize,
     pub presence_enrollment_rejected_frames: usize,
+    pub presence_enrollment_pose: Option<String>,
     pub observation: Option<GazeObservationView>,
     pub target: Option<GazeTargetView>,
     pub error: Option<String>,
@@ -220,7 +222,7 @@ impl GazeService {
     pub fn new(input: Arc<ArcInputRuntime>) -> Arc<Self> {
         let profile_path = input.paths().root.join("gaze-calibration.json");
         let profile = load_profile_from_path(&profile_path)
-            .filter(|profile| profile.version >= 3 && !profile.head_regions.is_empty());
+            .filter(|profile| profile.version >= 4 && !profile.head_regions.is_empty());
         let presence_profile_path = input.paths().root.join("presence-profile.json");
         let presence_profile = load_presence_profile_from_path(&presence_profile_path);
         let model_directory = input
@@ -437,7 +439,11 @@ impl GazeService {
                     .is_some_and(|profile| !profile.head_regions.is_empty());
                 if calibrating {
                     service.input.clear_gaze_candidate();
-                } else if let Some(stable) = snapshot.target.as_ref() {
+                } else if let Some(stable) = snapshot
+                    .target
+                    .as_ref()
+                    .filter(|stable| stable.target.confidence >= AUTOMATIC_GAZE_CONFIDENCE)
+                {
                     if automatic_head_regions {
                         if let Err(error) = service.input.activate_gaze_target(&stable.target).await
                         {
@@ -732,6 +738,11 @@ impl GazeService {
             presence_enrollment_samples: snapshot.presence_enrollment.collected_samples,
             presence_enrollment_required_samples: snapshot.presence_enrollment.required_samples,
             presence_enrollment_rejected_frames: snapshot.presence_enrollment.rejected_frames,
+            presence_enrollment_pose: snapshot
+                .presence_enrollment
+                .required_pose
+                .map(presence_pose_token)
+                .map(str::to_owned),
             observation,
             target,
             error: snapshot.error,
@@ -1094,6 +1105,16 @@ fn presence_state_token(state: PresenceState) -> &'static str {
     }
 }
 
+fn presence_pose_token(pose: PresencePose) -> &'static str {
+    match pose {
+        PresencePose::Frontal => "frontal",
+        PresencePose::Left => "left",
+        PresencePose::Right => "right",
+        PresencePose::Up => "up",
+        PresencePose::Down => "down",
+    }
+}
+
 fn presence_profile_status(
     snapshot: &TrackerSnapshot,
     profile: Option<&PresenceProfile>,
@@ -1151,7 +1172,7 @@ fn compatible_profile(
     camera_id: &str,
     layout: &arcrelay_input::WorkspaceLayout,
 ) -> Option<CalibrationProfile> {
-    if profile.version < 3
+    if profile.version < 4
         || profile.head_regions.is_empty()
         || profile.camera_id != camera_id
         || profile.head_regions.iter().any(|region| {
@@ -1189,7 +1210,6 @@ fn merge_refined_profile(
         .iter()
         .map(|region| region.sample_count)
         .sum();
-    base.eye_sample_count = Some(0);
     Ok(())
 }
 
@@ -1211,13 +1231,16 @@ mod profile_tests {
             display_id: display_id.into(),
             centroid: [yaw, 0.0, 0.5, 0.5, 0.1],
             scale: [0.05; 5],
+            gaze_centroid: None,
+            gaze_scale: None,
+            acceptance_radius: 3.0,
             sample_count,
         }
     }
 
     fn profile(regions: Vec<HeadRegionProfile>, signature: &str) -> CalibrationProfile {
         CalibrationProfile {
-            version: 3,
+            version: 4,
             camera_id: "camera".into(),
             layout_signature: signature.into(),
             coefficients_x: [0.0; 8],
@@ -1341,6 +1364,7 @@ mod profile_tests {
             version: 1,
             display_name: "Local owner".into(),
             template: vec![1.0],
+            templates: Vec::new(),
             sample_count: 1,
         };
 

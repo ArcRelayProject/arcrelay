@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clampProgress, observationCanCalibrate, observationCanHeadCalibrate, samplesAreStable } from "./gazeCalibration.ts";
+import { clampProgress, observationCanCalibrate, observationCanFusedCalibrate, observationCanHeadCalibrate, samplesAreStable } from "./gazeCalibration.ts";
 
 test("rejects closed eyes and excessive head rotation", () => {
   const base = {
@@ -35,6 +35,22 @@ test("keeps head calibration available when the eyes are occluded", () => {
   assert.equal(observationCanHeadCalibrate(observation, 0.9), true);
   assert.equal(observationCanHeadCalibrate({ ...observation, headYaw: 75 }, 0.9), true);
   assert.equal(observationCanHeadCalibrate({ ...observation, headYaw: 82 }, 0.9), false);
+});
+
+test("requires usable eyes for fused multi-screen calibration", () => {
+  const observation = {
+    leftEyeOpen: true,
+    rightEyeOpen: true,
+    headYaw: 42,
+    headPitch: 3,
+    headRoll: 1,
+    gazeX: .2,
+    gazeY: -.1,
+    gazeZ: -.9,
+  };
+  assert.equal(observationCanFusedCalibrate(observation, .9), true);
+  assert.equal(observationCanFusedCalibrate({ ...observation, rightEyeOpen: false }, .9), false);
+  assert.equal(observationCanFusedCalibrate({ ...observation, headYaw: 58 }, .9), false);
 });
 
 test("requires a compact four-frame filtered head-pose window", () => {
