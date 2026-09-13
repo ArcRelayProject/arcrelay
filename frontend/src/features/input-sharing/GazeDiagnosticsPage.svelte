@@ -136,10 +136,10 @@
       <article class="metrics-card">
         <div><span>人脸数量</span><strong>{status?.presenceFaceCount ?? 0}</strong></div>
         <div><span>推理延迟</span><strong>{status?.inferenceMs?.toFixed(0) ?? "—"}<small> ms</small></strong></div>
-        <div><span>采集帧</span><strong>{status?.capturedFrames ?? 0}</strong></div>
+        <div><span>完整检测</span><strong>{status?.detectedFrames ?? 0}</strong></div>
+        <div><span>轨迹复用</span><strong>{status?.trackedFrames ?? 0}</strong></div>
+        <div><span>身份复核</span><strong>{status?.identityFrames ?? 0}</strong></div>
         <div><span>推理帧</span><strong>{status?.inferredFrames ?? 0}</strong></div>
-        <div><span>丢弃帧</span><strong>{status?.droppedFrames ?? 0}</strong></div>
-        <div><span>稳定时间</span><strong>{Math.round((status?.presenceStableForMs ?? 0) / 100) / 10}<small> s</small></strong></div>
       </article>
 
       <article class="vectors-card">

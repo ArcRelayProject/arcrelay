@@ -24,6 +24,7 @@ mod mcp;
 mod notification;
 mod observability;
 mod pairing_prompt;
+mod presence_access;
 mod privacy;
 mod remote_files;
 mod retry;
@@ -339,10 +340,14 @@ fn main() {
             });
             let input_service_id = input_runtime.identity().service_instance_id.clone();
             let (input_sessions_tx, input_sessions_rx) = tokio::sync::oneshot::channel();
+            let presence_access = desktop_state.presence_access.clone();
             app.manage(desktop_state);
             app.manage(system_share.clone());
             app.manage(input_runtime.clone());
-            app.manage(gaze::GazeService::new(input_runtime.clone()));
+            app.manage(gaze::GazeService::new(
+                input_runtime.clone(),
+                presence_access,
+            ));
             for args in app.state::<startup::PendingActivations>().take() {
                 if let Err(error) = system_share.handle_activation_args(args.into_iter().map(std::ffi::OsString::from)) {
                     tracing::warn!(%error, "Could not import queued system share request");
@@ -368,6 +373,11 @@ fn main() {
                 .snapshot()
                 .clipboard_enabled;
             windowing::sync_clipboard_window(app.handle(), clipboard_enabled)?;
+            tauri::async_runtime::block_on(presence_access::reconcile_clipboard_runtime(
+                app.handle(),
+                &app.state::<backend::DesktopState>(),
+            ))
+            .map_err(std::io::Error::other)?;
             observability::start_health_reporter();
             hang_watchdog::start(app.handle().clone());
             if let Err(error) = app.global_shortcut().on_shortcut(

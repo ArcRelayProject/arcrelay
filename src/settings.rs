@@ -29,6 +29,7 @@ pub struct AppSettings {
     pub clipboard_sync_update_system_clipboard: bool,
     pub clipboard_sync_edits_and_deletes: bool,
     pub clipboard_sync_favorites: bool,
+    pub clipboard_lock_when_owner_unconfirmed: bool,
     pub nearby_discoverable: bool,
     pub enhanced_screenshot_enabled: bool,
     pub screenshot_shortcut: String,
@@ -60,6 +61,7 @@ pub struct AppSettingsPatch {
     pub clipboard_sync_update_system_clipboard: Option<bool>,
     pub clipboard_sync_edits_and_deletes: Option<bool>,
     pub clipboard_sync_favorites: Option<bool>,
+    pub clipboard_lock_when_owner_unconfirmed: Option<bool>,
     pub nearby_discoverable: Option<bool>,
     pub enhanced_screenshot_enabled: Option<bool>,
     pub screenshot_shortcut: Option<String>,
@@ -122,6 +124,9 @@ impl AppSettingsPatch {
         if let Some(value) = self.clipboard_sync_favorites {
             current.clipboard_sync_favorites = value;
         }
+        if let Some(value) = self.clipboard_lock_when_owner_unconfirmed {
+            current.clipboard_lock_when_owner_unconfirmed = value;
+        }
         if let Some(value) = self.nearby_discoverable {
             current.nearby_discoverable = value;
         }
@@ -168,6 +173,7 @@ impl Default for AppSettings {
             clipboard_sync_update_system_clipboard: true,
             clipboard_sync_edits_and_deletes: true,
             clipboard_sync_favorites: true,
+            clipboard_lock_when_owner_unconfirmed: false,
             nearby_discoverable: true,
             enhanced_screenshot_enabled: false,
             screenshot_shortcut: DEFAULT_SCREENSHOT_SHORTCUT.into(),
@@ -499,6 +505,7 @@ mod tests {
         let settings: AppSettings = serde_json::from_str("{}").unwrap();
         assert!(!settings.launch_silently);
         assert!(settings.clipboard_auto_focus_search);
+        assert!(!settings.clipboard_lock_when_owner_unconfirmed);
         assert!(settings.auto_update_enabled);
         assert_eq!(settings.update_channel, UpdateChannel::Stable);
         assert!(settings.notifications.enabled);

@@ -9,6 +9,7 @@
     DeviceMobile,
     EyeSlash,
     HandTap,
+    LockKey,
     MagnifyingGlass,
     Monitor,
     Plus,
@@ -159,7 +160,9 @@
               {#if snapshot?.privacy.active}
                 {uiTranslate(snapshot?.privacy.activationSource === "screenMirror"
                   ? "检测到屏幕镜像，已自动保护所选应用"
-                  : "受保护应用的可见窗口将被安全遮挡", $uiLanguage)}
+                  : snapshot?.privacy.activationSource === "presence"
+                    ? "尚未确认本机用户，已自动保护所选应用"
+                    : "受保护应用的可见窗口将被安全遮挡", $uiLanguage)}
               {:else if snapshot?.privacy.mirrorDetected}{uiTranslate("已检测到屏幕镜像，可立即开启保护", $uiLanguage)}{:else}{uiTranslate("开启后将保护所选应用的隐私内容不被投屏查看", $uiLanguage)}{/if}
             </span>
           </div>
@@ -181,6 +184,23 @@
                 {uiTranslate(snapshot?.privacy.manualEnabled ? "已开启" : "待命", $uiLanguage)}
               </span>
             </div>
+            <button
+              class="privacy-setting-row interactive"
+              role="switch"
+              aria-checked={snapshot?.privacy.settings.autoEnableOnUntrustedPresence ?? false}
+              disabled={privacyBusy}
+              on:click={() =>
+                patchPrivacySettings({
+                  autoEnableOnUntrustedPresence: !(snapshot?.privacy.settings.autoEnableOnUntrustedPresence ?? false),
+                })}
+            >
+              <span class="privacy-row-icon"><LockKey size={22} /></span>
+              <span class="privacy-row-copy">
+                <strong>{uiTranslate("非本人查看时自动保护", $uiLanguage)}</strong>
+                <small>{uiTranslate("眼动检测运行时，未确认本人、检测到陌生人或多人时自动遮挡。", $uiLanguage)}</small>
+              </span>
+              <span class:checked={snapshot?.privacy.settings.autoEnableOnUntrustedPresence} class="switch-control"><span></span></span>
+            </button>
             <button
               class="privacy-setting-row interactive"
               role="switch"

@@ -1,4 +1,3 @@
-use arcrelay_core::domain::clipboard::ClipboardSyncPreferences;
 use tauri::{AppHandle, Emitter};
 
 use crate::backend::{BackendCommand, DesktopState};
@@ -29,7 +28,10 @@ async fn apply_step(
         Step::Screenshot => state.screenshot.sync_preferences(to),
         Step::Clipboard => {
             let mut policy = state.clipboard.policy().await.map_err(|e| e.to_string())?;
-            policy.history_enabled = to.clipboard_enabled;
+            policy.history_enabled = to.clipboard_enabled
+                && !state
+                    .presence_access
+                    .clipboard_locked(to.clipboard_lock_when_owner_unconfirmed);
             state
                 .clipboard
                 .update_policy(policy)
@@ -151,14 +153,9 @@ pub async fn update(
     if let Some(transfer) = state.modules.initialized_transfer() {
         transfer.set_discoverable(next.nearby_discoverable).await;
     }
-    state
-        .clipboard
-        .update_sync_preferences(ClipboardSyncPreferences {
-            enabled: next.clipboard_sync_enabled,
-            update_system_clipboard: next.clipboard_sync_update_system_clipboard,
-            sync_edits_and_deletes: next.clipboard_sync_edits_and_deletes,
-            sync_favorites: next.clipboard_sync_favorites,
-        });
+    if let Err(error) = crate::presence_access::reconcile_clipboard_runtime(app, state).await {
+        tracing::warn!(%error, "could not reconcile clipboard presence policy");
+    }
     state
         .screenshot
         .set_enabled(next.enhanced_screenshot_enabled);

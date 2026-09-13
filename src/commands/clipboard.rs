@@ -374,6 +374,7 @@ pub async fn clipboard_timeline(
     sort_by: ClipboardSortPreference,
     limit: Option<usize>,
 ) -> Result<Option<ClipboardTimelineView>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let cursor = |value: ClipboardCursorInput| ClipboardCursor {
         sort_at_ms: value.sort_at_ms,
         id: value.id,
@@ -414,6 +415,7 @@ pub async fn clipboard_history(
     cursor: Option<ClipboardCursorInput>,
     limit: Option<usize>,
 ) -> Result<ClipboardHistoryView, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let clipboard = state.clipboard.clone();
     let sort_by = match state.settings.snapshot().clipboard_sort_by {
         ClipboardSortPreference::CreatedAt => ClipboardSortBy::CreatedAt,
@@ -455,6 +457,7 @@ pub async fn clipboard_thumbnail(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     // Admit work before loading the database BLOB, including non-UI callers.
     let _slot = CLIPBOARD_IMAGE_JOBS
         .acquire()
@@ -508,6 +511,7 @@ pub async fn clipboard_image_preview(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let _slot = CLIPBOARD_IMAGE_JOBS
         .acquire()
         .await
@@ -560,6 +564,7 @@ pub async fn clipboard_image_ocr(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<ClipboardImageOcr>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .image_ocr(id)
@@ -572,6 +577,7 @@ pub async fn clipboard_html_preview(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<Option<String>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     // The UI cache is keyed by content revision. Avoid a second cache keyed
     // only by ID, which would serve pre-edit HTML after synchronized updates.
     state
@@ -701,6 +707,7 @@ mod clipboard_image_preview_tests {
 
 #[arcrelay_desktop_ipc::command]
 pub async fn clipboard_copy_record(state: State<'_, DesktopState>, id: u64) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let _action = begin_clipboard_action()?;
     state
         .clipboard
@@ -716,6 +723,7 @@ pub async fn clipboard_copy_text(
     state: State<'_, DesktopState>,
     content: String,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let _action = begin_clipboard_action()?;
     if content.is_empty() {
         return Err("cannot copy empty text".to_string());
@@ -735,6 +743,7 @@ pub async fn clipboard_paste_text(
     app: AppHandle,
     content: String,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let _action = begin_clipboard_action()?;
     if content.is_empty() {
         return Err("cannot paste empty text".to_string());
@@ -787,6 +796,7 @@ async fn paste_clipboard_record(
     id: u64,
     mode: arcrelay_core::domain::clipboard::ClipboardPasteMode,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(state)?;
     let _action = begin_clipboard_action()?;
     tracing::debug!(
         event = "clipboard.paste.requested",
@@ -872,6 +882,7 @@ pub async fn clipboard_paste_records(
     app: AppHandle,
     ids: Vec<u64>,
 ) -> Result<usize, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let _action = begin_clipboard_action()?;
     if ids.is_empty() {
         return Ok(0);
@@ -914,6 +925,7 @@ pub async fn clipboard_start_continuous_paste(
     app: AppHandle,
     items: Vec<ContinuousPasteItemInput>,
 ) -> Result<ContinuousPasteProgress, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     if items.is_empty() {
         return Err("select at least one clipboard entry".to_string());
     }
@@ -1078,6 +1090,7 @@ pub async fn clipboard_delete_record(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .delete(id)
@@ -1090,6 +1103,7 @@ pub async fn clipboard_delete_records(
     state: State<'_, DesktopState>,
     ids: Vec<u64>,
 ) -> Result<usize, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let mut deleted = 0;
     for id in ids {
         state
@@ -1108,6 +1122,7 @@ pub async fn clipboard_set_favorite(
     id: u64,
     favorite: bool,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .set_favorite(id, favorite)
@@ -1119,6 +1134,7 @@ pub async fn clipboard_set_favorite(
 pub async fn clipboard_labels(
     state: State<'_, DesktopState>,
 ) -> Result<Vec<ClipboardLabel>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .labels()
@@ -1132,6 +1148,7 @@ pub async fn clipboard_create_label(
     name: String,
     color: String,
 ) -> Result<ClipboardLabel, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .create_label(&name, &color)
@@ -1146,6 +1163,7 @@ pub async fn clipboard_update_label(
     name: String,
     color: String,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .update_label(&label_id, &name, &color)
@@ -1158,6 +1176,7 @@ pub async fn clipboard_delete_label(
     state: State<'_, DesktopState>,
     label_id: String,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .delete_label(&label_id)
@@ -1171,6 +1190,7 @@ pub async fn clipboard_set_labels(
     id: u64,
     label_ids: Vec<String>,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .set_labels(id, label_ids)
@@ -1185,6 +1205,7 @@ pub async fn clipboard_set_label_membership(
     label_id: String,
     attached: bool,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .set_label_membership(id, &label_id, attached)
@@ -1203,6 +1224,7 @@ pub async fn clipboard_edit_text(
     id: u64,
     content: String,
 ) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .edit_text(id, content.trim_end())
@@ -1215,6 +1237,7 @@ pub async fn clipboard_text_content(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<String, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .text_content(id)
@@ -1226,6 +1249,7 @@ pub async fn clipboard_text_content(
 pub async fn clipboard_merge_devices(
     state: State<'_, DesktopState>,
 ) -> Result<crate::clipboard_sync::ClipboardMergeSummary, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state.clipboard_sync.merge_all().await
 }
 
@@ -1235,6 +1259,7 @@ pub async fn clipboard_send_files(
     id: u64,
     peer_id: String,
 ) -> Result<String, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let paths = state
         .clipboard
         .file_paths(id)
@@ -1254,6 +1279,7 @@ pub async fn clipboard_send_files(
 
 #[arcrelay_desktop_ipc::command]
 pub async fn clipboard_clear_history(state: State<'_, DesktopState>) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     state
         .clipboard
         .clear_history()
@@ -1286,6 +1312,7 @@ pub async fn clipboard_text_segments(
     state: State<'_, DesktopState>,
     id: u64,
 ) -> Result<arcrelay_core::domain::text_slices::TextSliceModel, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
     let generation = state.text_selection.generation();
     let text = state
         .clipboard
@@ -1308,6 +1335,8 @@ pub async fn clipboard_join_segments(
 ) -> Result<String, crate::ipc::IpcError> {
     use crate::ipc::IntoIpcError as _;
 
+    crate::presence_access::require_clipboard_access(&state)
+        .map_err(crate::ipc::IntoIpcError::into_ipc_error)?;
     let text = state
         .clipboard
         .text_content(id)

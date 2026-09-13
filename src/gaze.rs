@@ -137,6 +137,9 @@ pub struct GazeStatusView {
     pub calibration_samples: usize,
     pub captured_frames: u64,
     pub inferred_frames: u64,
+    pub detected_frames: u64,
+    pub identity_frames: u64,
+    pub tracked_frames: u64,
     pub dropped_frames: u64,
     pub inference_ms: Option<f32>,
     pub face_confidence: Option<f32>,
@@ -211,6 +214,7 @@ pub struct GazeService {
     calibration: Mutex<Option<CalibrationRun>>,
     profile: Mutex<Option<CalibrationProfile>>,
     presence_profile: Mutex<Option<PresenceProfile>>,
+    presence_access: Arc<crate::presence_access::PresenceAccessController>,
     last_presence_state: Mutex<Option<PresenceState>>,
     app: OnceCell<AppHandle>,
     snapshots: watch::Sender<TrackerSnapshot>,
@@ -219,7 +223,10 @@ pub struct GazeService {
 }
 
 impl GazeService {
-    pub fn new(input: Arc<ArcInputRuntime>) -> Arc<Self> {
+    pub fn new(
+        input: Arc<ArcInputRuntime>,
+        presence_access: Arc<crate::presence_access::PresenceAccessController>,
+    ) -> Arc<Self> {
         let profile_path = input.paths().root.join("gaze-calibration.json");
         let profile = load_profile_from_path(&profile_path)
             .filter(|profile| profile.version >= 4 && !profile.head_regions.is_empty());
@@ -251,6 +258,7 @@ impl GazeService {
             calibration: Mutex::new(None),
             profile: Mutex::new(profile),
             presence_profile: Mutex::new(presence_profile),
+            presence_access,
             last_presence_state: Mutex::new(None),
             app: OnceCell::new(),
             snapshots: watch::channel(TrackerSnapshot::default()).0,
@@ -278,7 +286,7 @@ impl GazeService {
         let started = Instant::now();
         let model_directory = self.model_directory.clone();
         let worker = tokio::task::spawn_blocking(move || {
-            GazeTracker::from_model_directory(&model_directory, 4)
+            GazeTracker::from_model_directory(&model_directory, 2)
         });
         let tracker = match tokio::time::timeout(MODEL_LOAD_TIMEOUT, worker).await {
             Ok(Ok(Ok(tracker))) => {
@@ -417,6 +425,9 @@ impl GazeService {
         });
         *self.preview_forwarding.lock().await = Some(preview_forwarding);
         let forwarding = tauri::async_runtime::spawn(async move {
+            let mut last_ui_emit = Instant::now()
+                .checked_sub(PREVIEW_INTERVAL)
+                .unwrap_or_else(Instant::now);
             loop {
                 if snapshots.changed().await.is_err() {
                     break;
@@ -457,7 +468,10 @@ impl GazeService {
                 } else {
                     service.input.clear_gaze_preselection();
                 }
-                let _ = app.emit(GAZE_EVENT, service.status().await);
+                if calibrating || last_ui_emit.elapsed() >= PREVIEW_INTERVAL {
+                    last_ui_emit = Instant::now();
+                    let _ = app.emit(GAZE_EVENT, service.status().await);
+                }
             }
         });
         *self.forwarding.lock().await = Some(forwarding);
@@ -477,11 +491,20 @@ impl GazeService {
             forwarding.abort();
         }
         self.last_presence_state.lock().await.take();
+        self.presence_access.update(false, PresenceState::Uncertain);
         crate::desktop_notification::set_presence_preview_restricted(false);
         if let Some(app) = self.app.get() {
             app.state::<crate::backend::DesktopState>()
                 .privacy
                 .set_presence_guard(false);
+            if let Err(error) = crate::presence_access::reconcile_clipboard_runtime(
+                app,
+                &app.state::<crate::backend::DesktopState>(),
+            )
+            .await
+            {
+                tracing::warn!(%error, "failed to reconcile clipboard presence policy");
+            }
         }
         Ok(())
     }
@@ -719,6 +742,9 @@ impl GazeService {
                 .map_or(0, |run| run.calibrator.sample_count()),
             captured_frames: snapshot.captured_frames,
             inferred_frames: snapshot.inferred_frames,
+            detected_frames: snapshot.detected_frames,
+            identity_frames: snapshot.identity_frames,
+            tracked_frames: snapshot.tracked_frames,
             dropped_frames: snapshot.dropped_frames,
             inference_ms: snapshot
                 .observation
@@ -930,10 +956,16 @@ impl GazeService {
             Err(error) => return Err(format!("删除本机用户人脸模板失败: {error}")),
         }
         crate::desktop_notification::set_presence_preview_restricted(false);
+        self.presence_access.update(false, PresenceState::Uncertain);
         if let Some(app) = self.app.get() {
             app.state::<crate::backend::DesktopState>()
                 .privacy
                 .set_presence_guard(false);
+            crate::presence_access::reconcile_clipboard_runtime(
+                app,
+                &app.state::<crate::backend::DesktopState>(),
+            )
+            .await?;
         }
         Ok(self.status().await)
     }
@@ -943,10 +975,21 @@ impl GazeService {
             snapshot.presence.profile_enrolled || self.presence_profile.lock().await.is_some();
         if !enrolled {
             self.last_presence_state.lock().await.take();
+            let access_changed = self.presence_access.update(false, PresenceState::Uncertain);
             crate::desktop_notification::set_presence_preview_restricted(false);
             app.state::<crate::backend::DesktopState>()
                 .privacy
                 .set_presence_guard(false);
+            if access_changed {
+                if let Err(error) = crate::presence_access::reconcile_clipboard_runtime(
+                    app,
+                    &app.state::<crate::backend::DesktopState>(),
+                )
+                .await
+                {
+                    tracing::warn!(%error, "failed to reconcile clipboard presence policy");
+                }
+            }
             return;
         }
 
@@ -957,6 +1000,17 @@ impl GazeService {
         app.state::<crate::backend::DesktopState>()
             .privacy
             .set_presence_guard(state.is_private());
+        let access_changed = self.presence_access.update(true, state);
+        if access_changed {
+            if let Err(error) = crate::presence_access::reconcile_clipboard_runtime(
+                app,
+                &app.state::<crate::backend::DesktopState>(),
+            )
+            .await
+            {
+                tracing::warn!(%error, "failed to reconcile clipboard presence policy");
+            }
+        }
 
         let changed = {
             let mut previous = self.last_presence_state.lock().await;
@@ -1387,7 +1441,7 @@ mod profile_tests {
         )
         .await
         .unwrap();
-        let service = GazeService::new(input);
+        let service = GazeService::new(input, Arc::default());
 
         let status = tokio::time::timeout(Duration::from_secs(1), service.status())
             .await
