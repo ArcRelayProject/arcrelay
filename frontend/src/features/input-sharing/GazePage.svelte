@@ -13,7 +13,7 @@
   import { SubscriptionScope, observeSnapshot } from "../../subscriptions";
   import type { DisplaySurface, GazeCamera, GazeStatus, RuntimeSnapshot } from "../../types";
   import {
-    clampProgress, observationCanHeadCalibrate, samplesAreStable, toStabilitySample,
+    clampProgress, observationCanFusedCalibrate, observationCanHeadCalibrate, samplesAreStable, toStabilitySample,
     type StabilitySample,
   } from "./gazeCalibration";
   import GazeDiagnosticsPage from "./GazeDiagnosticsPage.svelte";
@@ -24,10 +24,15 @@
   type Phase = "ready" | "checking" | "calibrating" | "transition" | "complete";
   type Target = { display: DisplaySurface; screenIndex: number; u: number; v: number; label: string };
 
-  const DWELL_MS = 180;
+  const DWELL_MS = 320;
   const PREFLIGHT_MS = 600;
   const FRESH_MS = 700;
-  const POINTS = Array.from({ length: 9 }, (_, index) => [0.5, 0.5, `样本 ${index + 1}`] as const);
+  const SAMPLES_PER_TARGET = 5;
+  const POINTS = [
+    [.18, .18, "左上"], [.5, .18, "上方"], [.82, .18, "右上"],
+    [.18, .5, "左侧"], [.5, .5, "中央"], [.82, .5, "右侧"],
+    [.18, .82, "左下"], [.5, .82, "下方"], [.82, .82, "右下"],
+  ] as const;
 
   let cameras: GazeCamera[] = [];
   let selectedCamera = "";
@@ -45,6 +50,8 @@
   let lastObservationAt = 0;
   let lastInferenceFrame = -1;
   let samples: StabilitySample[] = [];
+  let pointSamples = 0;
+  let lastCapturedInferenceFrame = -1;
   let ticker: number | undefined;
   let transitionTimer: number | undefined;
   let calibrationSessionId = "";
@@ -72,7 +79,7 @@
     ? Math.round((Math.max(0, targetIndex) + dwellProgress) / targets.length * 100)
     : 0;
   $: faceReady = observationCanHeadCalibrate(status?.observation, status?.faceConfidence);
-  $: samplingMode = "滤波后的头部方向采样";
+  $: samplingMode = `头部与眼动融合采样 · 每点 ${SAMPLES_PER_TARGET} 帧`;
   $: liveTargetName = allDisplays.find((display) => display.displayId === status?.target?.displayId)?.name;
   $: calibratedDisplayIds = new Set(status?.calibratedDisplayIds ?? []);
   $: presenceLabel = status?.presenceState === "ownerPresent"
@@ -84,6 +91,15 @@
         : status?.presenceState === "multiplePeople"
           ? "多人在场"
           : "正在确认";
+  $: presencePoseLabel = status?.presenceEnrollmentPose === "left"
+    ? "请缓慢向左转头"
+    : status?.presenceEnrollmentPose === "right"
+      ? "请缓慢向右转头"
+      : status?.presenceEnrollmentPose === "up"
+        ? "请轻微抬头"
+        : status?.presenceEnrollmentPose === "down"
+          ? "请轻微低头"
+          : "请正对摄像头";
 
   function screenIndex(display: DisplaySurface): number {
     return Object.values(snapshot.configuration.layout?.displays ?? {})
@@ -120,9 +136,13 @@
     }
     if (next.inferredFrames === lastInferenceFrame) return;
     lastInferenceFrame = next.inferredFrames;
-    if (observationCanHeadCalibrate(next.observation, next.faceConfidence)) {
+    const observation = next.observation;
+    const canSample = phase === "calibrating"
+      ? observationCanFusedCalibrate(observation, next.faceConfidence)
+      : observationCanHeadCalibrate(observation, next.faceConfidence);
+    if (observation && canSample) {
       lastObservationAt = performance.now();
-      samples = [...samples, toStabilitySample(next.observation)].slice(-6);
+      samples = [...samples, toStabilitySample(observation)].slice(-6);
     } else {
       samples = [];
       stableSince = 0;
@@ -206,7 +226,7 @@
   }
 
   async function resumeTracking() {
-    if (await start()) notify("头部屏幕识别已启动，原有标定已恢复。");
+    if (await start()) notify("头部与眼动融合识别已启动，原有标定已恢复。");
   }
 
   async function beginCalibration(displayId: string | null = null) {
@@ -304,10 +324,14 @@
     stableSince = 0;
     samples = [];
     lastObservationAt = 0;
+    pointSamples = 0;
+    lastCapturedInferenceFrame = -1;
   }
 
   async function captureTarget() {
     if (!target || captureBusy || phase !== "calibrating") return;
+    if (lastCapturedInferenceFrame === lastInferenceFrame) return;
+    lastCapturedInferenceFrame = lastInferenceFrame;
     captureBusy = true;
     try {
       const rect = target.display.deskRectUm;
@@ -315,6 +339,12 @@
         Math.round(rect.x + rect.width * target.u),
         Math.round(rect.y + rect.height * target.v),
       );
+      pointSamples += 1;
+      dwellProgress = .35 + pointSamples / SAMPLES_PER_TARGET * .65;
+      if (pointSamples < SAMPLES_PER_TARGET) {
+        await sendFlow("calibrating", target);
+        return;
+      }
       if (targetIndex + 1 >= targets.length) {
         ingestStatus(await bridge.finishGazeCalibration());
         completedScreens = [...new Set(targets.map((item) => item.display.name))];
@@ -322,8 +352,8 @@
         targetIndex = -1;
         phase = "complete";
         notify(refineDisplayId
-          ? `${completedScreens[0]} 的头部方向标定已优化。`
-          : "头部屏幕区域标定已完成。稳定看向另一块屏幕后会自动移动鼠标。");
+          ? `${completedScreens[0]} 的头部与眼动标定已优化。`
+          : "头部与眼动融合标定已完成。稳定看向另一块屏幕后会自动移动鼠标。");
         refineDisplayId = null;
         return;
       }
@@ -346,11 +376,11 @@
           void sendFlow("calibrating", next);
         }, 900);
       } else {
-        dwellProgress = 0;
-        stableSince = performance.now();
+        resetPointStability();
         await sendFlow("calibrating", next);
       }
     } catch (error) {
+      lastCapturedInferenceFrame = -1;
       stableSince = 0;
       dwellProgress = 0;
       notify(`自动采样失败：${String(error)}`, true);
@@ -391,7 +421,7 @@
     busy = true;
     try {
       ingestStatus(await bridge.beginPresenceEnrollment(presenceName.trim()));
-      notify("请正对摄像头并保持自然姿势，录入会自动完成。");
+      notify("请按提示依次完成正脸、左右转头和上下角度录入。");
     } catch (error) {
       notify(`无法开始录入：${String(error)}`, true);
     } finally {
@@ -438,9 +468,10 @@
       void sendFlow("calibrating", target);
     } else {
       if (!stableSince) stableSince = now;
-      dwellProgress = clampProgress((now - stableSince) / DWELL_MS);
+      const settleProgress = clampProgress((now - stableSince) / DWELL_MS);
+      dwellProgress = settleProgress * .35 + pointSamples / SAMPLES_PER_TARGET * .65;
       void sendFlow("calibrating", target);
-      if (dwellProgress >= 1) void captureTarget();
+      if (settleProgress >= 1 && lastCapturedInferenceFrame !== lastInferenceFrame) void captureTarget();
     }
   }
 
@@ -505,9 +536,9 @@
   {#if phase === "ready"}
     <article class="hero-card">
       <div class="hero-copy">
-        <span class="eyebrow"><Crosshair size={15} weight="bold" />多设备头部区域标定</span>
-        <h2>把头转向每块屏幕中央的圆点</h2>
-        <p>ArcRelay 只学习你看向每块屏幕时的头部方向，不再依赖偏头时不稳定的眼动向量。标定后看向目标屏幕即可移动鼠标。</p>
+        <span class="eyebrow"><Crosshair size={15} weight="bold" />多设备头部与眼动融合标定</span>
+        <h2>依次注视每块屏幕上的九个位置</h2>
+        <p>ArcRelay 会同时学习头部方向和个人眼动偏差；每个点采集多帧，并在不确定时保持当前屏幕，避免误切。</p>
         <label class="camera-field"><span>用于标定的摄像头</span><AppSelect bind:value={selectedCamera} options={cameraOptions} disabled={!modelsReady || running || busy} placeholder={modelsReady ? "未发现摄像头" : "请先下载眼动模型"} aria-label="用于标定的摄像头" /></label>
         <div class="privacy-line"><LockKey size={15} weight="fill" /><span><strong>完全本机处理</strong>　只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。</span></div>
         <div class="hero-actions">
@@ -526,7 +557,7 @@
       </div>
       <div class="preview-panel" aria-hidden="true">
         <img src={calibrationMonitor} alt="" />
-        <div class="preview-meta"><span><Monitor size={15} />{allDisplays.length} 块屏幕</span><span>{deviceCount} 台设备</span><span><Eye size={15} />头部区域识别</span></div>
+        <div class="preview-meta"><span><Monitor size={15} />{allDisplays.length} 块屏幕</span><span>{deviceCount} 台设备</span><span><Eye size={15} />头部 + 眼动</span></div>
       </div>
     </article>
     <div class="readiness-grid">
@@ -557,7 +588,7 @@
       </div>
       {#if status?.presenceEnrollmentActive}
         <div class="presence-progress">
-          <span>正在录入 {status.presenceEnrollmentSamples}/{status.presenceEnrollmentRequiredSamples}</span>
+          <span>{presencePoseLabel} · {status.presenceEnrollmentSamples}/{status.presenceEnrollmentRequiredSamples}</span>
           <div class="bar"><span style={`width:${status.presenceEnrollmentSamples / Math.max(1, status.presenceEnrollmentRequiredSamples) * 100}%`}></span></div>
         </div>
         <button class="text-button" on:click={cancelPresenceEnrollment}>取消</button>
@@ -581,14 +612,14 @@
     <article class="state-card">
       <div class="running-icon"><Crosshair size={30} weight="duotone" /></div><span class="eyebrow">跨设备全屏标定</span>
       <h2>{phase === "transition" ? "正在切换到下一块屏幕" : `请看向 ${target?.display.name ?? "屏幕"} 上的圆点`}</h2>
-      <p>{phase === "transition" ? "下一台设备会自动显示引导，不需要移动或点击窗口。" : `${samplingMode} · 保持头部朝向圆点；面部丢失时暂停，恢复后继续。`}</p>
+      <p>{phase === "transition" ? "下一台设备会自动显示引导，不需要移动或点击窗口。" : `${samplingMode} · 自然注视圆点并保持坐姿；面部或眼动不稳定时会自动暂停。`}</p>
       <div class="bar"><span style={`width:${overallProgress}%`}></span></div><strong class="progress-label">{overallProgress}% · {targetIndex + 1}/{targets.length}</strong>
       <button class="cancel-button" on:click={() => cancelCalibration()}><Stop size={15} />退出标定</button>
     </article>
   {:else}
     <article class="state-card complete-card">
       <div class="complete-icon"><Check size={38} weight="bold" /></div><span class="eyebrow">标定完成</span><h2>看向屏幕即可移动鼠标</h2>
-      <p>ArcRelay 会根据滤波后的头部方向选择屏幕；稳定看向另一块屏幕后，鼠标会自动移动到该屏幕中央。</p>
+      <p>ArcRelay 会融合头部方向与眼动选择屏幕；只有结果明确且持续稳定时才会切换，不确定时保持当前屏幕。</p>
       <div class="screen-results">{#each completedScreens as name}<span><Monitor size={16} /><strong>{name}</strong><i><Check size={13} weight="bold" /></i></span>{/each}</div>
       <div class="hero-actions"><button class="start-button" on:click={() => phase = "ready"}>返回眼动设置</button><button class="text-button" on:click={() => beginCalibration()}><ArrowClockwise size={15} />全部重新标定</button></div>
     </article>

@@ -56,6 +56,25 @@ export function observationCanHeadCalibrate(
   );
 }
 
+export function observationCanFusedCalibrate(
+  observation: GazeObservationView | null | undefined,
+  faceConfidence: number | null | undefined,
+): observation is GazeObservationView {
+  return Boolean(
+    observation
+      && observation.leftEyeOpen
+      && observation.rightEyeOpen
+      && (faceConfidence ?? 0) >= 0.68
+      && Number.isFinite(observation.gazeX)
+      && Number.isFinite(observation.gazeY)
+      && Number.isFinite(observation.gazeZ)
+      && Math.abs(observation.gazeZ) >= 0.1
+      && Math.abs(observation.headYaw) <= 55
+      && Math.abs(observation.headPitch) <= 40
+      && Math.abs(observation.headRoll) <= 35,
+  );
+}
+
 export function toStabilitySample(observation: GazeObservationView): StabilitySample {
   return {
     headYaw: observation.headYaw,
