@@ -380,7 +380,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelay/ArcRelay.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				EXECUTABLE_NAME = ArcRelay;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelay/Info.plist;
@@ -388,7 +388,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop;
 				PRODUCT_NAME = ArcRelay;
@@ -465,7 +465,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelayFiles/ArcRelayFiles.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelayFiles/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -474,7 +474,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.files;
 				PRODUCT_NAME = ArcRelayFiles;
@@ -560,7 +560,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelayShare/ArcRelayShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelayShare/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -568,7 +568,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.share;
 				PRODUCT_NAME = ArcRelayShare;
@@ -584,7 +584,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelayShare/ArcRelayShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelayShare/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -592,7 +592,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.share;
 				PRODUCT_NAME = ArcRelayShare;
@@ -613,7 +613,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelay/ArcRelay.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				EXECUTABLE_NAME = ArcRelay;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelay/Info.plist;
@@ -621,7 +621,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop;
 				PRODUCT_NAME = ArcRelay;
@@ -636,7 +636,7 @@
 				CODE_SIGN_ENTITLEMENTS = ArcRelayFiles/ArcRelayFiles.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 0.1.2;
+				CURRENT_PROJECT_VERSION = 0.2.0;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ArcRelayFiles/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -645,7 +645,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.arcrelay.desktop.files;
 				PRODUCT_NAME = ArcRelayFiles;
 				SDKROOT = macosx;
