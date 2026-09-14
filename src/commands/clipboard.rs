@@ -755,12 +755,22 @@ pub async fn clipboard_paste_text(
         .set_text(&content)
         .await
         .map_err(|error| error.to_string())?;
-    prepare_window_and_wait_for_paste(&app, target).await?;
-    state
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target).await?;
+    let paste_result = state
         .clipboard
         .paste_prepared(ClipboardContentKind::Text)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string());
+    let restore_result =
+        crate::windowing::restore_clipboard_window_after_paste(&app, restore_pinned_panel)
+            .map_err(|error| error.to_string());
+    if let Err(error) = paste_result {
+        if let Err(restore_error) = restore_result {
+            tracing::warn!(%restore_error, "failed to restore pinned clipboard panel");
+        }
+        return Err(error);
+    }
+    restore_result?;
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(())
 }
@@ -815,14 +825,24 @@ async fn paste_clipboard_record(
         .prepare_record_as(id, mode)
         .await
         .map_err(|error| paste_failure("write", error))?;
-    prepare_window_and_wait_for_paste(app, target)
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(app, target)
         .await
         .map_err(|error| paste_failure("focus", error))?;
-    state
+    let paste_result = state
         .clipboard
         .paste_prepared(kind)
         .await
-        .map_err(|error| paste_failure("shortcut", error))?;
+        .map_err(|error| paste_failure("shortcut", error));
+    let restore_result =
+        crate::windowing::restore_clipboard_window_after_paste(app, restore_pinned_panel)
+            .map_err(|error| paste_failure("focus_restore", error));
+    if let Err(error) = paste_result {
+        if let Err(restore_error) = restore_result {
+            tracing::warn!(%restore_error, "failed to restore pinned clipboard panel");
+        }
+        return Err(error);
+    }
+    restore_result?;
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(())
 }
@@ -830,50 +850,62 @@ async fn paste_clipboard_record(
 async fn prepare_window_and_wait_for_paste(
     app: &AppHandle,
     _original: PasteTarget,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     let mut target = crate::windowing::prepare_clipboard_paste_target(app, _original)
         .map_err(|error| error.to_string())?;
     #[cfg(not(target_os = "macos"))]
-    crate::windowing::prepare_clipboard_window_for_paste(app).map_err(|error| error.to_string())?;
+    let restore_pinned_panel = crate::windowing::prepare_clipboard_window_for_paste(app)
+        .map_err(|error| error.to_string())?;
     #[cfg(target_os = "macos")]
     {
+        let restore_pinned_panel = target.restore_pinned_panel();
         let started = std::time::Instant::now();
-        let mut ready_since = None;
-        // Yield to AppKit before observing resignation of the panel's key status.
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            if crate::windowing::clipboard_paste_target_ready(app, &mut target, started.elapsed())
+        // Yield to AppKit before observing the panel's ordered-out key status.
+        let wait_result: Result<(), String> = async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                if crate::windowing::clipboard_paste_target_ready(
+                    app,
+                    &mut target,
+                    started.elapsed(),
+                )
                 .map_err(|error| error.to_string())?
-            {
-                // Key-window resignation precedes the target editor becoming
-                // ready. Require another 50ms of stable focus/content.
-                let ready = ready_since.get_or_insert_with(std::time::Instant::now);
-                if ready.elapsed() < std::time::Duration::from_millis(50) {
-                    continue;
+                {
+                    tracing::debug!(
+                        event = "clipboard.paste.focus_ready",
+                        target_pid = ?target.pid,
+                        wait_ms = started.elapsed().as_millis() as u64,
+                        "clipboard paste target ready"
+                    );
+                    break;
                 }
-                tracing::debug!(
-                    target_pid = ?target.pid,
-                    wait_ms = started.elapsed().as_millis() as u64,
-                    "clipboard paste target ready"
-                );
-                break;
-            } else {
-                ready_since = None;
-            }
-            if started.elapsed() >= std::time::Duration::from_millis(500) {
-                if target.pid.is_none() {
-                    return Err("no external paste target; content remains on clipboard".into());
+                if started.elapsed() >= std::time::Duration::from_secs(1) {
+                    if target.pid.is_none() {
+                        return Err("no external paste target; content remains on clipboard".into());
+                    }
+                    return Err(
+                        "paste target did not regain focus; content remains on clipboard".into(),
+                    );
                 }
-                return Err(
-                    "paste target did not regain focus; content remains on clipboard".into(),
-                );
             }
+            Ok(())
         }
+        .await;
+        if let Err(error) = wait_result {
+            if let Err(restore_error) =
+                crate::windowing::restore_clipboard_window_after_paste(app, restore_pinned_panel)
+            {
+                tracing::warn!(%restore_error, "failed to restore pinned clipboard panel");
+            }
+            return Err(error);
+        }
+        Ok(restore_pinned_panel)
     }
     #[cfg(not(target_os = "macos"))]
     tokio::time::sleep(std::time::Duration::from_millis(130)).await;
-    Ok(())
+    #[cfg(not(target_os = "macos"))]
+    Ok(restore_pinned_panel)
 }
 
 #[arcrelay_desktop_ipc::command]
@@ -905,12 +937,22 @@ pub async fn clipboard_paste_records(
         .set_text(&combined)
         .await
         .map_err(|error| error.to_string())?;
-    prepare_window_and_wait_for_paste(&app, target).await?;
-    state
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target).await?;
+    let paste_result = state
         .clipboard
         .paste_prepared(ClipboardContentKind::Text)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string());
+    let restore_result =
+        crate::windowing::restore_clipboard_window_after_paste(&app, restore_pinned_panel)
+            .map_err(|error| error.to_string());
+    if let Err(error) = paste_result {
+        if let Err(restore_error) = restore_result {
+            tracing::warn!(%restore_error, "failed to restore pinned clipboard panel");
+        }
+        return Err(error);
+    }
+    restore_result?;
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(ids.len())
 }
@@ -941,7 +983,7 @@ pub async fn clipboard_start_continuous_paste(
         queue.in_flight = false;
         queue.trigger_shortcut = trigger_shortcut;
     }
-    if let Err(error) = crate::windowing::prepare_clipboard_window_for_paste(&app) {
+    if let Err(error) = crate::windowing::hide_clipboard_window(&app) {
         clipboard_stop_continuous_paste(app.clone()).await;
         return Err(error.to_string());
     }

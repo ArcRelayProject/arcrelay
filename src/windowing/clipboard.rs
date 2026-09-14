@@ -212,26 +212,59 @@ pub fn clipboard_window_pinned() -> bool {
     CLIPBOARD_WINDOW_PINNED.load(Ordering::SeqCst)
 }
 
-/// Relinquish keyboard focus before emitting a synthetic paste without
-/// changing the visible state of a pinned clipboard window.
-pub fn prepare_clipboard_window_for_paste(app: &AppHandle) -> tauri::Result<()> {
+/// Order the chooser out before emitting a synthetic paste. A non-activating
+/// panel can still own WindowServer key focus, so merely resigning its AppKit
+/// key-window flag is not a reliable handoff to another process.
+pub fn prepare_clipboard_window_for_paste(app: &AppHandle) -> tauri::Result<bool> {
     if !clipboard_window_pinned() {
-        return hide_clipboard_window(app);
+        hide_clipboard_window(app)?;
+        return Ok(false);
     }
 
     #[cfg(target_os = "macos")]
     {
         dispatch_appkit(app, "prepare pinned clipboard paste", |app| {
-            if let Ok(panel) = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
-                panel.resign_key_window();
-            }
-            Ok(())
+            let panel = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL).map_err(|_| {
+                tauri::Error::Io(std::io::Error::other(
+                    "pinned clipboard panel is unavailable",
+                ))
+            })?;
+            panel.hide();
+            Ok(true)
         })
     }
     #[cfg(not(target_os = "macos"))]
     {
         #[cfg(target_os = "windows")]
         restore_previous_foreground_window();
+        let _ = app;
+        Ok(false)
+    }
+}
+
+pub fn restore_clipboard_window_after_paste(
+    app: &AppHandle,
+    restore_pinned_panel: bool,
+) -> tauri::Result<()> {
+    if !restore_pinned_panel || !clipboard_window_pinned() {
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        dispatch_appkit(app, "restore pinned clipboard panel", |app| {
+            let panel = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL).map_err(|_| {
+                tauri::Error::Io(std::io::Error::other(
+                    "pinned clipboard panel is unavailable",
+                ))
+            })?;
+            // Restore visibility without making the chooser key again. The
+            // target application keeps keyboard focus after Cmd+V.
+            panel.order_front_regardless();
+            Ok(())
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
         let _ = app;
         Ok(())
     }
@@ -535,9 +568,9 @@ fn hide_platform_clipboard_window(
 ) -> tauri::Result<()> {
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     if let Ok(panel) = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
-        // If the user clicked into the panel (for example, the search
-        // field), hand key status back before synthesizing Cmd+V.
-        panel.resign_key_window();
+        // Ordering out naturally releases a non-activating panel's private
+        // WindowServer key-focus claim. AppKit documents resignKeyWindow as a
+        // callback that applications must not invoke directly.
         panel.hide();
         return Ok(());
     }
@@ -844,18 +877,26 @@ pub fn prepare_clipboard_paste_target(
             }
         }
         let recipient = original.or(frontmost);
+        if recipient.as_ref().is_some_and(|app| app.isTerminated()) {
+            return Err(tauri::Error::Io(std::io::Error::other(
+                "paste target has quit; content remains on clipboard",
+            )));
+        }
         let clipboard_version = objc2_app_kit::NSPasteboard::generalPasteboard().changeCount();
         // Match PasteGroup's ordering: surrender key status before deciding
         // whether the external recipient has regained focus.
-        prepare_clipboard_window_for_paste(&app)?;
-        if let Some(recipient) = recipient.as_ref() {
-            if recipient.isTerminated() {
-                return Err(tauri::Error::Io(std::io::Error::other(
-                    "paste target has quit; content remains on clipboard",
-                )));
+        let restore_pinned_panel = prepare_clipboard_window_for_paste(&app)?;
+        let restore_after_error = || {
+            if restore_pinned_panel && clipboard_window_pinned() {
+                if let Ok(panel) = app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
+                    panel.order_front_regardless();
+                }
             }
+        };
+        if let Some(recipient) = recipient.as_ref() {
             match external_frontmost_application() {
                 Some(current) if current.processIdentifier() != recipient.processIdentifier() => {
+                    restore_after_error();
                     return Err(tauri::Error::Io(std::io::Error::other(
                         "paste target changed; paste cancelled",
                     )));
@@ -873,6 +914,7 @@ pub fn prepare_clipboard_paste_target(
                     if !recipient
                         .activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty())
                     {
+                        restore_after_error();
                         return Err(tauri::Error::Io(std::io::Error::other(
                             "could not restore paste target; content remains on clipboard",
                         )));
@@ -885,10 +927,16 @@ pub fn prepare_clipboard_paste_target(
                 Some(_) => {}
             }
         }
-        Ok(ClipboardPasteTarget::new(
-            recipient.map(|app| app.processIdentifier()),
+        let target_pid = recipient.map(|app| app.processIdentifier());
+        tracing::debug!(
+            event = "clipboard.paste.focus_wait_started",
+            ?target_pid,
             clipboard_version,
-        ))
+            restore_pinned_panel,
+            "waiting for clipboard paste target"
+        );
+        Ok(ClipboardPasteTarget::new(target_pid, clipboard_version)
+            .with_pinned_panel_restore(restore_pinned_panel))
     })
 }
 

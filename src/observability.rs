@@ -276,7 +276,7 @@ pub fn set_detailed_logging(enabled: bool) -> Result<LogStatus, String> {
     }
 
     let detailed_filter = format!(
-        "{},arcrelay_desktop::arc_input=debug,arcrelay_network=debug,arcrelay_input=debug",
+        "{},arcrelay_desktop::arc_input=debug,arcrelay_desktop::commands::clipboard=debug,arcrelay_desktop::windowing::clipboard=debug,arcrelay_core::infrastructure::clipboard::macos=debug,arcrelay_core::infrastructure::input_control::macos=debug,arcrelay_network=debug,arcrelay_input=debug",
         state.default_filter
     );
     let filter = EnvFilter::try_new(&detailed_filter).map_err(|error| error.to_string())?;
