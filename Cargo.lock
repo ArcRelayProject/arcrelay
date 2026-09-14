@@ -484,7 +484,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=af438bac74b525d0187312d196e1ee57e5fbca75#af438bac74b525d0187312d196e1ee57e5fbca75"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=8d09648425d248894cfabbdc2404b574c9599f57#8d09648425d248894cfabbdc2404b574c9599f57"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
