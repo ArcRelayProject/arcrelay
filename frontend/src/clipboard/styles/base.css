@@ -12,6 +12,8 @@
   --accent-strong: #4f53e8;
   --accent-soft: #f0f0ff;
   --text-primary: #24262d;
+  --text: var(--text-primary);
+  --border-strong: var(--border-color);
   --text-secondary: #737681;
   --text-muted: #8a8d99;
   --text-inverse: #ffffff;

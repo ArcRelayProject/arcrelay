@@ -74,7 +74,7 @@ export async function showClipboardContextMenu(
       { text: tr("插入到当前应用", language), enabled: item.available, action: action(() => callbacks.paste("source")) },
       await Submenu.new({ text: translate("粘贴为", language), items: pasteItems }),
       { text: tr("复制到剪贴板", language), enabled: item.available, action: action(() => clipboardBridge.copy(item.id)) },
-      ...((item.kind === "text" || item.kind === "html") ? [{ text: translate("分段选择…", language), action: action(callbacks.segment) }] : []),
+      ...((item.kind === "text" || item.kind === "html") ? [{ text: translate("预览与选择…", language), action: action(callbacks.segment) }] : []),
       ...(item.kind === "text" ? [{ text: tr("编辑文本", language), action: action(callbacks.edit) }] : []),
       ...(callbacks.nearby ? [{ text: tr("查看附近记录", language), action: action(callbacks.nearby) }] : []),
       { item: "Separator" },

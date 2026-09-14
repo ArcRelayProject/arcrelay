@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=2fcea321d14c69f4dd85bbb81341eef0b1fe1165#2fcea321d14c69f4dd85bbb81341eef0b1fe1165"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=853032d8a0f634d66ced72a31e70644c16211f38#853032d8a0f634d66ced72a31e70644c16211f38"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -228,6 +228,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "ocr-rs",
  "png 0.17.16",
+ "pulldown-cmark",
  "regex",
  "sea-orm",
  "sea-orm-migration",
@@ -484,7 +485,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=cf8e15cf46400110201c66dd271517d5636ef03b#cf8e15cf46400110201c66dd271517d5636ef03b"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=5223d6c484542771feb144a2f2d867b7e6cb0646#5223d6c484542771feb144a2f2d867b7e6cb0646"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -5608,6 +5609,24 @@ name = "protoc-bin-vendored-win32"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.1",
+ "memchr",
+ "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pulp"

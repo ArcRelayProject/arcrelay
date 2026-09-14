@@ -171,3 +171,48 @@ fn async_service_snapshot_releases_read_lock_before_initialization_write() {
         *initialized = Some(1);
     });
 }
+
+#[test]
+fn received_clipboard_files_are_consumed_once_with_finalized_paths() {
+    let mut tracker = ReceivedFilesTracker::from_snapshot(&snapshot(TransferStatus::Connecting));
+    let mut completed = snapshot(TransferStatus::Completed);
+    completed.transfers[0].files[0].local_path = Some("/Downloads/照片 (2).png".into());
+    let mut second = completed.transfers[0].files[0].clone();
+    second.id = 2;
+    second.local_path = Some("/Downloads/notes.txt".into());
+    completed.transfers[0].files.push(second);
+    assert_eq!(
+        tracker.update(&completed),
+        vec![Ok(vec![
+            "/Downloads/照片 (2).png".into(),
+            "/Downloads/notes.txt".into()
+        ])]
+    );
+    assert!(tracker.update(&completed).is_empty());
+    let mut empty = completed.clone();
+    empty.transfers.clear();
+    assert!(tracker.update(&empty).is_empty());
+    assert!(tracker.update(&completed).is_empty());
+    let mut restarted = ReceivedFilesTracker::from_snapshot(&completed);
+    assert!(restarted.update(&completed).is_empty());
+}
+
+#[test]
+fn received_clipboard_files_ignore_incomplete_and_outgoing_tasks() {
+    let mut tracker = ReceivedFilesTracker::from_snapshot(&snapshot(TransferStatus::Connecting));
+    for status in [
+        TransferStatus::Transferring,
+        TransferStatus::Failed,
+        TransferStatus::Cancelled,
+        TransferStatus::Rejected,
+    ] {
+        assert!(tracker.update(&snapshot(status)).is_empty());
+    }
+    let mut outgoing = snapshot(TransferStatus::Completed);
+    outgoing.transfers[0].direction = TransferDirection::Sending;
+    assert!(tracker.update(&outgoing).is_empty());
+    // A completed task consumed while the setting is off cannot replay when enabled.
+    let missing = snapshot(TransferStatus::Completed);
+    assert!(tracker.update(&missing)[0].is_err());
+    assert!(tracker.update(&missing).is_empty());
+}

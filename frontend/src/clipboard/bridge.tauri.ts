@@ -23,6 +23,7 @@ export const clipboardBridge = {
     thumbnail: (id: number) => imageSource("clipboard_thumbnail", id),
     imagePreview: (id: number) => imageSource("clipboard_image_preview", id),
     imageOcr: (id: number) => invoke("clipboard_image_ocr", { id }),
+    textPreview: (item: ClipboardItem, format: import("../ipc/generated").ClipboardTextFormat | null = null) => invoke("clipboard_text_preview", { id: item.id, format }),
     htmlPreview: (item: ClipboardItem) => invoke("clipboard_html_preview", { id: item.id }),
     copy: (id: number) => invoke("clipboard_copy_record", { id }),
     copyText: (content: string) => invoke("clipboard_copy_text", { content }),

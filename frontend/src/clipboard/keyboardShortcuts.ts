@@ -35,7 +35,7 @@ export function resolvePreviewKeyboardAction(
 }
 
 function numberedShortcutIndex(event: ClipboardShortcutEvent) {
-  const match = event.code.match(/^(?:Digit|Numpad)([1-5])$/);
+  const match = event.code.match(/^(?:Digit|Numpad)([1-9])$/);
   return match ? Number(match[1]) - 1 : -1;
 }
 
@@ -70,10 +70,7 @@ export function resolveClipboardKeyboardAction(
 
   const shortcutIndex = numberedShortcutIndex(event);
   if (shortcutIndex >= 0) {
-    if (mode === "search" && primaryModifier && !event.altKey && !event.shiftKey) {
-      return { type: "pasteRank", index: shortcutIndex };
-    }
-    if (mode === "results" && unmodified) {
+    if (primaryModifier && !event.altKey && !event.shiftKey && !event.repeat) {
       return { type: "pasteRank", index: shortcutIndex };
     }
   }
