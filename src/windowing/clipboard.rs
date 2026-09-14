@@ -882,7 +882,6 @@ pub fn prepare_clipboard_paste_target(
                 "paste target has quit; content remains on clipboard",
             )));
         }
-        let clipboard_version = objc2_app_kit::NSPasteboard::generalPasteboard().changeCount();
         // Match PasteGroup's ordering: surrender key status before deciding
         // whether the external recipient has regained focus.
         let restore_pinned_panel = prepare_clipboard_window_for_paste(&app)?;
@@ -931,12 +930,10 @@ pub fn prepare_clipboard_paste_target(
         tracing::debug!(
             event = "clipboard.paste.focus_wait_started",
             ?target_pid,
-            clipboard_version,
             restore_pinned_panel,
             "waiting for clipboard paste target"
         );
-        Ok(ClipboardPasteTarget::new(target_pid, clipboard_version)
-            .with_pinned_panel_restore(restore_pinned_panel))
+        Ok(ClipboardPasteTarget::new(target_pid).with_pinned_panel_restore(restore_pinned_panel))
     })
 }
 
@@ -946,7 +943,7 @@ pub fn clipboard_paste_target_ready(
     target: &mut ClipboardPasteTarget,
     elapsed: std::time::Duration,
 ) -> tauri::Result<bool> {
-    let (pid, version, focused) = dispatch_appkit(app, "check clipboard paste target", |app| {
+    let (pid, focused) = dispatch_appkit(app, "check clipboard paste target", |app| {
         let pid = external_frontmost_application().map(|app| app.processIdentifier());
         let focused = match app.get_webview_panel(CLIPBOARD_WINDOW_LABEL) {
             Ok(panel) => panel.as_panel().isKeyWindow(),
@@ -955,13 +952,9 @@ pub fn clipboard_paste_target_ready(
                 None => false,
             },
         };
-        Ok((
-            pid,
-            objc2_app_kit::NSPasteboard::generalPasteboard().changeCount(),
-            focused,
-        ))
+        Ok((pid, focused))
     })?;
     target
-        .observe(pid, version, focused, elapsed)
+        .observe(pid, focused, elapsed)
         .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))
 }
