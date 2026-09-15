@@ -72,6 +72,9 @@ assert.match(msixManifest, /<rescap:Capability Name="runFullTrust" \/>/,
 const msixScript = read('scripts/build-msix.ps1').toString('utf8');
 assert.doesNotMatch(msixScript, /MakeAppx[^\n]*\/nv/i,
   'Store packages must keep MakeAppx semantic validation enabled');
+const shareApplicationManifest = read('native/windows-share/app.manifest.in').toString('utf8');
+assert.match(shareApplicationManifest, /packageName="@PACKAGE_NAME@"/,
+  'The Share Target executable identity must be supplied by its containing package');
 
 for (const path of ['Info.plist', 'gen/apple-macos/ArcRelay/Info.plist']) {
   const infoPlist = read(path).toString('utf8');

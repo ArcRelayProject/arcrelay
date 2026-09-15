@@ -9,7 +9,7 @@ $environmentNames = @(
     "ARCRELAY_WINDOWS_CERT_PFX", "ARCRELAY_WINDOWS_CERT_PASSWORD",
     "ARCRELAY_WINDOWS_CERT_THUMBPRINT", "ARCRELAY_WINDOWS_REQUIRE_SHARE_TARGET",
     "ARCRELAY_WINDOWS_PACKAGE_NAME", "ARCRELAY_WINDOWS_PUBLISHER",
-    "ARCRELAY_TEST_DOTNET_LOG", "ARCRELAY_TEST_MANIFEST_COPY"
+    "ARCRELAY_TEST_DOTNET_LOG"
 )
 $savedEnvironment = @{}
 
@@ -29,18 +29,12 @@ try {
     Set-Content (Join-Path $fixture "icons/icon.png") "test icon"
     Set-Content (Join-Path $output ".gitignore") "*"
     $env:ARCRELAY_TEST_DOTNET_LOG = Join-Path $fixture "dotnet-arguments.txt"
-    $env:ARCRELAY_TEST_MANIFEST_COPY = Join-Path $fixture "application-manifest.xml"
     $driver = Join-Path $fixture "driver.ps1"
     @'
 param([switch]$CheckOnly, [switch]$PayloadOnly, [switch]$RequireSignedPackage)
 $ErrorActionPreference = "Stop"
 function dotnet {
     [IO.File]::WriteAllLines($env:ARCRELAY_TEST_DOTNET_LOG, [string[]]$args)
-    $manifestArgument = $args | Where-Object { $_ -like "-p:ApplicationManifest=*" } | Select-Object -First 1
-    if ($manifestArgument) {
-        $manifestSource = $manifestArgument.Substring("-p:ApplicationManifest=".Length)
-        Copy-Item -LiteralPath $manifestSource -Destination $env:ARCRELAY_TEST_MANIFEST_COPY -Force
-    }
     $outputIndex = [Array]::IndexOf([object[]]$args, "--output")
     if ($outputIndex -ge 0) {
         $publishOutput = $args[$outputIndex + 1]
@@ -93,8 +87,6 @@ try {
     Assert-Condition ($LASTEXITCODE -eq 0) "MSIX payload-only build failed: $result"
     $arguments = @(Get-Content -LiteralPath $env:ARCRELAY_TEST_DOTNET_LOG)
     Assert-Condition ($arguments[0] -eq "publish") "MSIX payload-only build did not publish the Share Target."
-    $manifest = Get-Content -LiteralPath $env:ARCRELAY_TEST_MANIFEST_COPY -Raw
-    Assert-Condition ($manifest -match 'packageName="12345ArcRelay.ArcRelay"') "MSIX payload used the sparse-package identity."
     Assert-Condition (Test-Path (Join-Path $output "ArcRelay.ShareTarget.exe")) "MSIX payload executable is missing."
     Assert-Condition (-not (Test-Path (Join-Path $output "ArcRelay.SystemShare.msix"))) "MSIX payload unexpectedly created a nested sparse package."
     Write-Output "Windows share packaging checks passed (unsigned cleanup, signing requirements, compile-only isolation, MSIX payload)."
