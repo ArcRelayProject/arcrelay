@@ -2254,5 +2254,19 @@
   "设备历史已同步并校对": "端末の履歴を同期・検証しました",
   "同步尚未完成": "同期は未完了です",
   "后台将继续重试": "バックグラウンドで再試行します",
-  "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项": "受信更新 {received} 回 · 送信更新 {sent} 回 · ラベル更新 {labels} 回 · 同期対象 {total} 件"
+  "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项": "受信更新 {received} 回 · 送信更新 {sent} 回 · ラベル更新 {labels} 回 · 同期対象 {total} 件",
+  "接收文件后自动加入剪贴板": "Add received files to clipboard",
+  "附近设备传来的文件接收完成后，保存到剪贴板历史，并可直接粘贴到支持文件的应用。": "Save completed nearby transfers to clipboard history and paste the files directly into supported apps.",
+  "预览与选择…": "Preview and select…",
+  "显示方式": "Display mode",
+  "源文本": "Source text",
+  "内容格式": "Content format",
+  "普通文本": "Plain text",
+  "内容较长，已显示完整源文本。插入全部仍使用完整内容。": "This content is too long to render. Showing the complete source; Insert all uses the full content.",
+  "拖动选择内容，双击选择词汇": "Drag to select content; double-click to select a word",
+  "已选择部分内容": "Partial content selected",
+  "复制选择": "Copy selection",
+  "复制全部": "Copy all",
+  "插入选择": "Insert selection",
+  "插入全部": "Insert all"
 }

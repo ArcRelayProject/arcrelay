@@ -273,6 +273,7 @@ fn main() {
             commands::clipboard_image_preview,
             commands::clipboard_image_ocr,
             commands::clipboard_html_preview,
+            commands::clipboard_text_preview,
             commands::clipboard_copy_record,
             commands::clipboard_copy_text,
             commands::clipboard_paste_text,

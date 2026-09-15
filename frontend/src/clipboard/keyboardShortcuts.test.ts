@@ -41,14 +41,16 @@ test("leaves printable search characters untouched", () => {
   }
 });
 
-test("uses Command or Ctrl plus a fixed rank while search is focused", () => {
+test("uses Command or Ctrl plus a visible rank while search is focused", () => {
   assert.deepEqual(action(key("Digit1", { key: "1", metaKey: true }), "search"), { type: "pasteRank", index: 0 });
   assert.deepEqual(action(key("Digit5", { key: "5", ctrlKey: true }), "search"), { type: "pasteRank", index: 4 });
-  assert.equal(action(key("Digit6", { key: "6", metaKey: true }), "search"), null);
+  assert.deepEqual(action(key("Digit9", { metaKey: true }), "search"), { type: "pasteRank", index: 8 });
+  assert.deepEqual(action(key("Numpad9", { ctrlKey: true }), "results"), { type: "pasteRank", index: 8 });
+  assert.equal(action(key("Digit1", { ctrlKey: true, repeat: true }), "results"), null);
 });
 
 test("enables one-key commands only in results mode", () => {
-  assert.deepEqual(action(key("Digit1", { key: "1" }), "results"), { type: "pasteRank", index: 0 });
+  assert.equal(action(key("Digit1", { key: "1" }), "results"), null);
   assert.deepEqual(action(key("KeyC", { key: "c" }), "results"), { type: "copy" });
   assert.deepEqual(action(key("KeyF", { key: "f" }), "results"), { type: "favorite" });
   assert.deepEqual(action(key("KeyJ", { key: "j" }), "results"), { type: "move", delta: 1 });

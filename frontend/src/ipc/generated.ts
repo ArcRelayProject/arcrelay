@@ -32,9 +32,9 @@ export type ActivationPolicy = "Immediate" | { "RequireModifier": { hid_usage: n
 
 export type ActivityStatus = "awaitingConfirmation" | "skipped" | "queued" | "running" | "succeeded" | "failed" | "canceled" | "interrupted";
 
-export type AppSettings = { revision: number, deviceName: string, theme: ThemePreference, language: LanguagePreference, launchAtStartup: boolean, launchSilently: boolean, autoUpdateEnabled: boolean, updateChannel: UpdateChannel, notifications: NotificationPreferences, sounds: SoundPreferences, clipboardEnabled: boolean, clipboardShortcut: string, clipboardAutoFocusSearch: boolean, clipboardSortBy: ClipboardSortPreference, clipboardSyncEnabled: boolean, clipboardSyncUpdateSystemClipboard: boolean, clipboardSyncEditsAndDeletes: boolean, clipboardSyncFavorites: boolean, clipboardLockWhenOwnerUnconfirmed: boolean, nearbyDiscoverable: boolean, enhancedScreenshotEnabled: boolean, screenshotShortcut: string, screenshotIncludeCursor: boolean, screenshotFormat: ScreenshotFormat, screenshotFileNameTemplate: string, webFiles: WebGatewaySettings, };
+export type AppSettings = { revision: number, deviceName: string, theme: ThemePreference, language: LanguagePreference, launchAtStartup: boolean, launchSilently: boolean, autoUpdateEnabled: boolean, updateChannel: UpdateChannel, notifications: NotificationPreferences, sounds: SoundPreferences, clipboardEnabled: boolean, clipboardReceiveFiles: boolean, clipboardShortcut: string, clipboardAutoFocusSearch: boolean, clipboardSortBy: ClipboardSortPreference, clipboardSyncEnabled: boolean, clipboardSyncUpdateSystemClipboard: boolean, clipboardSyncEditsAndDeletes: boolean, clipboardSyncFavorites: boolean, clipboardLockWhenOwnerUnconfirmed: boolean, nearbyDiscoverable: boolean, enhancedScreenshotEnabled: boolean, screenshotShortcut: string, screenshotIncludeCursor: boolean, screenshotFormat: ScreenshotFormat, screenshotFileNameTemplate: string, webFiles: WebGatewaySettings, };
 
-export type AppSettingsPatch = { deviceName?: string, theme?: ThemePreference, language?: LanguagePreference, launchAtStartup?: boolean, launchSilently?: boolean, autoUpdateEnabled?: boolean, updateChannel?: UpdateChannel, notifications?: NotificationPreferencesPatch, sounds?: SoundPreferencesPatch, clipboardEnabled?: boolean, clipboardShortcut?: string, clipboardAutoFocusSearch?: boolean, clipboardSortBy?: ClipboardSortPreference, clipboardSyncEnabled?: boolean, clipboardSyncUpdateSystemClipboard?: boolean, clipboardSyncEditsAndDeletes?: boolean, clipboardSyncFavorites?: boolean, clipboardLockWhenOwnerUnconfirmed?: boolean, nearbyDiscoverable?: boolean, enhancedScreenshotEnabled?: boolean, screenshotShortcut?: string, screenshotIncludeCursor?: boolean, screenshotFormat?: ScreenshotFormat, screenshotFileNameTemplate?: string, webFiles?: WebGatewaySettingsPatch, };
+export type AppSettingsPatch = { deviceName?: string, theme?: ThemePreference, language?: LanguagePreference, launchAtStartup?: boolean, launchSilently?: boolean, autoUpdateEnabled?: boolean, updateChannel?: UpdateChannel, notifications?: NotificationPreferencesPatch, sounds?: SoundPreferencesPatch, clipboardEnabled?: boolean, clipboardReceiveFiles?: boolean, clipboardShortcut?: string, clipboardAutoFocusSearch?: boolean, clipboardSortBy?: ClipboardSortPreference, clipboardSyncEnabled?: boolean, clipboardSyncUpdateSystemClipboard?: boolean, clipboardSyncEditsAndDeletes?: boolean, clipboardSyncFavorites?: boolean, clipboardLockWhenOwnerUnconfirmed?: boolean, nearbyDiscoverable?: boolean, enhancedScreenshotEnabled?: boolean, screenshotShortcut?: string, screenshotIncludeCursor?: boolean, screenshotFormat?: ScreenshotFormat, screenshotFileNameTemplate?: string, webFiles?: WebGatewaySettingsPatch, };
 
 export type AppUpdateCheckResult = { currentVersion: string, channel: UpdateChannel, update: AppUpdateMetadata | null, };
 
@@ -106,6 +106,10 @@ export type ClipboardOcrPoint = { x: number, y: number, };
 export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml";
 
 export type ClipboardSortPreference = "createdAt" | "updatedAt";
+
+export type ClipboardTextFormat = "text" | "html" | "markdown";
+
+export type ClipboardTextPreview = { source: string, format: ClipboardTextFormat, safeHtml: string | null, renderLimited: boolean, };
 
 export type ClipboardTextSyntax = "plain" | "json" | "yaml" | "markdown" | { "code": { language: string | null, } } | "xml" | "svg" | "mermaid" | "mx_graph" | "url" | "email" | "phone_number" | "color" | "ip_address" | "jwt_token" | "file_path" | "magnet_link";
 
@@ -540,6 +544,7 @@ export interface CommandMap {
   clipboard_set_labels: { args: { id: number; labelIds: Array<string>; }; result: null };
   clipboard_start_continuous_paste: { args: { items: Array<ContinuousPasteItemInput>; }; result: ContinuousPasteProgress };
   clipboard_text_content: { args: { id: number; }; result: string };
+  clipboard_text_preview: { args: { format: ClipboardTextFormat | null; id: number; }; result: ClipboardTextPreview };
   clipboard_text_segments: { args: { id: number; }; result: TextSliceModel };
   clipboard_thumbnail: { args: { id: number; }; result: string | null };
   clipboard_timeline: { args: { limit: number | null; position: ClipboardTimelinePositionInput; sortBy: ClipboardSortPreference; }; result: ClipboardTimelineView | null };

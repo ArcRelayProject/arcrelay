@@ -201,6 +201,12 @@ export const clipboardBridge = {
     thumbnail: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imagePreview: (id: number) => Promise.resolve(id === 101 ? mockImageSource : null),
     imageOcr: (id: number) => Promise.resolve(id === 101 ? mockImageOcr : null),
+    textPreview: async (item: ClipboardItem, format: import("../ipc/generated").ClipboardTextFormat | null = null): Promise<import("../ipc/generated").ClipboardTextPreview> => ({
+        source: item.safeHtml ?? item.preview,
+        format: format ?? (item.kind === "html" ? "html" : "text"),
+        safeHtml: format === "text" ? null : item.safeHtml ?? null,
+        renderLimited: false,
+    }),
     htmlPreview: (item: ClipboardItem) => Promise.resolve(item.safeHtml ?? null),
     copy: (id: number) => Promise.resolve(),
     copyText: (content: string) => navigator.clipboard?.writeText(content) ?? Promise.resolve(),

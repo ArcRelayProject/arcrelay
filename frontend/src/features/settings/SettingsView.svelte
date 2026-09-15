@@ -569,6 +569,14 @@
               <span class="row-copy"><strong>{uiTranslate("非本人在场时锁定剪贴板", $uiLanguage)}</strong><small>{uiTranslate("眼动检测运行时，暂停历史记录和跨设备同步，并禁止查看、复制或粘贴，直到重新确认本机用户。", $uiLanguage)}</small></span>
               <span class:checked={appSettings.clipboardLockWhenOwnerUnconfirmed} class="switch-control"><span></span></span>
             </button>
+            <button class="settings-row settings-toggle-row" role="switch"
+              aria-checked={appSettings.clipboardReceiveFiles}
+              disabled={settingsSaving || !appSettings.clipboardEnabled}
+              on:click={() => patchAppSettings({ clipboardReceiveFiles: !appSettings.clipboardReceiveFiles }, "设置已保存")}>
+              <span class="row-icon"><ClipboardText size={21} /></span>
+              <span class="row-copy"><strong>{uiTranslate("接收文件后自动加入剪贴板", $uiLanguage)}</strong><small>{uiTranslate("附近设备传来的文件接收完成后，保存到剪贴板历史，并可直接粘贴到支持文件的应用。", $uiLanguage)}</small></span>
+              <span class:checked={appSettings.clipboardReceiveFiles} class="switch-control"><span></span></span>
+            </button>
             <label class:disabled={!appSettings.clipboardEnabled} class="settings-row setting-field-row">
               <span class="row-icon"><Keyboard size={21} /></span>
               <span class="row-copy"><strong>{uiTranslate("打开剪贴板的快捷键", $uiLanguage)}</strong><small>{uiTranslate("点击输入框后，直接按下新的组合键。", $uiLanguage)}</small></span>

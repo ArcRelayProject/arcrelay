@@ -261,3 +261,57 @@ pub(super) fn show_transfer_system_notification(
         tracing::warn!(%error, "Failed to show transfer notification");
     }
 }
+
+/// Seed completed IDs at startup, so persisted history is never replayed.
+/// Keep consumed IDs even if a task disappears from a later snapshot.
+pub(super) struct ReceivedFilesTracker {
+    completed: std::collections::HashSet<String>,
+}
+
+impl ReceivedFilesTracker {
+    pub(super) fn from_snapshot(snapshot: &TransferSnapshot) -> Self {
+        Self {
+            completed: snapshot
+                .transfers
+                .iter()
+                .filter(|transfer| transfer.status == TransferStatus::Completed)
+                .map(|transfer| transfer.id.clone())
+                .collect(),
+        }
+    }
+
+    pub(super) fn update(
+        &mut self,
+        snapshot: &TransferSnapshot,
+    ) -> Vec<Result<Vec<String>, String>> {
+        snapshot
+            .transfers
+            .iter()
+            .filter_map(|transfer| {
+                if transfer.direction != TransferDirection::Receiving
+                    || transfer.status != TransferStatus::Completed
+                    || !self.completed.insert(transfer.id.clone())
+                {
+                    return None;
+                }
+                Some(received_file_paths(transfer))
+            })
+            .collect()
+    }
+}
+
+fn received_file_paths(transfer: &TransferView) -> Result<Vec<String>, String> {
+    if transfer.files.is_empty() {
+        return Err("received transfer contains no files".into());
+    }
+    transfer
+        .files
+        .iter()
+        .map(|file| {
+            file.local_path
+                .clone()
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| "received file has no finalized local path".into())
+        })
+        .collect()
+}

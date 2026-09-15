@@ -572,6 +572,41 @@ pub async fn clipboard_image_ocr(
         .map_err(|error| error.to_string())
 }
 
+pub(crate) async fn add_received_files(
+    state: &DesktopState,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let _action = CLIPBOARD_ACTION.lock().await;
+    let settings = state.settings.snapshot();
+    if !settings.clipboard_enabled
+        || !settings.clipboard_receive_files
+        || crate::presence_access::clipboard_locked(state)
+    {
+        return Ok(());
+    }
+    state
+        .clipboard
+        .set_files(paths)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn clipboard_text_preview(
+    state: State<'_, DesktopState>,
+    id: u64,
+    format: Option<arcrelay_core::domain::clipboard::ClipboardTextFormat>,
+) -> Result<arcrelay_core::domain::clipboard::ClipboardTextPreview, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    let preview = state
+        .clipboard
+        .text_preview(id, format)
+        .await
+        .map_err(|error| error.to_string())?;
+    crate::presence_access::require_clipboard_access(&state)?;
+    Ok(preview)
+}
+
 #[arcrelay_desktop_ipc::command]
 pub async fn clipboard_html_preview(
     state: State<'_, DesktopState>,

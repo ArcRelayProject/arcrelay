@@ -227,6 +227,7 @@ export const mockData: BridgeMockData = {
   clipboardSortBy: "updatedAt",
   clipboardSyncEnabled: true,
   clipboardSyncUpdateSystemClipboard: true,
+  clipboardReceiveFiles: false,
   clipboardSyncEditsAndDeletes: true,
   clipboardSyncFavorites: true,
   clipboardLockWhenOwnerUnconfirmed: false,

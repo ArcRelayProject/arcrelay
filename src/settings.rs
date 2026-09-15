@@ -22,6 +22,7 @@ pub struct AppSettings {
     pub notifications: NotificationPreferences,
     pub sounds: crate::sound::SoundPreferences,
     pub clipboard_enabled: bool,
+    pub clipboard_receive_files: bool,
     pub clipboard_shortcut: String,
     pub clipboard_auto_focus_search: bool,
     pub clipboard_sort_by: ClipboardSortPreference,
@@ -54,6 +55,7 @@ pub struct AppSettingsPatch {
     pub notifications: Option<NotificationPreferencesPatch>,
     pub sounds: Option<crate::sound::SoundPreferencesPatch>,
     pub clipboard_enabled: Option<bool>,
+    pub clipboard_receive_files: Option<bool>,
     pub clipboard_shortcut: Option<String>,
     pub clipboard_auto_focus_search: Option<bool>,
     pub clipboard_sort_by: Option<ClipboardSortPreference>,
@@ -102,6 +104,9 @@ impl AppSettingsPatch {
         }
         if let Some(value) = self.clipboard_enabled {
             current.clipboard_enabled = value;
+        }
+        if let Some(value) = self.clipboard_receive_files {
+            current.clipboard_receive_files = value;
         }
         if let Some(value) = self.clipboard_shortcut {
             current.clipboard_shortcut = value;
@@ -166,6 +171,7 @@ impl Default for AppSettings {
             notifications: NotificationPreferences::default(),
             sounds: crate::sound::SoundPreferences::default(),
             clipboard_enabled: true,
+            clipboard_receive_files: false,
             clipboard_shortcut: DEFAULT_CLIPBOARD_SHORTCUT.into(),
             clipboard_auto_focus_search: true,
             clipboard_sort_by: ClipboardSortPreference::UpdatedAt,
@@ -440,6 +446,19 @@ pub fn validate_device_name(value: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn received_file_clipboard_setting_defaults_off_and_persists() {
+        let old: AppSettings = serde_json::from_str("{}").unwrap();
+        assert!(!old.clipboard_receive_files);
+        let patch: AppSettingsPatch =
+            serde_json::from_str(r#"{"clipboardReceiveFiles":true}"#).unwrap();
+        let current = patch.apply(old);
+        let restored: AppSettings =
+            serde_json::from_str(&serde_json::to_string(&current).unwrap()).unwrap();
+        assert!(restored.clipboard_receive_files);
+        assert!(restored.clipboard_enabled);
+    }
 
     #[test]
     fn patches_preserve_unrelated_window_changes() {

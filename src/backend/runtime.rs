@@ -333,6 +333,9 @@ pub(super) async fn run_backend(
                 let initial_snapshot = transfer_state.snapshot().await;
                 let mut notification_tracker =
                     TransferNotificationTracker::from_snapshot(&initial_snapshot);
+                let mut received_files_tracker =
+                    ReceivedFilesTracker::from_snapshot(&initial_snapshot);
+                let clipboard_owner = transfer_owner.clone();
                 let mut workflow_tracker =
                     AutomationTransferEventTracker::from_snapshot(&initial_snapshot);
                 let transfer_automations = transfer_owner.automations.clone();
@@ -366,6 +369,34 @@ pub(super) async fn run_backend(
                             Ok(false) => {}
                             Err(error) => {
                                 tracing::warn!(%error, "could not reconcile system share requests")
+                            }
+                        }
+                        let received_files = received_files_tracker.update(&snapshot);
+                        let settings = transfer_settings.snapshot();
+                        if settings.clipboard_receive_files
+                            && settings.clipboard_enabled
+                            && !crate::presence_access::clipboard_locked(&clipboard_owner)
+                        {
+                            for files in received_files {
+                                let result = match files {
+                                    Ok(paths) => {
+                                        crate::commands::add_received_files(&clipboard_owner, paths)
+                                            .await
+                                    }
+                                    Err(error) => Err(error),
+                                };
+                                if let Err(error) = result {
+                                    tracing::warn!(%error, "received files could not be added to clipboard");
+                                    show_transfer_system_notification(&transfer_app, &transfer_settings, TransferSystemNotification {
+                                        sound: crate::sound::SoundEvent::TransferFailed,
+                                        category: crate::desktop_notification::DesktopNotificationCategory::TransferFailed,
+                                        title: crate::desktop_notification::localized(settings.language,
+                                            "文件已接收，加入剪贴板失败", "Files received, but could not be added to clipboard"),
+                                        body: crate::desktop_notification::localized(settings.language,
+                                            "文件仍保存在接收目录中。", "Your files are still saved in the receive folder."),
+                                        transfer_request_id: None,
+                                    });
+                                }
                             }
                         }
                         let language = transfer_settings.snapshot().language;

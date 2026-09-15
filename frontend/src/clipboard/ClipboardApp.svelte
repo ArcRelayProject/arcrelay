@@ -29,8 +29,9 @@
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
   import ClipboardRow from "./ClipboardRow.svelte";
   import ContentPreview from "./ContentPreview.svelte";
-  import SegmentPicker from "./SegmentPicker.svelte";
+  import TextPreview from "./TextPreview.svelte";
   import { clipboardBridge } from "./bridge";
+  import { visibleQuickPasteIds } from "./quickPaste";
   import { HeightIndex } from "./heightIndex";
   import { filterClipboardLabels, parseRecentLabelIds, rememberRecentLabel, selectQuickLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
@@ -44,7 +45,6 @@
   import type { NearbyClipboardPeer } from "./types";
 
   const FETCH_SIZE = 60;
-  const QUICK_PASTE_LIMIT = 5;
   const VIRTUAL_OVERSCAN_ROWS = 4;
   const ROW_GAP = 8;
   const RECENT_LABELS_STORAGE_KEY = "arcrelay.clipboard.recent-labels";
@@ -80,20 +80,22 @@
   let historyRefreshTimer: number | undefined;
   let error = "";
   let labelFilterOpen = false;
+  let labelFilterPinned = false;
+  let labelFilterCloseTimer: number | undefined;
   let labelSearch = "";
   let activeLabelOptionIndex = 0;
   let labelSearchInput: HTMLInputElement;
   let moreLabelsButton: HTMLButtonElement;
+  let quickLabelList: HTMLDivElement;
   let recentLabelIds: string[] = [];
   let keyboardMode: ClipboardKeyboardMode = "search";
   let previewDialogOpen = false;
   let previewingItem: ClipboardItem | null = null;
   let previewGeneration = 0;
-  let previewModel: import("./textSegments").TextSliceModel | null = null;
+  let previewModel: import("../ipc/generated").ClipboardTextPreview | null = null;
   let previewLoading = false;
   let previewError = "";
   let previewActionBusy = false;
-  let previewSourceWarning = "";
   let imagePreviewReady = false;
   let editDialogOpen = false;
   let editingItem: ClipboardItem | null = null;
@@ -151,8 +153,9 @@
 
   $: selectedIndex = history.entries.findIndex((item) => item.id === selectedId);
   $: selectedItem = selectedIndex >= 0 ? history.entries[selectedIndex] : null;
-  $: shortcutNumbers = new Map((nearby ? [] : history.entries.slice(0, QUICK_PASTE_LIMIT)).map((_, index) => [index, index + 1]));
-  $: rowShortcutModifier = keyboardMode === "search" ? primaryShortcutLabel : "";
+  let quickPasteIds: number[] = [];
+  $: shortcutNumbers = new Map(quickPasteIds.map((id, index) => [id, index + 1]));
+  $: rowShortcutModifier = primaryShortcutLabel;
   $: selectedLabel = labels.find((label) => label.id === selectedLabelFilter) ?? null;
   $: quickLabels = selectQuickLabels(labels, recentLabelIds, selectedLabelFilter);
   $: filteredLabels = filterClipboardLabels(labels, labelSearch);
@@ -185,7 +188,7 @@
     debouncedSearch = query;
     filter = nextFilter;
     selectedLabelFilter = labelId;
-    labelFilterOpen = false;
+    closeLabelFilter();
   }
 
   function abandonNearby() {
@@ -236,6 +239,7 @@
 
   function recalculateVisibleRange(entries: ClipboardItem[], top: number, height: number) {
     if (entries.length === 0) {
+      quickPasteIds = [];
       visibleStartIndex = 0;
       visibleEndIndex = 0;
       virtualStartIndex = 0;
@@ -252,6 +256,7 @@
     const end = index.indexAt(viewportBottom);
     const last = Math.min(entries.length, end + (index.offset(end) < viewportBottom ? 1 : 0));
 
+    quickPasteIds = visibleQuickPasteIds(entries, first, last, top, height, i => index.offset(i), ROW_GAP);
     visibleStartIndex = first;
     visibleEndIndex = last;
     virtualStartIndex = Math.max(0, first - VIRTUAL_OVERSCAN_ROWS);
@@ -344,8 +349,7 @@
         resetRestoredFocus();
         clearHtmlPreviewCache();
         keyboardMode = "search";
-        labelFilterOpen = false;
-        labelSearch = "";
+        closeLabelFilter();
         selectedLabelFilter = null;
         previewGeneration++;
         previewDialogOpen = false;
@@ -353,7 +357,6 @@
         previewModel = null;
         previewError = "";
         previewActionBusy = false;
-        previewSourceWarning = "";
         search = "";
         selectedId = null;
         selectedIds = [];
@@ -429,6 +432,7 @@
       disposed = true;
       window.clearTimeout(debounceTimer);
       window.clearTimeout(historyRefreshTimer);
+      window.clearTimeout(labelFilterCloseTimer);
       cancelAnimationFrame(scrollAnimationFrame);
       window.removeEventListener("keydown", handleKeyDown);
       scrollResizeObserver?.disconnect();
@@ -901,12 +905,11 @@
     previewModel = null;
     previewError = "";
     previewActionBusy = false;
-    previewSourceWarning = "";
     previewLoading = (item.kind === "text" || item.kind === "html") && !item.sensitive;
     previewDialogOpen = true;
     if (!previewLoading) return;
     try {
-      const model = await clipboardBridge.textSegments(item);
+      const model = await clipboardBridge.textPreview(item);
       if (generation === previewGeneration && previewDialogOpen) previewModel = model;
     } catch (reason) {
       if (generation === previewGeneration) previewError = reason instanceof Error ? reason.message : String(reason);
@@ -959,7 +962,8 @@
   function handleKeyDown(event: KeyboardEvent) {
     if (event.isComposing) return;
     if (previewDialogOpen) {
-      const previewAction = resolvePreviewKeyboardAction(event);
+      const interactive = event.target instanceof Element && event.target.closest("button, select, input, textarea");
+      const previewAction = interactive || event.defaultPrevented ? null : resolvePreviewKeyboardAction(event);
       if (previewAction) {
         event.preventDefault();
         event.stopPropagation();
@@ -1043,8 +1047,9 @@
       scrollByViewport(action.direction);
     } else if (action.type === "paste" && selectedItem) {
       void pasteItem(selectedItem, action.plainText ? "plain_text" : "source");
-    } else if (action.type === "pasteRank" && !nearby) {
-      const item = history.entries[action.index];
+    } else if (action.type === "pasteRank" && selectedIds.length === 0) {
+      const id = quickPasteIds[action.index];
+      const item = history.entries.find(item => item.id === id);
       if (item) void pasteItem(item);
     } else if (action.type === "copy" && selectedItem) {
       void copyItem(selectedItem);
@@ -1195,8 +1200,7 @@
   }
 
   async function openLabelManager() {
-    labelFilterOpen = false;
-    labelSearch = "";
+    closeLabelFilter();
     managingLabels = true;
     labelingItem = null;
     selectedLabelIds = [];
@@ -1229,23 +1233,43 @@
   }
 
   function closeLabelFilter({ restoreFocus = false } = {}) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
     labelFilterOpen = false;
+    labelFilterPinned = false;
     labelSearch = "";
     activeLabelOptionIndex = 0;
     if (restoreFocus) requestAnimationFrame(() => moreLabelsButton?.focus());
   }
 
+  async function openLabelFilter({ focusSearch = false } = {}) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
+    if (!labelFilterOpen) {
+      labelFilterOpen = true;
+      labelSearch = "";
+      const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
+      activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
+      await tick();
+    }
+    if (focusSearch) labelSearchInput?.focus();
+  }
+
+  function scheduleLabelFilterClose() {
+    if (labelFilterPinned) return;
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = window.setTimeout(() => closeLabelFilter(), 140);
+  }
+
   async function toggleLabelFilter() {
-    if (labelFilterOpen) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
+    if (labelFilterOpen && labelFilterPinned) {
       closeLabelFilter();
       return;
     }
-    labelFilterOpen = true;
-    labelSearch = "";
-    const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
-    activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
-    await tick();
-    labelSearchInput?.focus();
+    labelFilterPinned = true;
+    await openLabelFilter({ focusSearch: true });
   }
 
   function selectLabelFilter(labelId: string | null, toggle = false) {
@@ -1257,6 +1281,11 @@
       localStorage.setItem(RECENT_LABELS_STORAGE_KEY, JSON.stringify(recentLabelIds));
     }
     closeLabelFilter();
+    void tick().then(() => {
+      quickLabelList
+        ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -1323,7 +1352,7 @@
     </div>
     <div class="label-filter-toolbar" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
       <span class="label-filter-divider" aria-hidden="true"></span>
-      <div class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+      <div bind:this={quickLabelList} class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
         <button
           class:active={selectedLabelFilter === null}
           class="quick-label-button all-labels"
@@ -1345,7 +1374,15 @@
           </button>
         {/each}
       </div>
-      <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}>
+      <div
+        class:open={labelFilterOpen}
+        class="label-filter-control"
+        role="group"
+        aria-label={uiTranslate("更多标签", $uiLanguage)}
+        use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}
+        on:mouseenter={() => void openLabelFilter()}
+        on:mouseleave={scheduleLabelFilterClose}
+      >
         <button
           bind:this={moreLabelsButton}
           class="label-filter-button"
@@ -1471,7 +1508,7 @@
           >
             <ClipboardRow
               item={entry.item}
-              shortcutIndex={shortcutNumbers.get(entry.index) ?? null}
+              shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
               shortcutModifier={rowShortcutModifier}
               selected={selectedId === entry.item.id}
               multiSelected={selectedIds.includes(entry.item.id)}
@@ -1581,20 +1618,24 @@
         >
           {#if previewLoading}
             <div class="clipboard-preview-state">{uiTranslate("正在读取完整内容…", $uiLanguage)}</div>
-          {:else if previewError}
+          {:else if previewError && !previewModel}
             <div class="clipboard-preview-state error-state">{previewError}</div>
           {:else if previewingItem && (previewingItem.kind === "text" || previewingItem.kind === "html") && !previewingItem.sensitive}
             {#key previewingItem.id}
-              <SegmentPicker
+              <TextPreview
                 model={previewModel!}
-                itemId={previewingItem!.id}
+                item={previewingItem!}
                 {language}
                 busy={previewActionBusy}
                 errorMessage={previewError}
-                sourceWarning={previewSourceWarning}
                 onCopy={copySegment}
                 onPaste={pasteSegment}
-                onPasteAll={() => pasteItem(previewingItem!)}
+                onPasteAll={async () => {
+                  await pasteItem(previewingItem!);
+                  if (pasteError) previewError = pasteError;
+                  else previewDialogOpen = false;
+                }}
+                onCopyAll={async () => { await clipboardBridge.copy(previewingItem!.id); previewDialogOpen = false; }}
               />
             {/key}
           {:else if previewingItem}
@@ -1608,7 +1649,7 @@
             />
           {/if}
         </div>
-        {#if !imagePreviewReady && (!previewingItem || previewLoading || previewError || previewingItem.sensitive || (previewingItem.kind !== "text" && previewingItem.kind !== "html"))}
+        {#if !imagePreviewReady && (!previewingItem || previewLoading || (previewError && !previewModel) || previewingItem.sensitive || (previewingItem.kind !== "text" && previewingItem.kind !== "html"))}
           <div class="dialog-actions">
             <Dialog.Close class="dialog-button">{uiTranslate("返回", $uiLanguage)}</Dialog.Close>
             {#if previewingItem}
