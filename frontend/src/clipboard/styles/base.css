@@ -277,13 +277,13 @@ input:focus-visible {
 
 .filter-group {
   flex: 0 0 auto;
-  gap: 5px;
+  gap: 2px;
 }
 
 .filter-button {
   position: relative;
   display: grid;
-  width: 42px;
+  width: 36px;
   height: 38px;
   padding: 0;
   place-items: center;

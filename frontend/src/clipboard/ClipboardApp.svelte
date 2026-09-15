@@ -80,6 +80,8 @@
   let historyRefreshTimer: number | undefined;
   let error = "";
   let labelFilterOpen = false;
+  let labelFilterPinned = false;
+  let labelFilterCloseTimer: number | undefined;
   let labelSearch = "";
   let activeLabelOptionIndex = 0;
   let labelSearchInput: HTMLInputElement;
@@ -186,7 +188,7 @@
     debouncedSearch = query;
     filter = nextFilter;
     selectedLabelFilter = labelId;
-    labelFilterOpen = false;
+    closeLabelFilter();
   }
 
   function abandonNearby() {
@@ -347,8 +349,7 @@
         resetRestoredFocus();
         clearHtmlPreviewCache();
         keyboardMode = "search";
-        labelFilterOpen = false;
-        labelSearch = "";
+        closeLabelFilter();
         selectedLabelFilter = null;
         previewGeneration++;
         previewDialogOpen = false;
@@ -431,6 +432,7 @@
       disposed = true;
       window.clearTimeout(debounceTimer);
       window.clearTimeout(historyRefreshTimer);
+      window.clearTimeout(labelFilterCloseTimer);
       cancelAnimationFrame(scrollAnimationFrame);
       window.removeEventListener("keydown", handleKeyDown);
       scrollResizeObserver?.disconnect();
@@ -1198,8 +1200,7 @@
   }
 
   async function openLabelManager() {
-    labelFilterOpen = false;
-    labelSearch = "";
+    closeLabelFilter();
     managingLabels = true;
     labelingItem = null;
     selectedLabelIds = [];
@@ -1232,23 +1233,43 @@
   }
 
   function closeLabelFilter({ restoreFocus = false } = {}) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
     labelFilterOpen = false;
+    labelFilterPinned = false;
     labelSearch = "";
     activeLabelOptionIndex = 0;
     if (restoreFocus) requestAnimationFrame(() => moreLabelsButton?.focus());
   }
 
+  async function openLabelFilter({ focusSearch = false } = {}) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
+    if (!labelFilterOpen) {
+      labelFilterOpen = true;
+      labelSearch = "";
+      const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
+      activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
+      await tick();
+    }
+    if (focusSearch) labelSearchInput?.focus();
+  }
+
+  function scheduleLabelFilterClose() {
+    if (labelFilterPinned) return;
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = window.setTimeout(() => closeLabelFilter(), 140);
+  }
+
   async function toggleLabelFilter() {
-    if (labelFilterOpen) {
+    window.clearTimeout(labelFilterCloseTimer);
+    labelFilterCloseTimer = undefined;
+    if (labelFilterOpen && labelFilterPinned) {
       closeLabelFilter();
       return;
     }
-    labelFilterOpen = true;
-    labelSearch = "";
-    const selectedIndex = labels.findIndex((label) => label.id === selectedLabelFilter);
-    activeLabelOptionIndex = selectedIndex < 0 ? 0 : selectedIndex + 1;
-    await tick();
-    labelSearchInput?.focus();
+    labelFilterPinned = true;
+    await openLabelFilter({ focusSearch: true });
   }
 
   function selectLabelFilter(labelId: string | null, toggle = false) {
@@ -1353,7 +1374,15 @@
           </button>
         {/each}
       </div>
-      <div class:open={labelFilterOpen} class="label-filter-control" use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}>
+      <div
+        class:open={labelFilterOpen}
+        class="label-filter-control"
+        role="group"
+        aria-label={uiTranslate("更多标签", $uiLanguage)}
+        use:dismissibleDropdown={{ open: labelFilterOpen, close: closeLabelFilter }}
+        on:mouseenter={() => void openLabelFilter()}
+        on:mouseleave={scheduleLabelFilterClose}
+      >
         <button
           bind:this={moreLabelsButton}
           class="label-filter-button"

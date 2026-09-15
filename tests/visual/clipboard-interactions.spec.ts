@@ -85,7 +85,21 @@ test("narrow windows keep the label toolbar contained and horizontally scrollabl
   await expect(page.locator(".clipboard-row").first()).toBeVisible();
   await page.screenshot({ path: "/tmp/arcrelay-clipboard-label-scroll.png", animations: "disabled" });
 
-  await page.locator(".label-filter-button").click();
+  const labelControl = page.locator(".label-filter-control");
+  const labelButton = page.locator(".label-filter-button");
+  const labelMenu = page.locator(".label-filter-menu");
+  await labelControl.hover();
+  await expect(labelMenu).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(labelMenu).toBeHidden();
+  await labelButton.click();
+  await expect(labelMenu).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(180);
+  await expect(labelMenu).toBeVisible();
+  await labelButton.click();
+  await expect(labelMenu).toBeHidden();
+  await labelButton.click();
   await page.locator(".label-filter-options > button", { hasText: "代码" }).click();
   const activeLabelIsVisible = await page.evaluate(() => {
     const toolbar = document.querySelector<HTMLElement>(".quick-label-list")!;
