@@ -129,6 +129,7 @@ input:focus-visible {
 
 .clipboard-header {
   display: grid;
+  min-width: 0;
   grid-template-columns: 34px minmax(0, 1fr) 36px 30px;
   align-items: center;
   gap: 6px;
@@ -202,6 +203,7 @@ input:focus-visible {
 
 .clipboard-search {
   display: flex;
+  min-width: 0;
   align-items: center;
   height: 38px;
   padding: 0 10px;
@@ -259,6 +261,7 @@ input:focus-visible {
   position: relative;
   z-index: 4;
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px 5px;
@@ -273,6 +276,7 @@ input:focus-visible {
 }
 
 .filter-group {
+  flex: 0 0 auto;
   gap: 5px;
 }
 

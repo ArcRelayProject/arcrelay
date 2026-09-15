@@ -302,9 +302,17 @@
 }
 
 .quick-label-list {
-  justify-content: flex-end;
+  flex: 1 1 auto;
+  justify-content: flex-start;
   gap: 4px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.quick-label-list::-webkit-scrollbar {
+  display: none;
 }
 
 .quick-label-button,
@@ -328,6 +336,7 @@
 }
 
 .quick-label-button {
+  flex: 0 0 auto;
   max-width: 72px;
 }
 
@@ -544,10 +553,6 @@
 }
 
 @container clipboard-window (max-width: 600px) {
-  .quick-label-list .quick-label-button:nth-child(n + 4) {
-    display: none;
-  }
-
   .quick-label-button {
     max-width: 62px;
     padding-inline: 7px;

@@ -84,6 +84,7 @@
   let activeLabelOptionIndex = 0;
   let labelSearchInput: HTMLInputElement;
   let moreLabelsButton: HTMLButtonElement;
+  let quickLabelList: HTMLDivElement;
   let recentLabelIds: string[] = [];
   let keyboardMode: ClipboardKeyboardMode = "search";
   let previewDialogOpen = false;
@@ -1259,6 +1260,11 @@
       localStorage.setItem(RECENT_LABELS_STORAGE_KEY, JSON.stringify(recentLabelIds));
     }
     closeLabelFilter();
+    void tick().then(() => {
+      quickLabelList
+        ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -1325,7 +1331,7 @@
     </div>
     <div class="label-filter-toolbar" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
       <span class="label-filter-divider" aria-hidden="true"></span>
-      <div class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
+      <div bind:this={quickLabelList} class="quick-label-list" role="group" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
         <button
           class:active={selectedLabelFilter === null}
           class="quick-label-button all-labels"
