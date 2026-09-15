@@ -8,6 +8,7 @@ $shell = (Get-Process -Id $PID).Path
 $environmentNames = @(
     "ARCRELAY_WINDOWS_CERT_PFX", "ARCRELAY_WINDOWS_CERT_PASSWORD",
     "ARCRELAY_WINDOWS_CERT_THUMBPRINT", "ARCRELAY_WINDOWS_REQUIRE_SHARE_TARGET",
+    "ARCRELAY_WINDOWS_PACKAGE_NAME", "ARCRELAY_WINDOWS_PUBLISHER",
     "ARCRELAY_TEST_DOTNET_LOG"
 )
 $savedEnvironment = @{}
@@ -24,18 +25,26 @@ try {
     New-Item -ItemType Directory -Force -Path $scriptRoot, $output | Out-Null
     Copy-Item (Join-Path $PSScriptRoot "build.ps1") $scriptRoot
     Copy-Item (Join-Path $PSScriptRoot "app.manifest.in") $scriptRoot
+    New-Item -ItemType Directory -Force -Path (Join-Path $fixture "icons") | Out-Null
+    Set-Content (Join-Path $fixture "icons/icon.png") "test icon"
     Set-Content (Join-Path $output ".gitignore") "*"
     $env:ARCRELAY_TEST_DOTNET_LOG = Join-Path $fixture "dotnet-arguments.txt"
     $driver = Join-Path $fixture "driver.ps1"
     @'
-param([switch]$CheckOnly, [switch]$RequireSignedPackage)
+param([switch]$CheckOnly, [switch]$PayloadOnly, [switch]$RequireSignedPackage)
 $ErrorActionPreference = "Stop"
 function dotnet {
     [IO.File]::WriteAllLines($env:ARCRELAY_TEST_DOTNET_LOG, [string[]]$args)
+    $outputIndex = [Array]::IndexOf([object[]]$args, "--output")
+    if ($outputIndex -ge 0) {
+        $publishOutput = $args[$outputIndex + 1]
+        New-Item -ItemType Directory -Force -Path $publishOutput | Out-Null
+        Set-Content (Join-Path $publishOutput "ArcRelay.ShareTarget.exe") "test executable"
+    }
     $global:LASTEXITCODE = 0
 }
 try {
-    & (Join-Path $PSScriptRoot "native/windows-share/build.ps1") -CheckOnly:$CheckOnly -RequireSignedPackage:$RequireSignedPackage
+    & (Join-Path $PSScriptRoot "native/windows-share/build.ps1") -CheckOnly:$CheckOnly -PayloadOnly:$PayloadOnly -RequireSignedPackage:$RequireSignedPackage
 } catch {
     Write-Output $_.Exception.Message
     exit 1
@@ -69,7 +78,18 @@ try {
     $arguments = @(Get-Content -LiteralPath $env:ARCRELAY_TEST_DOTNET_LOG)
     Assert-Condition ($arguments[0] -eq "build") "Compile-only check published a runtime."
     Assert-Condition (Test-Path (Join-Path $output "sentinel.txt")) "Compile-only check changed bundle resources."
-    Write-Output "Windows share packaging checks passed (unsigned cleanup, signing requirements, compile-only isolation)."
+
+    # Microsoft Store packaging owns the identity and signature. Its payload
+    # build must work without a standalone sparse-package certificate.
+    $env:ARCRELAY_WINDOWS_PACKAGE_NAME = "12345ArcRelay.ArcRelay"
+    $env:ARCRELAY_WINDOWS_PUBLISHER = "CN=Store Publisher"
+    $result = & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $driver -PayloadOnly 2>&1
+    Assert-Condition ($LASTEXITCODE -eq 0) "MSIX payload-only build failed: $result"
+    $arguments = @(Get-Content -LiteralPath $env:ARCRELAY_TEST_DOTNET_LOG)
+    Assert-Condition ($arguments[0] -eq "publish") "MSIX payload-only build did not publish the Share Target."
+    Assert-Condition (Test-Path (Join-Path $output "ArcRelay.ShareTarget.exe")) "MSIX payload executable is missing."
+    Assert-Condition (-not (Test-Path (Join-Path $output "ArcRelay.SystemShare.msix"))) "MSIX payload unexpectedly created a nested sparse package."
+    Write-Output "Windows share packaging checks passed (unsigned cleanup, signing requirements, compile-only isolation, MSIX payload)."
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], "Process")

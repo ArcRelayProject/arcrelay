@@ -1,0 +1,150 @@
+name: Build Microsoft Store MSIX
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Optional Store version (four parts, final part 0); defaults from the app version"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-msix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      sniptra_lock: ${{ steps.sniptra.outputs.lock }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Validate Microsoft Store identity settings
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          for name in MSIX_IDENTITY_NAME MSIX_PUBLISHER MSIX_PUBLISHER_DISPLAY_NAME; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Repository variable $name is required. Copy it from the Partner Center product identity."
+              exit 1
+            fi
+          done
+          if [[ ! "$MSIX_IDENTITY_NAME" =~ ^[A-Za-z0-9.-]{3,50}$ ]]; then
+            echo "::error::MSIX_IDENTITY_NAME is not a valid package identity name."
+            exit 1
+          fi
+      - id: sniptra
+        name: Lock latest compatible Sniptra release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNIPTRA_RELEASE_TAG: ${{ vars.SNIPTRA_RELEASE_TAG }}
+        run: node scripts/sniptra-release.mjs resolve sniptra-lock.json
+
+  build:
+    needs: prepare
+    name: package (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - architecture: arm64
+            platform: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Download and verify locked Sniptra component
+        env:
+          SNIPTRA_LOCK: ${{ needs.prepare.outputs.sniptra_lock }}
+        shell: bash
+        run: |
+          printf '%s\n' "$SNIPTRA_LOCK" > sniptra-lock.json
+          node scripts/sniptra-release.mjs download sniptra-lock.json "${{ matrix.target }}"
+      - run: npm ci
+      - name: Compile ArcRelay and its packaged Share Target
+        env:
+          ARCRELAY_WINDOWS_MSIX_PACKAGE: "1"
+          ARCRELAY_WINDOWS_PACKAGE_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          ARCRELAY_WINDOWS_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+        run: npm run tauri build -- --ci --config tauri.github.conf.json --target ${{ matrix.target }} --no-bundle
+      - name: Create unsigned Store package
+        shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+          MSIX_PACKAGE_VERSION: ${{ inputs.package_version || '' }}
+          MSIX_TARGET: ${{ matrix.target }}
+        run: >-
+          ./scripts/build-msix.ps1
+          -Target $env:MSIX_TARGET
+          -IdentityName $env:MSIX_IDENTITY_NAME
+          -Publisher $env:MSIX_PUBLISHER
+          -PublisherDisplayName $env:MSIX_PUBLISHER_DISPLAY_NAME
+          -PackageVersion $env:MSIX_PACKAGE_VERSION
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: msix-${{ matrix.architecture }}
+          path: dist/msix/*.msix
+          if-no-files-found: error
+          retention-days: 30
+
+  bundle:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: msix-*
+          path: packages
+          merge-multiple: true
+      - name: Create architecture bundle and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packages = @(Get-ChildItem -LiteralPath packages -Filter *.msix)
+          if ($packages.Count -ne 2) { throw "Expected x64 and ARM64 MSIX packages, found $($packages.Count)." }
+          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/bin"
+          $makeAppx = Get-ChildItem -Path $sdkRoot -Filter makeappx.exe -Recurse |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]makeappx\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $makeAppx) { throw "Windows SDK MakeAppx.exe (x64) is required." }
+          New-Item -ItemType Directory -Force -Path output | Out-Null
+          & $makeAppx.FullName bundle /v /d packages /p output/ArcRelay.msixbundle /o
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx bundle failed with exit code $LASTEXITCODE." }
+          Copy-Item packages/*.msix output/
+          Get-ChildItem output -File | Sort-Object Name | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: microsoft-store-msix
+          path: output/*
+          if-no-files-found: error
+          retention-days: 30

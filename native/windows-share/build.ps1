@@ -2,6 +2,7 @@ param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
     [switch]$CheckOnly,
+    [switch]$PayloadOnly,
     [switch]$RequireSignedPackage
 )
 
@@ -13,13 +14,17 @@ $certificatePassword = $env:ARCRELAY_WINDOWS_CERT_PASSWORD
 $certificateThumbprint = $env:ARCRELAY_WINDOWS_CERT_THUMBPRINT
 $hasCertificate = $certificatePath -or $certificateThumbprint
 
+if ($CheckOnly -and $PayloadOnly) {
+    throw "CheckOnly and PayloadOnly cannot be used together."
+}
+
 # The helper has no usable activation entry without its signed identity package.
 # Decide before publishing either runtime, and remove output from prior builds.
 # Compile-only CI checks must never populate the installer's resource directory.
 if (-not $CheckOnly) {
     New-Item -ItemType Directory -Force -Path $output | Out-Null
     Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.Name -ne ".gitignore" } | Remove-Item -Recurse -Force
-    if (-not $hasCertificate) {
+    if (-not $hasCertificate -and -not $PayloadOnly) {
         if ($RequireSignedPackage -or $env:ARCRELAY_WINDOWS_REQUIRE_SHARE_TARGET -eq "1") {
             throw "Windows system Share requires ARCRELAY_WINDOWS_CERT_PFX or ARCRELAY_WINDOWS_CERT_THUMBPRINT. No Share Target payload was bundled."
         }
@@ -32,9 +37,12 @@ $target = if ($env:TAURI_ENV_TARGET_TRIPLE) { $env:TAURI_ENV_TARGET_TRIPLE } els
 $rid = if ($target -like "aarch64-*") { "win-arm64" } else { "win-x64" }
 $packageArchitecture = if ($rid -eq "win-arm64") { "arm64" } else { "x64" }
 $publisher = if ($env:ARCRELAY_WINDOWS_PUBLISHER) { $env:ARCRELAY_WINDOWS_PUBLISHER } else { "CN=ArcRelay" }
+$packageName = if ($env:ARCRELAY_WINDOWS_PACKAGE_NAME) { $env:ARCRELAY_WINDOWS_PACKAGE_NAME } else { "ArcRelay.SystemShare" }
 $applicationManifest = Join-Path $env:TEMP ("arcrelay-share-app-" + [guid]::NewGuid().ToString("N") + ".manifest")
 $escapedPublisher = [System.Security.SecurityElement]::Escape($publisher)
-$applicationManifestText = (Get-Content (Join-Path $PSScriptRoot "app.manifest.in") -Raw).Replace("@PUBLISHER@", $escapedPublisher)
+$escapedPackageName = [System.Security.SecurityElement]::Escape($packageName)
+$applicationManifestText = (Get-Content (Join-Path $PSScriptRoot "app.manifest.in") -Raw)
+$applicationManifestText = $applicationManifestText.Replace("@PUBLISHER@", $escapedPublisher).Replace("@PACKAGE_NAME@", $escapedPackageName)
 Set-Content -LiteralPath $applicationManifest -Value $applicationManifestText -Encoding UTF8
 
 try {
@@ -58,6 +66,15 @@ try {
 }
 
 Copy-Item (Join-Path $projectRoot "icons/icon.png") (Join-Path $output "ArcRelay.png") -Force
+
+# A fully packaged ArcRelay MSIX owns the package identity and includes this
+# executable as a second application. It must not carry or sign the standalone
+# sparse package used by the NSIS/MSI installers.
+if ($PayloadOnly) {
+    $payloadBytes = (Get-ChildItem -LiteralPath $output -File -Recurse | Measure-Object -Property Length -Sum).Sum
+    Write-Output ("Windows system Share payload prepared for package {0}; payload {1:N2} MiB." -f $packageName, ($payloadBytes / 1MB))
+    return
+}
 
 $applicationVersion = (Get-Content (Join-Path $projectRoot "tauri.conf.json") -Raw | ConvertFrom-Json).version
 $versionParts = @($applicationVersion.Split('.'))
