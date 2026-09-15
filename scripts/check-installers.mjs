@@ -65,8 +65,13 @@ assert.match(msixManifest, /MinVersion="10\.0\.19041\.0"/,
   'uap10 activation attributes require Windows 10 2004 or newer');
 assert.match(msixManifest, /Executable="ArcRelay\.exe"[\s\S]*uap10:RuntimeBehavior="packagedClassicApp"/,
   'The main MSIX application must retain classic desktop behavior');
-assert.match(msixManifest, /Id="ArcRelayShare"[\s\S]*Category="windows\.shareTarget"/,
-  'The Store package must include the Windows Share Target');
+assert.equal((msixManifest.match(/<Application\b/g) ?? []).length, 1,
+  'The Store package must expose one visible application and must not declare a hidden headless application');
+assert.doesNotMatch(msixManifest, /AppListEntry="none"/,
+  'Store packages using AppListEntry="none" require the unavailable HeadlessAppBypass waiver');
+assert.match(msixManifest,
+  /<uap:Extension[\s\S]*Category="windows\.shareTarget"[\s\S]*Executable="system-share\\windows\\ArcRelay\.ShareTarget\.exe"/,
+  'The Store package must launch the Windows Share Target helper from the main application extension');
 assert.match(msixManifest, /<rescap:Capability Name="runFullTrust" \/>/,
   'Packaged desktop applications require the runFullTrust capability');
 const msixScript = read('scripts/build-msix.ps1').toString('utf8');
