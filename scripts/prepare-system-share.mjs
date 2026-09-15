@@ -17,7 +17,9 @@ function run(command, args) {
 
 if (process.platform === 'win32') {
   const script = path.join(root, 'native', 'windows-share', 'build.ps1');
-  run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script]);
+  const arguments = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script];
+  if (process.env.ARCRELAY_WINDOWS_MSIX_PACKAGE === '1') arguments.push('-PayloadOnly');
+  run('powershell.exe', arguments);
 } else if (process.platform === 'darwin') {
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'arcrelay-share-extension-'));
   const outputRoot = path.join(root, 'binaries', 'macos-share');

@@ -3,6 +3,6 @@
   <assemblyIdentity version="1.0.0.0" name="ArcRelay.SystemShare.app" />
   <msix xmlns="urn:schemas-microsoft-com:msix.v1"
         publisher="@PUBLISHER@"
-        packageName="ArcRelay.SystemShare"
+        packageName="@PACKAGE_NAME@"
         applicationId="ArcRelayShare" />
 </assembly>

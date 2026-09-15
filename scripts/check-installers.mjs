@@ -51,6 +51,28 @@ assert.match(
 assert.equal(nsis.installMode, 'currentUser', 'Changing install scope requires an upgrade/migration review');
 assert.equal(config.identifier, 'com.arcrelay.desktop', 'Keep the existing application/data identity');
 
+const msixManifest = read('installer/msix/AppxManifest.xml.in').toString('utf8');
+for (const placeholder of [
+  '@IDENTITY_NAME@',
+  '@PUBLISHER@',
+  '@PUBLISHER_DISPLAY_NAME@',
+  '@PACKAGE_VERSION@',
+  '@PROCESSOR_ARCHITECTURE@',
+]) {
+  assert.match(msixManifest, new RegExp(placeholder), `MSIX manifest is missing ${placeholder}`);
+}
+assert.match(msixManifest, /MinVersion="10\.0\.19041\.0"/,
+  'uap10 activation attributes require Windows 10 2004 or newer');
+assert.match(msixManifest, /Executable="ArcRelay\.exe"[\s\S]*uap10:RuntimeBehavior="packagedClassicApp"/,
+  'The main MSIX application must retain classic desktop behavior');
+assert.match(msixManifest, /Id="ArcRelayShare"[\s\S]*Category="windows\.shareTarget"/,
+  'The Store package must include the Windows Share Target');
+assert.match(msixManifest, /<rescap:Capability Name="runFullTrust" \/>/,
+  'Packaged desktop applications require the runFullTrust capability');
+const msixScript = read('scripts/build-msix.ps1').toString('utf8');
+assert.doesNotMatch(msixScript, /MakeAppx[^\n]*\/nv/i,
+  'Store packages must keep MakeAppx semantic validation enabled');
+
 for (const path of ['Info.plist', 'gen/apple-macos/ArcRelay/Info.plist']) {
   const infoPlist = read(path).toString('utf8');
   assert.match(infoPlist, /<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]+<\/string>/,
