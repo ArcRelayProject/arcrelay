@@ -291,6 +291,9 @@ fn main() {
             commands::clipboard_set_labels,
             commands::clipboard_set_label_membership,
             commands::set_clipboard_context_menu_open,
+            commands::set_clipboard_window_editing,
+            commands::set_clipboard_navigation_ready,
+            commands::activate_clipboard_navigation,
             commands::clipboard_edit_text,
             commands::clipboard_text_content,
             commands::clipboard_text_segments,
@@ -542,6 +545,8 @@ fn main() {
 
     app.run(|app_handle, event| match event {
         tauri::RunEvent::Exit => {
+            #[cfg(target_os = "windows")]
+            windowing::clipboard_windows::shutdown();
             app_handle
                 .state::<Arc<gesture_debug::GestureDebugState>>()
                 .stop();
@@ -589,7 +594,7 @@ fn main() {
             label,
             event: tauri::WindowEvent::Focused(false),
             ..
-        } if label == windowing::CLIPBOARD_WINDOW_LABEL && !cfg!(target_os = "macos") => {
+        } if label == windowing::CLIPBOARD_WINDOW_LABEL && cfg!(target_os = "linux") => {
             let app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(120)).await;

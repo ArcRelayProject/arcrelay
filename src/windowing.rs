@@ -1,5 +1,3 @@
-#[cfg(target_os = "windows")]
-use std::sync::atomic::AtomicIsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use tauri::image::Image;
@@ -15,6 +13,10 @@ use crate::backend::DesktopState;
 mod clipboard;
 #[cfg(any(target_os = "macos", test))]
 mod clipboard_paste;
+#[cfg(target_os = "windows")]
+pub(crate) mod clipboard_windows;
+#[cfg(any(target_os = "windows", test))]
+pub(crate) mod clipboard_windows_policy;
 mod continuous_paste;
 mod permission_guide;
 mod tray;
@@ -48,8 +50,6 @@ static CREATING_PERMISSION_GUIDE_WINDOW: AtomicBool = AtomicBool::new(false);
 static PERMISSION_GUIDE_WINDOW_READY: AtomicBool = AtomicBool::new(false);
 static PERMISSION_GUIDE_WINDOW_CREATED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static CLIPBOARD_WINDOW_PINNED: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "windows")]
-static CLIPBOARD_PREVIOUS_FOREGROUND_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static CLIPBOARD_CONTEXT_MENU_OPEN: AtomicBool = AtomicBool::new(false);
 static CLIPBOARD_SIZE_SAVE_REVISION: AtomicU64 = AtomicU64::new(0);
 static CLIPBOARD_SCALE_RESTORE_REVISION: AtomicU64 = AtomicU64::new(0);
@@ -168,6 +168,8 @@ pub fn main_window_destroyed(_app: &AppHandle) {
 }
 
 pub fn setup_main_window(app: &AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    clipboard_windows::initialize();
     let settings = app.state::<DesktopState>().settings.snapshot();
     if !settings.launch_silently {
         return ensure_main_window(app);

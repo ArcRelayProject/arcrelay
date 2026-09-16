@@ -102,6 +102,7 @@
   let manualPort = "";
   let manualValidationError = "";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
+  const isWindowsPlatform = /Win/i.test(navigator.platform);
   $: updateChannelOptions = [
     { value: "stable" as const, label: uiTranslate("稳定版", $uiLanguage) },
     { value: "test" as const, label: uiTranslate("测试版", $uiLanguage) },
@@ -607,8 +608,10 @@
           </div>
           <div class="connection-section-title"><h2>{uiTranslate("使用方式", $uiLanguage)}</h2><span>{uiTranslate("面板、记录与同步细节", $uiLanguage)}</span></div>
           <div class="settings-list settings-card-list">
-            <button class="settings-row settings-toggle-row" role="switch" aria-checked={appSettings.clipboardAutoFocusSearch} disabled={settingsSaving || !appSettings.clipboardEnabled} on:click={() => patchAppSettings({ clipboardAutoFocusSearch: !appSettings.clipboardAutoFocusSearch }, "设置已保存")}>
-              <span class="row-icon"><MagnifyingGlass size={21} /></span><span class="row-copy"><strong>{uiTranslate("唤起后聚焦搜索框", $uiLanguage)}</strong><small>{uiTranslate("打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。", $uiLanguage)}</small></span><span class:checked={appSettings.clipboardAutoFocusSearch} class="switch-control"><span></span></span>
+            <button class="settings-row settings-toggle-row" role="switch" aria-checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch} disabled={isWindowsPlatform || settingsSaving || !appSettings.clipboardEnabled} on:click={() => patchAppSettings({ clipboardAutoFocusSearch: !appSettings.clipboardAutoFocusSearch }, "设置已保存")}>
+              <span class="row-icon"><MagnifyingGlass size={21} /></span><span class="row-copy"><strong>{uiTranslate("唤起后聚焦搜索框", $uiLanguage)}</strong><small>{isWindowsPlatform
+                ? uiTranslate('Windows 保留当前输入焦点；点击搜索框或按 Ctrl+F 进入编辑。', $uiLanguage)
+                : uiTranslate("打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。", $uiLanguage)}</small></span><span class:checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch} class="switch-control"><span></span></span>
             </button>
             <div class="settings-row setting-field-row">
               <span class="row-icon"><ClockCounterClockwise size={21} /></span><span class="row-copy"><strong>{uiTranslate("历史记录顺序", $uiLanguage)}</strong><small>{uiTranslate("选择最近复制或最早创建的内容优先。", $uiLanguage)}</small></span>

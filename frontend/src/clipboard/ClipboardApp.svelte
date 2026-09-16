@@ -40,6 +40,9 @@
   import { resolveClipboardKeyboardAction, resolvePreviewKeyboardAction, type ClipboardKeyboardMode } from "./keyboardShortcuts";
   import { appendSelectedIds, selectionOrder, toggleSelectedId } from "./multiSelect";
   import { showClipboardContextMenu } from "./nativeContextMenu";
+  import InlineContextMenu from './InlineContextMenu.svelte';
+  import { closeInlineContextMenu, handleInlineMenuKey } from './inlineContextMenu';
+  import { autoFocusSearch, installEditableFocus, isWindowsClipboard } from './focusPolicy';
   import { historyQueryKey, mergeTimelineEntries, type NearbyHistory, type ScrollAnchor, type SearchSnapshot } from "./historyNavigation";
   import type { ClipboardCursor, ClipboardFilter, ClipboardHistory, ClipboardItem, ClipboardKind, ClipboardLabel, ClipboardPasteMode } from "./types";
   import type { NearbyClipboardPeer } from "./types";
@@ -49,6 +52,11 @@
   const ROW_GAP = 8;
   const RECENT_LABELS_STORAGE_KEY = "arcrelay.clipboard.recent-labels";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
+  const windowsClipboard = isWindowsClipboard(navigator.platform, '__TAURI_INTERNALS__' in window)
+    || (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview-platform') === 'windows');
+  let focusController: ReturnType<typeof installEditableFocus> | undefined;
+  let navigationGeneration = 0;
+  let focusRequest = 0;
   const primaryShortcutLabel = isMacPlatform ? "⌘" : "Ctrl+";
   const filters: Array<{ id: ClipboardFilter; label: string; icon: typeof ClockCounterClockwise; size: number; weight?: "fill" }> = [
     { id: "all", label: "最近", icon: ClockCounterClockwise, size: 19 },
@@ -314,18 +322,41 @@
   onMount(() => {
     let disposed = false;
     const scope = new SubscriptionScope();
+    if (windowsClipboard) {
+      focusController = installEditableFocus({
+        editing: async (editing) => { navigationGeneration = await clipboardBridge.setEditing(editing); },
+        activate: async () => { navigationGeneration = await clipboardBridge.activateNavigation(); },
+        visible: () => windowVisible && !disposed,
+        error: reason => { if (!disposed) error = String(reason); },
+      });
+    }
 
     recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
+      if (windowsClipboard) {
+        await scope.add(clipboardBridge.onNavigation(key => {
+          if (!windowVisible || key.generation !== navigationGeneration) return;
+          handleKeyDown(new KeyboardEvent('keydown', { ...key, cancelable: true }));
+        }));
+        await scope.add(clipboardBridge.onNavigationPaused(() => {
+          navigationGeneration = 0;
+          focusRequest++;
+          focusController?.pause();
+          closeInlineContextMenu();
+          keyboardMode = 'results';
+        }));
+      }
       // A newly created WebView may become visible before JS attaches.
       await scope.add(observeWindowVisibility(clipboardBridge, () => {
         windowVisible = true;
         pasteError = "";
         historyRefreshPending = false;
-        const shouldFocusSearch = currentSettings?.clipboardAutoFocusSearch ?? true;
+        const shouldFocusSearch = autoFocusSearch(windowsClipboard, currentSettings?.clipboardAutoFocusSearch);
         resetRestoredFocus();
         keyboardMode = shouldFocusSearch ? "search" : "results";
-        void load().then(() => {
+        void load().then(async () => {
+          if (disposed || !windowVisible) return;
+          if (windowsClipboard) navigationGeneration = await clipboardBridge.navigationReady(true);
           requestAnimationFrame(() => {
             scheduleListMetricsUpdate();
             if (shouldFocusSearch) focusSearch();
@@ -334,6 +365,10 @@
         });
       }, () => {
         windowVisible = false;
+        focusRequest++;
+        focusController?.pause();
+        closeInlineContextMenu();
+        if (windowsClipboard) void clipboardBridge.navigationReady(false).catch(() => {});
         window.clearTimeout(historyRefreshTimer);
         historyRefreshPending = false;
         loadGeneration += 1;
@@ -371,7 +406,7 @@
         const sortChanged = settings.clipboardSortBy !== sortBy;
         applySettings(settings);
         requestAnimationFrame(() => {
-          if (settings.clipboardAutoFocusSearch) focusSearch();
+          if (autoFocusSearch(windowsClipboard, settings.clipboardAutoFocusSearch)) void focusSearch();
           else focusSelectedRow();
         });
         appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
@@ -430,6 +465,9 @@
     viewportHeight = scrollElement?.clientHeight ?? 0;
     return () => {
       disposed = true;
+      focusController?.destroy();
+      closeInlineContextMenu();
+      if (windowsClipboard) void clipboardBridge.navigationReady(false).catch(() => {});
       window.clearTimeout(debounceTimer);
       window.clearTimeout(historyRefreshTimer);
       window.clearTimeout(labelFilterCloseTimer);
@@ -629,7 +667,7 @@
       await restorePosition({ id: target.id, offset: (rowBlockHeight(target) - viewportHeight) / 2 }, 0, generation);
       if (generation === loadGeneration) {
         await tick();
-        rowElement(target)?.focus({ preventScroll: true });
+        if (!windowsClipboard) rowElement(target)?.focus({ preventScroll: true });
       }
     } catch (reason) {
       if (generation === loadGeneration) navigationError = String(reason);
@@ -660,7 +698,7 @@
     }
     if (generation !== loadGeneration) return;
     if (keyboardMode === "search") focusSearch();
-    else { await tick(); rowElement()?.focus({ preventScroll: true }); }
+    else if (!windowsClipboard) { await tick(); rowElement()?.focus({ preventScroll: true }); }
   }
 
   async function refreshNearby() {
@@ -749,7 +787,10 @@
     return scrollElement.querySelector<HTMLElement>(`[data-clipboard-id="${item.id}"] .clipboard-row`);
   }
 
-  function focusSearch({ select = false }: { select?: boolean } = {}) {
+  async function focusSearch({ select = false }: { select?: boolean } = {}) {
+    const request = ++focusRequest;
+    if (windowsClipboard && !await focusController?.editing(true)) return;
+    if (request !== focusRequest || !windowVisible) return;
     keyboardMode = "search";
     searchInput?.focus();
     if (select) searchInput?.select();
@@ -761,6 +802,8 @@
   }
 
   function cancelSearch() {
+    searchInput?.blur();
+    if (windowsClipboard) void focusController?.editing(false);
     if (nearby) {
       abandonNearby();
       void load();
@@ -775,7 +818,7 @@
     if (!item) return;
     selectedId = item.id;
     keyboardMode = "results";
-    requestAnimationFrame(() => rowElement(item)?.focus({ preventScroll: true }));
+    if (!windowsClipboard) requestAnimationFrame(() => rowElement(item)?.focus({ preventScroll: true }));
   }
 
   function focusRow(item: ClipboardItem) {
@@ -945,7 +988,7 @@
     const nextIndex = Math.min(history.entries.length - 1, Math.max(0, currentIndex + delta));
     const item = history.entries[nextIndex];
     selectIndex(nextIndex);
-    if (focusResult && item) requestAnimationFrame(() => rowElement(item)?.focus({ preventScroll: true }));
+    if (!windowsClipboard && focusResult && item) requestAnimationFrame(() => rowElement(item)?.focus({ preventScroll: true }));
   }
 
   function scrollByViewport(direction: -1 | 1) {
@@ -961,6 +1004,7 @@
 
   function handleKeyDown(event: KeyboardEvent) {
     if (event.isComposing) return;
+    if (handleInlineMenuKey(event)) return;
     if (previewDialogOpen) {
       const interactive = event.target instanceof Element && event.target.closest("button, select, input, textarea");
       const previewAction = interactive || event.defaultPrevented ? null : resolvePreviewKeyboardAction(event);
@@ -1040,6 +1084,10 @@
     } else if (action.type === "cancelSearch") {
       cancelSearch();
     } else if (action.type === "focusResults") {
+      if (windowsClipboard) {
+        searchInput?.blur();
+        void focusController?.editing(false);
+      }
       focusSelectedRow();
     } else if (action.type === "move") {
       void moveSelection(action.delta, mode === "results");
@@ -1144,7 +1192,7 @@
       manageLabels: () => beginLabels(item),
       paste: (mode) => pasteItem(item, mode),
       sendFiles: async (peerId) => { await clipboardBridge.sendFiles(item.id, peerId); },
-    }).catch((reason) => {
+    }, windowsClipboard).catch((reason) => {
       error = reason instanceof Error ? reason.message : String(reason);
     });
   }
@@ -1338,7 +1386,7 @@
       <input bind:this={searchInput} bind:value={search} placeholder={tr("输入开始搜索…", language)} on:input={handleSearchInput} on:focus={() => (keyboardMode = "search")} />
       <kbd>{primaryShortcutLabel}F</kbd>
     </label>
-    <button class="icon-button search-button" type="button" aria-label={tr("搜索", language)} on:click={() => searchInput?.focus()}><MagnifyingGlass size={20} /></button>
+    <button class="icon-button search-button" type="button" aria-label={tr("搜索", language)} on:click={() => void focusSearch()}><MagnifyingGlass size={20} /></button>
     <span class="brand-mark" aria-label="ArcRelay"><BrandLogo size={23} /></span>
   </header>
 
@@ -1703,3 +1751,4 @@
     onNewLabelKeyDown={handleNewLabelKeyDown}
   />
 </main>
+<InlineContextMenu />

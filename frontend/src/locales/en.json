@@ -686,6 +686,7 @@
   "这会删除全部本地剪贴板记录，包括收藏和已归类内容，且无法撤销。": "This deletes all local clipboard items, including favorites and labeled items, and cannot be undone.",
   "剪贴板记录已清空": "Clipboard history cleared",
   "唤起后聚焦搜索框": "Focus Search When Opened",
+  "Windows 保留当前输入焦点；点击搜索框或按 Ctrl+F 进入编辑。": "Windows keeps the current input focused. Click search or press Ctrl+F to edit.",
   "打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。": "Start typing to search when the clipboard opens; turn this off to navigate with the arrow keys first.",
   "同步到已配对桌面": "Sync to Paired Desktops",
   "在同一局域网内自动同步文本和图片，支持三台及更多设备。": "Automatically sync text and images over the local network across three or more devices.",

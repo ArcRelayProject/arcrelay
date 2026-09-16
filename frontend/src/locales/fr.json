@@ -625,6 +625,7 @@
   "这会删除全部本地剪贴板记录，包括收藏和已归类内容，且无法撤销。": "Supprime tous les éléments locaux, favoris et catégories inclus. Irréversible.",
   "剪贴板记录已清空": "Historique du presse-papiers effacé",
   "唤起后聚焦搜索框": "Cibler la recherche à l’ouverture",
+  "Windows 保留当前输入焦点；点击搜索框或按 Ctrl+F 进入编辑。": "Windows conserve le focus de saisie actuel. Cliquez sur la recherche ou appuyez sur Ctrl+F pour modifier.",
   "打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。": "Saisir pour rechercher ; désactiver pour naviguer d’abord avec les flèches.",
   "同步到已配对桌面": "Synchroniser les ordinateurs jumelés",
   "在同一局域网内自动同步文本和图片，支持三台及更多设备。": "Synchronise textes et images sur le réseau local, avec trois appareils ou plus.",

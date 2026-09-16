@@ -82,6 +82,8 @@ export type ClipboardLabel = { id: string, name: string, color: string, revision
 
 export type ClipboardMergeSummary = { devices: number, received: number, sent: number, labelsReceived: number, labelsSent: number, failed: number, totalRecords: number, complete: boolean, failures: Array<string>, };
 
+export type ClipboardNavigationKey = { key: string, code: string, ctrlKey: boolean, shiftKey: boolean, altKey: boolean, metaKey: boolean, repeat: boolean, generation: number, };
+
 export type ClipboardOcrBlock = { text: string, confidence: number, left: number, top: number, width: number, height: number,
 /**
  * Four corners in source-image pixel coordinates when the detector
@@ -501,6 +503,7 @@ export type WorkspaceId = string;
 export type WorkspaceLayout = { workspaceId: WorkspaceId, revision: TopologyRevision, displays: { [key in DisplayId]: DisplaySurface }, portals: Array<Portal>, };
 
 export interface CommandMap {
+  activate_clipboard_navigation: { args: { }; result: number };
   add_remote_file_share: { args: { }; result: LocalSharedDirectory | null };
   add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
@@ -673,6 +676,8 @@ export interface CommandMap {
   send_transfer: { args: { paths: Array<string>; peerId: string; }; result: string };
   set_automation_enabled: { args: { automationId: string; enabled: boolean; }; result: null };
   set_clipboard_context_menu_open: { args: { open: boolean; }; result: null };
+  set_clipboard_navigation_ready: { args: { ready: boolean; }; result: number };
+  set_clipboard_window_editing: { args: { editing: boolean; }; result: number };
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };
   set_device_auto_connect: { args: { deviceId: string; enabled: boolean; }; result: null };
@@ -724,6 +729,8 @@ export interface EventMap {
   "automation-configuration": null;
   "clipboard-changed": null;
   "clipboard-continuous-paste-error": string;
+  "clipboard-navigation-key": ClipboardNavigationKey;
+  "clipboard-navigation-paused": null;
   "clipboard-ocr-changed": number;
   "clipboard-window-hidden": null;
   "clipboard-window-pin-changed": boolean;

@@ -133,6 +133,10 @@ fn ipc_contract_matches_rust() {
     registry.event::<u64>("clipboard-ocr-changed");
     registry.event::<()>("clipboard-window-shown");
     registry.event::<()>("clipboard-window-hidden");
+    registry.event::<crate::windowing::clipboard_windows_policy::ClipboardNavigationKey>(
+        "clipboard-navigation-key",
+    );
+    registry.event::<()>("clipboard-navigation-paused");
     registry.event::<bool>("clipboard-window-pin-changed");
     registry.event::<String>("clipboard-continuous-paste-error");
     let main = include_str!("main.rs");
