@@ -216,6 +216,21 @@
   gap: 5px;
 }
 
+.image-preview-header {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.image-preview-header .clipboard-preview-heading {
+  flex: 1 1 140px;
+}
+
+.image-preview-header .clipboard-preview-header-actions {
+  flex-wrap: wrap;
+  flex-shrink: 1;
+  margin-left: auto;
+}
+
 .image-preview-header-paste {
   height: 30px;
   min-width: 54px;

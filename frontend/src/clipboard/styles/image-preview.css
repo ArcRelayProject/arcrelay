@@ -7,9 +7,9 @@
   background: var(--surface-sunken);
 }
 .image-preview-toolbar {
-  position: absolute;
-  top: -44px;
-  left: 50%;
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
   z-index: 4;
   display: flex;
   min-height: 36px;
@@ -19,7 +19,6 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  transform: translateX(-50%);
 }
 
 .image-preview-toolbar button {

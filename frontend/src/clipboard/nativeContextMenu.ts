@@ -44,6 +44,11 @@ export async function showClipboardContextMenu(
       item.available && item.kind !== "files",
     ),
   ];
+  if (item.kind === "image") {
+    pasteItems.push({ item: "Separator" });
+    pasteItems.push(pasteItem("JPG", "image_jpg", item.available));
+    pasteItems.push(pasteItem("PNG", "image_png", item.available));
+  }
   if (item.kind === "html") pasteItems.push(pasteItem(translate("带格式文本", language), "rich_text", item.available));
   const syntax = typeof item.textSyntax === "string" ? item.textSyntax : "code";
   if (syntax === "json" || syntax === "yaml") {

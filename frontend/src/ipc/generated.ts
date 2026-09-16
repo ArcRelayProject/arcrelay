@@ -103,7 +103,7 @@ points: [ClipboardOcrPoint, ClipboardOcrPoint, ClipboardOcrPoint, ClipboardOcrPo
 
 export type ClipboardOcrPoint = { x: number, y: number, };
 
-export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml";
+export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml" | "image_jpg" | "image_png";
 
 export type ClipboardSortPreference = "createdAt" | "updatedAt";
 

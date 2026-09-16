@@ -1601,6 +1601,14 @@
           </div>
           <div class="clipboard-preview-header-actions">
             {#if imagePreviewReady && previewingItem}
+              {#each ["image_jpg", "image_png"] as imageMode}
+                <button
+                  class="image-preview-header-paste"
+                  type="button"
+                  disabled={previewActionBusy || pasteInFlight || !previewingItem.available}
+                  on:click={() => pasteItem(previewingItem!, imageMode as ClipboardPasteMode)}
+                >{uiTranslate(imageMode === "image_jpg" ? "粘贴为 JPG" : "粘贴为 PNG", $uiLanguage)}</button>
+              {/each}
               <button
                 class="image-preview-header-paste"
                 type="button"
