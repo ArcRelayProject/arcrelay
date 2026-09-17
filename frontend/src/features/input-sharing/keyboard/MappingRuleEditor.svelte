@@ -9,6 +9,7 @@
   export let onChange: () => void = () => {};
   export let onDelete: (() => void) | null = null;
 
+  const labels = { SelectAll: "全选", Copy: "复制", Paste: "粘贴", Cut: "剪切", Undo: "撤销", Redo: "重做", ApplicationSwitch: "切换应用" };
   const actions: KeyboardMappingRule["action"][] = ["SelectAll", "Copy", "Paste", "Cut", "Undo", "Redo", "ApplicationSwitch"];
 </script>
 
@@ -24,7 +25,7 @@
     /></label><label>{uiTranslate("主键 HID", $uiLanguage)}<input type="number" min="4" max="231" bind:value={rule.source.key} on:change={onChange} /></label></div>
     <div class="custom-row"><label>{uiTranslate("语义", $uiLanguage)}<AppSelect bind:value={rule.action} onValueChange={onChange} aria-label={uiTranslate("语义", $uiLanguage)}
       options={[
-        ...actions.map((action) => ({ value: action, label: action })),
+        ...actions.map((action) => ({ value: action, label: uiTranslate(labels[action], $uiLanguage) })),
       ]}
     /></label>{#if onDelete}<button class="delete" on:click={onDelete}>{uiTranslate("删除", $uiLanguage)}</button>{/if}</div>
   {:else}

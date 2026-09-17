@@ -6,7 +6,7 @@
 
   export let layout: WorkspaceLayout;
   export let displayId: string | null;
-  export let deviceName = "这台 Mac";
+  export let deviceName = "这台设备";
   export let online = true;
   export let statusLabel = "在线";
   export let onRemove: (id: string) => void;

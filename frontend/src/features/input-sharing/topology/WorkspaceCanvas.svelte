@@ -40,7 +40,7 @@
   $: scale = measured
     ? Math.min((width - padding * 2) / (maxX - minX), (height - padding * 2) / (maxY - minY)) * zoom
     : 0;
-  $: deviceGroups = groupDisplays(displayList, deviceNames, displayAvailability);
+  $: deviceGroups = groupDisplays(displayList, deviceNames, displayAvailability, $uiLanguage);
 
   function observeCanvas(node: HTMLElement) {
     let frame = 0;
@@ -65,7 +65,7 @@
     };
   }
 
-  function groupDisplays(displays: DisplayType[], names: Record<string, string>, availability: RuntimeSnapshot["displayAvailability"]) {
+  function groupDisplays(displays: DisplayType[], names: Record<string, string>, availability: RuntimeSnapshot["displayAvailability"], currentLanguage: typeof $uiLanguage) {
     const groups = new Map<string, DisplayType[]>();
     for (const display of displays) {
       const values = groups.get(display.deviceId) ?? [];
@@ -74,7 +74,7 @@
     }
     return [...groups].map(([deviceId, values], index) => ({
       deviceId,
-      label: names[deviceId] ?? (deviceId === localServiceInstanceId ? "这台 Mac" : index === 0 && !localServiceInstanceId ? "这台 Mac" : "远程电脑"),
+      label: names[deviceId] ?? uiTranslate((deviceId === localServiceInstanceId ? "这台设备" : index === 0 && !localServiceInstanceId ? "这台设备" : "远程电脑"), currentLanguage),
       x: Math.min(...values.map((display) => display.deskRectUm.x)),
       y: Math.min(...values.map((display) => display.deskRectUm.y)),
       online: values.some((display) => availability[display.displayId] === "Ready"),
@@ -169,7 +169,7 @@
       <rect width={width} height={height} fill="url(#grid)" />
       {#each deviceGroups as group}
         {@const groupPoint = project(group.x, group.y)}
-        <DeviceGroup name={`${group.label}${group.online ? " · 在线" : " · 离线"}`} x={groupPoint.x} y={groupPoint.y - 18} width={180} />
+        <DeviceGroup name={`${group.label} · ${uiTranslate(group.online ? "在线" : "离线", $uiLanguage)}`} x={groupPoint.x} y={groupPoint.y - 18} width={180} />
       {/each}
       {#each layout.portals as portal (portal.portalId)}
         <PortalOverlay {portal} displays={layout.displays} {project} selected={selectedPortalId === portal.portalId} onselect={() => onSelectPortal(portal.portalId)} />

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
+  import { diagnosticMessage } from "../../diagnosticMessages";
+  import { t, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { ArrowsOutCardinal, ArrowLeft, Bug, Eye, GridFour, Keyboard, Power } from "phosphor-svelte";
@@ -50,7 +51,7 @@
   $: enabled = Boolean(snapshot?.configuration.inputSharingEnabled);
   $: controlling = Boolean(snapshot && snapshot.controller === snapshot.serviceInstanceId);
   $: remoteController = snapshot?.controller && snapshot.controller !== snapshot.serviceInstanceId
-    ? friendlyDeviceName(snapshot.controller, snapshot)
+    ? friendlyDeviceName(snapshot.controller, snapshot, $uiLanguage)
     : null;
   $: ready = snapshot ? workspaceIsReady(snapshot) : false;
   $: offlinePeer = snapshot ? recoverableOfflinePeer(snapshot) : null;
@@ -65,7 +66,7 @@
         showSetup = true;
       }
     } catch (error) {
-      if (!silent) notify(String(error), true);
+      if (!silent) notify(diagnosticMessage(error, $uiLanguage), true);
     } finally {
       loading = false;
     }
@@ -76,9 +77,9 @@
     busy = true;
     try {
       applySnapshot(await bridge.setInputSharingEnabled(!enabled));
-      notify(snapshot.configuration.inputSharingEnabled ? "跨屏输入已启用，任一设备都可自然接管" : "跨屏输入已关闭，输入已安全释放");
+      notify(snapshot.configuration.inputSharingEnabled ? uiTranslate("跨屏输入已启用，任一设备都可自然接管", $uiLanguage) : uiTranslate("跨屏输入已关闭，输入已安全释放", $uiLanguage));
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     } finally {
       busy = false;
     }
@@ -89,22 +90,22 @@
     busy = true;
     try {
       applySnapshot(await bridge.connectInputPeer(offlinePeer));
-      notify(`已重新连接${friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!)}`);
+      notify(t("已重新连接{part0}", $uiLanguage, { part0: friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!, $uiLanguage) }));
     } catch (error) {
-      notify(`重新连接失败：${String(error)}`, true);
+      notify(t("重新连接失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       busy = false;
     }
   }
 
   async function forgetOfflinePeer() {
-    if (!offlinePeer || !window.confirm(`移除${friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!)}？\n\n将同时删除该设备的屏幕布局与跨屏边缘。`)) return;
+    if (!offlinePeer || !window.confirm(t("移除{part0}？\n\n将同时删除该设备的屏幕布局与跨屏边缘。", $uiLanguage, { part0: friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!, $uiLanguage) }))) return;
     busy = true;
     try {
       applySnapshot(await bridge.forgetInputPeer(offlinePeer.serviceInstanceId));
-      notify("设备配对、屏幕布局和相关边缘已移除");
+      notify(uiTranslate("设备配对、屏幕布局和相关边缘已移除", $uiLanguage));
     } catch (error) {
-      notify(`移除设备失败：${String(error)}`, true);
+      notify(t("移除设备失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       busy = false;
     }
@@ -132,7 +133,7 @@
       if (scope.disposed || !snapshot) return;
       const previewOnboarding = !bridge.isTauri() && new URLSearchParams(window.location.search).get("inputScenario") === "onboarding";
       if (snapshot && !snapshot.configuration.layout && (previewOnboarding || window.localStorage.getItem("arc-input-onboarding-complete") !== "1")) { setupInitialStep = 1; showSetup = true; }
-    }).catch((error) => { if (!scope.disposed) { loading = false; notify(String(error), true); } });
+    }).catch((error) => { if (!scope.disposed) { loading = false; notify(diagnosticMessage(error, $uiLanguage), true); } });
     return scope.dispose;
   });
 
@@ -161,7 +162,7 @@
           <p>{uiTranslate(section === "workspace" ? "按桌面上的真实位置排列屏幕，相邻重叠边段会自动连通。" : section === "keyboard" ? "让快捷键在不同系统上保持相同意图。" : section === "gaze" ? "用本机摄像头预选正在注视的屏幕与位置。" : section === "diagnostics" ? "查看连接质量、跨屏通道和最近事件。" : offlinePeer ? "布局已保留，但一台设备暂时不可用。" : "在设备之间自然移动鼠标和键盘。", $uiLanguage)}</p>
         </div>
         <div class="header-control">
-          <small>{uiTranslate(offlinePeer ? `等待${friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!)}重新连接` : enabled ? "任一设备活动即可自动接管 · ⌘⌥⇧ Esc 紧急释放" : "启用一次后持续待命", $uiLanguage)}</small>
+          <small>{uiTranslate(offlinePeer ? t("等待{part0}重新连接", $uiLanguage, { part0: friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot!, $uiLanguage) }) : enabled ? "任一设备活动即可自动接管 · ⌘⌥⇧ Esc 紧急释放" : "启用一次后持续待命", $uiLanguage)}</small>
           <button
             class:controlling={enabled}
             class="control-button"
@@ -187,7 +188,7 @@
       {#if snapshot.controller}
         <div class="control-session" role="status" aria-live="polite">
           <span class="live-dot"></span>
-          <div><strong>{uiTranslate("当前输入来自：", $uiLanguage)}{uiTranslate(controlling ? "这台设备" : remoteController, $uiLanguage)}</strong><small>{uiTranslate("检测到另一台设备的本地输入时会自动切换 · 会话已加密", $uiLanguage)}</small></div>
+          <div><strong>{t("当前输入来自：{name}", $uiLanguage, { name: controlling ? uiTranslate("这台设备", $uiLanguage) : remoteController ?? uiTranslate("目标设备", $uiLanguage) })}</strong><small>{uiTranslate("检测到另一台设备的本地输入时会自动切换 · 会话已加密", $uiLanguage)}</small></div>
           {#if section !== "overview"}<button class="session-secondary" on:click={() => section = "overview"}><ArrowLeft size={15} />{uiTranslate("切回总览", $uiLanguage)}</button>{/if}
         </div>
       {/if}

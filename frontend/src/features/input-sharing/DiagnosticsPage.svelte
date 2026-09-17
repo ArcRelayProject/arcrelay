@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { t, locale, translate as uiTranslate, language as uiLanguage } from "../../i18n";
+  import { diagnosticMessage } from "../../diagnosticMessages";
   import AppSelect from "../../components/AppSelect.svelte";
-  import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { onMount } from "svelte";
   import {
     ArrowRight,
@@ -70,7 +71,7 @@
       `connected peers: ${snapshot.connectedPeers.length}`,
       `active portals: ${activePortalCount(snapshot)}`,
       `latency p95: ${p95?.toFixed(2) ?? "no samples"} ms`,
-      ...rangedDiagnostics.slice(-20).map((event) => `${new Date(event.timestampMs).toISOString()} [${event.category}] ${event.message}`),
+      ...rangedDiagnostics.slice(-20).map((event) => `${new Date(event.timestampMs).toISOString()} [${event.category}] ${diagnosticMessage(event.message, $uiLanguage)}`),
     ].join("\n");
     try {
       await navigator.clipboard.writeText(report);
@@ -85,7 +86,7 @@
       textarea.remove();
     }
     copied = true;
-    notify("诊断报告已复制");
+    notify(uiTranslate("诊断报告已复制", $uiLanguage));
     window.setTimeout(() => copied = false, 1600);
   }
 
@@ -94,9 +95,9 @@
     try {
       await onRefresh();
       now = Date.now();
-      notify("诊断数据已刷新");
+      notify(uiTranslate("诊断数据已刷新", $uiLanguage));
     } catch (error) {
-      notify(`诊断刷新失败：${String(error)}`, true);
+      notify(t("诊断刷新失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       refreshing = false;
     }
@@ -106,19 +107,19 @@
     const portal = portals.find((value) => value.portalId === portalId);
     const display = portal ? displays[portal.sourceDisplay] : null;
     if (!portal || !display) {
-      notify("找不到这条边缘对应的来源屏幕", true);
+      notify(uiTranslate("找不到这条边缘对应的来源屏幕", $uiLanguage), true);
       return;
     }
     const request = portalEdgeTestRequest(portal, displays);
-    if (!request) return notify("找不到这条边缘对应的来源屏幕", true);
+    if (!request) return notify(uiTranslate("找不到这条边缘对应的来源屏幕", $uiLanguage), true);
     testingPortalId = portalId;
     try {
       const result = await bridge.testEdge(request);
       notify(result.portalIds.includes(portalId)
-        ? `边缘测试成功，已路由到${displays[result.displayId]?.name ?? "目标屏幕"}`
-        : "测试移动未穿越该边缘，请检查方向、区段或激活策略", !result.portalIds.includes(portalId));
+        ? t("边缘测试成功，已路由到{part0}", $uiLanguage, { part0: displays[result.displayId]?.name ?? "目标屏幕" })
+        : uiTranslate("测试移动未穿越该边缘，请检查方向、区段或激活策略", $uiLanguage), !result.portalIds.includes(portalId));
     } catch (error) {
-      notify(`边缘测试失败：${String(error)}`, true);
+      notify(t("边缘测试失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       testingPortalId = null;
     }
@@ -127,9 +128,9 @@
   async function openLogs() {
     try {
       await bridge.openLogDirectory();
-      notify("已打开日志目录");
+      notify(uiTranslate("已打开日志目录", $uiLanguage));
     } catch (error) {
-      notify(`打开日志目录失败：${String(error)}`, true);
+      notify(t("打开日志目录失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     }
   }
 
@@ -137,10 +138,10 @@
     exportingLogs = true;
     try {
       const bundle = await bridge.exportDiagnosticBundle();
-      notify(`诊断包已导出：${bundle.fileName}`);
+      notify(t("诊断包已导出：{part0}", $uiLanguage, { part0: bundle.fileName }));
       logStatus = await bridge.getLogStatus();
     } catch (error) {
-      notify(`导出诊断包失败：${String(error)}`, true);
+      notify(t("导出诊断包失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       exportingLogs = false;
     }
@@ -151,9 +152,9 @@
     try {
       const active = Boolean(logStatus?.detailedUntilMs && logStatus.detailedUntilMs > Date.now());
       logStatus = await bridge.setDetailedLogging(!active);
-      notify(active ? "详细日志已关闭" : "已开启 15 分钟详细日志");
+      notify(active ? uiTranslate("详细日志已关闭", $uiLanguage) : uiTranslate("已开启 15 分钟详细日志", $uiLanguage));
     } catch (error) {
-      notify(`切换详细日志失败：${String(error)}`, true);
+      notify(t("切换详细日志失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     } finally {
       changingLogLevel = false;
     }
@@ -231,7 +232,7 @@
     <section class="panel quality-card" aria-labelledby="quality-title">
       <div class="panel-heading">
         <div><h3 id="quality-title">{uiTranslate("连接质量", $uiLanguage)}</h3><p><i class="legend-dot"></i>{uiTranslate(latencyLabel, $uiLanguage)}</p></div>
-        <span class="peer-label" title={remoteId ? friendlyDeviceName(remoteId, snapshot) : undefined}><DesktopTower size={14} /><span>{uiTranslate(remoteId ? friendlyDeviceName(remoteId, snapshot) : "目标设备", $uiLanguage)}</span></span>
+        <span class="peer-label" title={remoteId ? friendlyDeviceName(remoteId, snapshot, $uiLanguage) : undefined}><DesktopTower size={14} /><span>{remoteId ? friendlyDeviceName(remoteId, snapshot, $uiLanguage) : uiTranslate("目标设备", $uiLanguage)}</span></span>
       </div>
       <div class="chart-wrap">
         <div class="chart-scale" aria-hidden="true"><span>{chart.maximum} ms</span><span>0</span></div>
@@ -269,7 +270,7 @@
         </li>
         <li class="path-step">
           <span class="path-icon"><DesktopTower size={20} /></span>
-          <div><strong>{uiTranslate(remoteId ? friendlyDeviceName(remoteId, snapshot) : "目标设备", $uiLanguage)}</strong><small>{uiTranslate(!connected ? "尚未连接" : remoteInjectionReady ? "鼠标与键盘注入可用" : remotePeer?.capabilities ? remotePeer.capabilities.limitation ?? "输入注入能力不完整" : "等待目标能力信息", $uiLanguage)}</small></div>
+          <div><strong>{remoteId ? friendlyDeviceName(remoteId, snapshot, $uiLanguage) : uiTranslate("目标设备", $uiLanguage)}</strong><small>{uiTranslate(!connected ? "尚未连接" : remoteInjectionReady ? "鼠标与键盘注入可用" : remotePeer?.capabilities ? remotePeer.capabilities.limitation ?? "输入注入能力不完整" : "等待目标能力信息", $uiLanguage)}</small></div>
           <em data-tone={!connected ? "neutral" : remoteInjectionReady ? "success" : "warning"}><i></i>{uiTranslate(!connected ? "未连接" : remoteInjectionReady ? "正常" : "受限", $uiLanguage)}</em>
         </li>
       </ol>
@@ -295,7 +296,7 @@
       </div>
       <div class="timeline-events">
         {#each visibleEvents as record, index}
-          <div class="timeline-row"><i class:accent={index === 0}></i><time>{new Date(record.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>{record.message}</span></div>
+          <div class="timeline-row"><i class:accent={index === 0}></i><time>{new Date(record.timestampMs).toLocaleTimeString($locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>{diagnosticMessage(record.message, $uiLanguage)}</span></div>
         {/each}
         {#if rangedDiagnostics.length === 0}<div class="empty-row"><Clock size={24} />{uiTranslate("所选时间范围内暂无事件", $uiLanguage)}</div>{/if}
       </div>
@@ -313,7 +314,7 @@
       </div>
     </div>
   </details>
-  <div class="privacy-note"><ShieldCheck size={14} /><span>{uiTranslate(logStatus?.enabled ? `日志已写盘 · 保留 ${logStatus.retentionDays} 天` : "磁盘日志暂不可用", $uiLanguage)} {uiTranslate("· 不记录具体按键、文字或剪贴板内容", $uiLanguage)}</span></div>
+  <div class="privacy-note"><ShieldCheck size={14} /><span>{uiTranslate(logStatus?.enabled ? t("日志已写盘 · 保留 {part0} 天", $uiLanguage, { part0: logStatus.retentionDays }) : "磁盘日志暂不可用", $uiLanguage)} {uiTranslate("· 不记录具体按键、文字或剪贴板内容", $uiLanguage)}</span></div>
 </section>
 
 <style>

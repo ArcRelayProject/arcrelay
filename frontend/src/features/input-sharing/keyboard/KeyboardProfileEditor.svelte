@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { keyboardProfileName } from "../inputSharingUi";
   import AppSelect from "../../../components/AppSelect.svelte";
   import { translate as uiTranslate, language as uiLanguage } from "../../../i18n";
   import type { KeyboardProfile } from "../../../types";
@@ -28,8 +29,8 @@
     <span class="section-label">{uiTranslate("内置配置", $uiLanguage)}</span>
     {#each profiles as item}
       <button class:active={item.kind === profile?.kind} on:click={() => selectedKind = item.kind}>
-        <strong>{item.name}</strong>
-        <small>revision {item.revision}</small>
+        <strong>{keyboardProfileName(item, $uiLanguage)}</strong>
+        <small>{uiTranslate("版本", $uiLanguage)} {item.revision}</small>
       </button>
     {/each}
   </nav>
@@ -37,7 +38,7 @@
   {#if profile}
     <div class="editor card">
       <div class="editor-header">
-        <div><span class="section-label">{uiTranslate("规则优先级已锁定", $uiLanguage)}</span><h2>{profile.name}</h2></div>
+        <div><span class="section-label">{uiTranslate("规则优先级已锁定", $uiLanguage)}</span><h2>{keyboardProfileName(profile, $uiLanguage)}</h2></div>
         <label class="field">{uiTranslate("文字策略", $uiLanguage)}
           <AppSelect bind:value={profile.textStrategy} onValueChange={onChange} aria-label={uiTranslate("文字策略", $uiLanguage)}
             options={[

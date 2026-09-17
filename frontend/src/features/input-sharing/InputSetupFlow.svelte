@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { diagnosticMessage } from "../../diagnosticMessages";
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import {
     ArrowLeft,
@@ -39,9 +40,9 @@
   async function openPermissionSettings() {
     try {
       await bridge.openInputPermissionSettings();
-      notify("已打开系统辅助功能设置");
+      notify(uiTranslate("已打开系统辅助功能设置", $uiLanguage));
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     }
   }
 
@@ -51,13 +52,13 @@
     try {
       if (selectedPeer.paired) {
         onSnapshot(await bridge.connectInputPeer(selectedPeer));
-        notify("设备已重新连接");
+        notify(uiTranslate("设备已重新连接", $uiLanguage));
       } else {
         await bridge.connectDesktopDevice(selectedPeer.serviceInstanceId);
-        notify("已发起统一设备配对，请在设备设置中核对六位配对码");
+        notify(uiTranslate("已发起统一设备配对，请在设备设置中核对六位配对码", $uiLanguage));
       }
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     } finally {
       busy = false;
     }
@@ -72,9 +73,9 @@
       if (!next.nearbyPeers.some((peer) => peer.serviceInstanceId === selectedPeerId)) {
         selectedPeerId = next.nearbyPeers[0]?.serviceInstanceId ?? "";
       }
-      notify("附近设备列表已刷新");
+      notify(uiTranslate("附近设备列表已刷新", $uiLanguage));
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     } finally {
       discovering = false;
     }
@@ -108,7 +109,7 @@
     <div class="setup-card permission-layout">
       <div class="setup-visual" aria-hidden="true">
         <div class="device-pair"><Laptop size={82} weight="duotone" /><span></span><DesktopTower size={82} weight="duotone" /></div>
-        <p>{uiTranslate("这台 Mac", $uiLanguage)} <small>{uiTranslate("可作为输入源", $uiLanguage)}</small></p>
+        <p>{uiTranslate("这台设备", $uiLanguage)} <small>{uiTranslate("可作为输入源", $uiLanguage)}</small></p>
       </div>
       <div class="setup-copy">
         <div class="section-title"><MouseSimple color="var(--accent)" size={24} weight="duotone" /><div><h2>{uiTranslate("允许控制鼠标和键盘", $uiLanguage)}</h2><p>{uiTranslate("ArcRelay 只转发输入事件，不记录按键内容、文字或剪贴板。", $uiLanguage)}</p></div></div>
@@ -148,7 +149,7 @@
           {#each snapshot.nearbyPeers as peer}
             <button class:selected={selectedPeerId === peer.serviceInstanceId} on:click={() => selectedPeerId = peer.serviceInstanceId}>
               <span class="device-icon"><DesktopTower size={27} weight="duotone" /></span>
-              <span><strong>{friendlyPeerName(peer, snapshot)}</strong><small>{primaryAddress(peer)} · {uiTranslate(peer.paired ? "已配对" : "新设备", $uiLanguage)}</small></span>
+              <span><strong>{friendlyPeerName(peer, snapshot, $uiLanguage)}</strong><small>{primaryAddress(peer, $uiLanguage)} · {uiTranslate(peer.paired ? "已配对" : "新设备", $uiLanguage)}</small></span>
               <em class:online={peer.connected}>{uiTranslate(peer.connected ? "已连接" : peer.paired ? "可重连" : "可配对", $uiLanguage)}</em>
               <i aria-hidden="true"></i>
             </button>
@@ -158,7 +159,7 @@
 
       <div class="setup-card pairing-card">
         {#if selectedPeer}
-          <div class="selected-device"><span class="device-icon"><DesktopTower size={30} weight="duotone" /></span><div><h2>{friendlyPeerName(selectedPeer, snapshot)}</h2><p>{primaryAddress(selectedPeer)} {uiTranslate("· 加密本地连接", $uiLanguage)}</p></div></div>
+          <div class="selected-device"><span class="device-icon"><DesktopTower size={30} weight="duotone" /></span><div><h2>{friendlyPeerName(selectedPeer, snapshot, $uiLanguage)}</h2><p>{primaryAddress(selectedPeer, $uiLanguage)} {uiTranslate("· 加密本地连接", $uiLanguage)}</p></div></div>
           {#if selectedPeer.connected}
             <div class="success-panel"><CheckCircle color="var(--success)" size={52} weight="fill" /><h3>{uiTranslate("设备已连接", $uiLanguage)}</h3><p>{uiTranslate("身份已验证，可以继续排列屏幕。", $uiLanguage)}</p></div>
             <button class="primary wide" on:click={() => step = 3}>{uiTranslate("继续排列屏幕", $uiLanguage)}<ArrowRight size={17} /></button>
