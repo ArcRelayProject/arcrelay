@@ -9,6 +9,21 @@ import subprocess
 import sys
 
 TRUSTED_AUTHORS = {"zibo-chen": 58510061, "chenzibo": 18285974}
+# CI runs every job on every PR. CodeQL default setup analyzes these five languages.
+# Require their registration as well as SUCCESS, so a not-yet-started job cannot be skipped.
+# The optional CodeQL aggregate is checked when reported, not required to exist.
+EXPECTED_TECHNICAL_CHECKS = {
+    "check",
+    "windows-clipboard",
+    "windows-system-folders",
+    "windows-share-target",
+    "windows-share-target-arm64",
+    "Analyze (actions)",
+    "Analyze (csharp)",
+    "Analyze (javascript-typescript)",
+    "Analyze (python)",
+    "Analyze (rust)",
+}
 
 
 def eligible(pr, repository):
@@ -37,6 +52,27 @@ def gh(*args, payload=None):
     return result.stdout
 
 
+def quality_checks_passed(repository, number, expected_head):
+    # Wait for the configured technical jobs and all other reported checks,
+    # in addition to the existing protected merge gate.
+    snapshot = json.loads(gh("pr", "view", str(number), "--repo", repository,
+                             "--json", "headRefOid,statusCheckRollup"))
+    if snapshot["headRefOid"] != expected_head:
+        return False
+    checks = snapshot["statusCheckRollup"]
+    checks = [check for check in checks
+              if check.get("workflowName") != "Trusted maintainer auto-merge"]
+    reported = {check.get("name", check.get("context")) for check in checks}
+    if not EXPECTED_TECHNICAL_CHECKS.issubset(reported):
+        return False
+    return all(
+        (check.get("status") == "COMPLETED"
+         and check.get("conclusion") == "SUCCESS")
+        if "status" in check else check.get("state") == "SUCCESS"
+        for check in checks
+    )
+
+
 def configure(repository, number):
     endpoint = f"repos/{repository}/pulls/{number}"
     pr = json.loads(gh("api", endpoint))
@@ -44,6 +80,9 @@ def configure(repository, number):
         print(f"PR #{number}: not an eligible maintainer PR; leaving policy unchanged.")
         return
     sha = pr["head"]["sha"]
+    if not quality_checks_passed(repository, number, sha):
+        print(f"PR #{number}: technical checks are missing, pending, or unsuccessful; waiting.")
+        return
     # Bind approval and auto-merge to the same immutable head. A new push
     # dismisses the approval and triggers this workflow again.
     reviews = json.loads(gh("api", f"{endpoint}/reviews?per_page=100"))
