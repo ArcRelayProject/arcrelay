@@ -22,7 +22,7 @@ rodio = { version = "0.22.2", default-features = false, features = ["playback"] 
 arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "548d6ec0ba70238570d7f9c3182808c858e29c94" }
 arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "35685b77c36e90fa031e469e77b5e2f5592a93b6" }
 arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "63ece7b899e1854ee38b94d8c6f062efdbf23fbb" }
-arcrelay-gaze = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-gaze.git", rev = "e82ccc8e4cb7d6bd27f8a99f1ca2526a84f9efe8" }
+arcrelay-gaze = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-gaze.git", rev = "c80187e73732517fbd6886d596abd8ec3457ff0a" }
 arcrelay-network = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-network.git", rev = "d5ca48fc20d530cceab60521137580cc3e6d1f3b" }
 arcrelay-peer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-peer.git", rev = "48cd4ad8538a0b5add33877f7f9b295e78c4fce1" }
 arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "e564550618e92e8d35082ed2c38053ff2d45b709" }
