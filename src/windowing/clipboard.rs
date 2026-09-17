@@ -20,11 +20,17 @@ pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
             destroy_clipboard_window_on_main(&app)
         })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        super::clipboard_windows::dispatch_ui(app, |app| destroy_clipboard_window_on_main(&app))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     destroy_clipboard_window_on_main(app)
 }
 
 fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    super::clipboard_windows::destroyed();
     CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
@@ -92,7 +98,7 @@ fn ensure_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
         .as_ref()
         .map_or(CLIPBOARD_WINDOW_HEIGHT, |size| size.height)
         .max(CLIPBOARD_WINDOW_MIN_HEIGHT);
-    let result = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         CLIPBOARD_WINDOW_LABEL,
         WebviewUrl::App("clipboard.html".into()),
@@ -108,9 +114,10 @@ fn ensure_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     .skip_taskbar(true)
     .accept_first_mouse(true)
     .focused(false)
-    .visible(false)
-    .build()
-    .and_then(|window| {
+    .visible(false);
+    #[cfg(target_os = "windows")]
+    let builder = builder.focusable(false);
+    let result = builder.build().and_then(|window| {
         if let Err(error) = configure_platform_clipboard_window(&window) {
             // Do not leave an activating NSWindow behind after a failed panel
             // conversion: a later shortcut would raise the entire application.
@@ -131,7 +138,11 @@ pub fn show_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
             show_clipboard_window_on_main(&app)
         })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        super::clipboard_windows::dispatch_ui(app, |app| show_clipboard_window_on_main(&app))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     show_clipboard_window_on_main(app)
 }
 
@@ -169,7 +180,11 @@ pub fn hide_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
             hide_clipboard_window_on_main(&app)
         })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        super::clipboard_windows::dispatch_ui(app, |app| hide_clipboard_window_on_main(&app))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     hide_clipboard_window_on_main(app)
 }
 
@@ -235,8 +250,6 @@ pub fn prepare_clipboard_window_for_paste(app: &AppHandle) -> tauri::Result<bool
     }
     #[cfg(not(target_os = "macos"))]
     {
-        #[cfg(target_os = "windows")]
-        restore_previous_foreground_window();
         let _ = app;
         Ok(false)
     }
@@ -504,7 +517,12 @@ fn configure_platform_clipboard_window(window: &tauri::WebviewWindow) -> tauri::
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn configure_platform_clipboard_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    super::clipboard_windows::configure(window)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn configure_platform_clipboard_window(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
@@ -528,37 +546,23 @@ fn show_platform_clipboard_window(
     )))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 fn show_platform_clipboard_window(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
 ) -> tauri::Result<()> {
-    #[cfg(target_os = "windows")]
-    remember_foreground_window();
+    position_clipboard_window(app, window);
+    super::clipboard_windows::show(app, window)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn show_platform_clipboard_window(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+) -> tauri::Result<()> {
     position_clipboard_window(app, window);
     window.show()?;
     window.set_focus()
-}
-
-#[cfg(target_os = "windows")]
-fn remember_foreground_window() {
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-
-    let foreground = unsafe { GetForegroundWindow() };
-    if !foreground.0.is_null() {
-        CLIPBOARD_PREVIOUS_FOREGROUND_WINDOW.store(foreground.0 as isize, Ordering::SeqCst);
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn restore_previous_foreground_window() {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-
-    let raw = CLIPBOARD_PREVIOUS_FOREGROUND_WINDOW.load(Ordering::SeqCst);
-    if raw != 0 {
-        let _ = unsafe { SetForegroundWindow(HWND(raw as *mut std::ffi::c_void)) };
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -582,6 +586,8 @@ fn hide_platform_clipboard_window(
     _app: &AppHandle,
     window: &tauri::WebviewWindow,
 ) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    super::clipboard_windows::hidden(window)?;
     window.hide()
 }
 
@@ -606,6 +612,12 @@ fn set_platform_clipboard_window_pinned(
     window: &tauri::WebviewWindow,
     pinned: bool,
 ) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = pinned;
+        super::clipboard_windows::raise(window)
+    }
+    #[cfg(not(target_os = "windows"))]
     window.set_always_on_top(pinned)
 }
 

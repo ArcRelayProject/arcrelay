@@ -165,6 +165,8 @@ fn main() {
             commands::start_remote_download_entries,
             commands::list_remote_file_transfers,
             commands::get_remote_file_thumbnail,
+            commands::cancel_remote_file_transfer,
+            commands::cancel_remote_thumbnails,
             commands::open_remote_entry,
             commands::prepare_remote_drag,
             commands::start_remote_file_promise_drag,
@@ -213,6 +215,7 @@ fn main() {
             commands::delete_action,
             commands::execute_action,
             commands::get_action_output,
+            commands::observe_action_output,
             commands::list_notifications,
             commands::create_test_notification,
             commands::mark_notification_read,
@@ -234,6 +237,7 @@ fn main() {
             commands::test_automation,
             commands::automation_capabilities,
             commands::check_automation,
+            commands::check_automations,
             commands::preview_automation_schedule,
             commands::open_automation_screen_permission,
             commands::list_automation_activities,
@@ -291,6 +295,9 @@ fn main() {
             commands::clipboard_set_labels,
             commands::clipboard_set_label_membership,
             commands::set_clipboard_context_menu_open,
+            commands::set_clipboard_window_editing,
+            commands::set_clipboard_navigation_ready,
+            commands::activate_clipboard_navigation,
             commands::clipboard_edit_text,
             commands::clipboard_text_content,
             commands::clipboard_text_segments,
@@ -542,6 +549,8 @@ fn main() {
 
     app.run(|app_handle, event| match event {
         tauri::RunEvent::Exit => {
+            #[cfg(target_os = "windows")]
+            windowing::clipboard_windows::shutdown();
             app_handle
                 .state::<Arc<gesture_debug::GestureDebugState>>()
                 .stop();
@@ -589,7 +598,7 @@ fn main() {
             label,
             event: tauri::WindowEvent::Focused(false),
             ..
-        } if label == windowing::CLIPBOARD_WINDOW_LABEL && !cfg!(target_os = "macos") => {
+        } if label == windowing::CLIPBOARD_WINDOW_LABEL && cfg!(target_os = "linux") => {
             let app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(120)).await;

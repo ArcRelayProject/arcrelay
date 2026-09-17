@@ -1,4 +1,4 @@
-use arcrelay_protocol::server::OutputLine;
+use arcrelay_core::domain::action_output::OutputLine;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use tokio::sync::broadcast;
@@ -22,6 +22,7 @@ pub struct ActionOutputSnapshot {
 pub struct OutputManager {
     state: Mutex<OutputState>,
     tx: broadcast::Sender<OutputLine>,
+    observed_action: Mutex<Option<String>>,
 }
 
 #[derive(Default)]
@@ -44,7 +45,22 @@ impl OutputManager {
         Self {
             state: Mutex::new(OutputState::default()),
             tx,
+            observed_action: Mutex::new(None),
         }
+    }
+
+    pub fn observe(&self, action_id: Option<String>) {
+        *self
+            .observed_action
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = action_id;
+    }
+
+    pub fn observed_action(&self) -> Option<String> {
+        self.observed_action
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Append a line of output for the given action.
@@ -127,27 +143,6 @@ impl OutputManager {
                 .unwrap_or_default(),
         }
     }
-    pub fn snapshots(&self) -> Vec<ActionOutputSnapshot> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state
-            .buffers
-            .iter()
-            .map(|(id, b)| ActionOutputSnapshot {
-                action_id: id.clone(),
-                revision: b.revision,
-                lines: b
-                    .lines
-                    .iter()
-                    .skip(b.lines.len().saturating_sub(80))
-                    .cloned()
-                    .collect(),
-            })
-            .collect()
-    }
-
     /// Subscribe to the output broadcast (returns a new receiver).
     pub fn subscribe(&self) -> broadcast::Receiver<OutputLine> {
         self.tx.subscribe()

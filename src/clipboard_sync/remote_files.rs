@@ -79,25 +79,38 @@ async fn list_remote_directory_entries_on_connection(
 ) -> Result<Vec<RemoteFileEntry>, String> {
     let mut entries = Vec::new();
     let mut cursor = None;
+    let mut seen = HashSet::new();
+    let mut budget = DirectoryBudget::new(tokio_util::sync::CancellationToken::new());
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
-        let response = remote_file_request_on_connection(
-            connection,
-            RemoteFileRequest::ListDirectory {
-                share_id: share_id.to_string(),
-                relative_path: relative_path.to_string(),
-                cursor,
-                limit: DEFAULT_REMOTE_DIRECTORY_PAGE_SIZE,
-                search: None,
-                sort_key: RemoteFileSortKey::Name,
-                sort_direction: RemoteFileSortDirection::Ascending,
-            },
+        let response = tokio::time::timeout_at(
+            deadline,
+            remote_file_request_on_connection(
+                connection,
+                RemoteFileRequest::ListDirectory {
+                    share_id: share_id.to_string(),
+                    relative_path: relative_path.to_string(),
+                    cursor,
+                    limit: DEFAULT_REMOTE_DIRECTORY_PAGE_SIZE,
+                    search: None,
+                    sort_key: RemoteFileSortKey::Name,
+                    sort_direction: RemoteFileSortDirection::Ascending,
+                },
+            ),
         )
         .await
+        .map_err(|_| "remote directory listing timed out".to_string())?
         .map_err(|error| error.to_string())?;
+        for entry in &response.entries {
+            budget.visit(entry.name.len().saturating_add(entry.relative_path.len()))?;
+        }
         entries.extend(response.entries);
         let Some(next_cursor) = response.next_cursor else {
             return Ok(entries);
         };
+        if !seen.insert(next_cursor.clone()) {
+            return Err("remote directory returned a repeated cursor".into());
+        }
         cursor = Some(next_cursor);
     }
 }
@@ -223,6 +236,12 @@ pub(super) async fn download_remote_entry(
         tokio::fs::create_dir_all(&root_destination)
             .await
             .map_err(|error| error.to_string())?;
+        let mut budget = DirectoryBudget::new(tokio_util::sync::CancellationToken::new());
+        for entry in &root_entries {
+            budget.visit(
+                entry.relative_path.len() + entry.name.len() + root_destination.as_os_str().len(),
+            )?;
+        }
         let mut directories = VecDeque::from([(root_destination.clone(), root_entries)]);
         let mut files = Vec::new();
         while let Some((local_directory, entries)) = directories.pop_front() {
@@ -241,12 +260,26 @@ pub(super) async fn download_remote_entry(
                         tokio::fs::create_dir_all(&local_path)
                             .await
                             .map_err(|error| error.to_string())?;
-                        let entries = list_remote_directory_entries_on_connection(
-                            connection,
-                            share_id,
-                            &entry.relative_path,
+                        let remaining =
+                            Duration::from_secs(30).saturating_sub(budget.started.elapsed());
+                        let entries = tokio::time::timeout(
+                            remaining,
+                            list_remote_directory_entries_on_connection(
+                                connection,
+                                share_id,
+                                &entry.relative_path,
+                            ),
                         )
-                        .await?;
+                        .await
+                        .map_err(|_| "remote directory scan timed out".to_string())??;
+                        // Charge every queued entry immediately; waiting until dequeue lets breadth-first scans multiply memory.
+                        for entry in &entries {
+                            budget.visit(
+                                entry.relative_path.len()
+                                    + entry.name.len()
+                                    + local_path.as_os_str().len(),
+                            )?;
+                        }
                         directories.push_back((local_path, entries));
                     }
                 }
@@ -356,6 +389,7 @@ async fn download_remote_file_with_progress(
         .await
         .map_err(|error| error.to_string())?;
     let temporary = parent.join(format!(".arcrelay-download-{}", uuid::Uuid::new_v4()));
+    let _temporary_cleanup = TemporaryDownload(temporary.clone());
     let result: Result<(), String> = async {
         let mut output = tokio::fs::File::create(&temporary)
             .await
@@ -417,7 +451,7 @@ pub(super) async fn stream_remote_file(
     relative_path: &str,
     chunks: mpsc::Sender<Result<Vec<u8>, String>>,
 ) {
-    let result: Result<(), String> = async {
+    let work = async {
         let (mut send, mut recv) = connection
             .open_bi()
             .await
@@ -470,8 +504,12 @@ pub(super) async fn stream_remote_file(
             ));
         }
         Ok(())
-    }
-    .await;
+    };
+    let result: Result<(), String> = tokio::select! {
+        biased;
+        _ = chunks.closed() => return,
+        result = work => result,
+    };
 
     if let Err(error) = result {
         let _ = chunks.send(Err(error)).await;
@@ -489,9 +527,12 @@ pub(super) async fn upload_remote_paths(
         return Err("no files selected for upload".into());
     }
     let base = relative_path.to_string();
-    let items = tokio::task::spawn_blocking(move || collect_upload_items(&base, &paths))
-        .await
-        .map_err(|error| error.to_string())??;
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let _cancel_on_drop = cancellation.clone().drop_guard();
+    let items =
+        tokio::task::spawn_blocking(move || collect_upload_items(&base, &paths, cancellation))
+            .await
+            .map_err(|error| error.to_string())??;
     let total_bytes: u64 = items
         .iter()
         .map(|item| match item {
@@ -677,9 +718,16 @@ async fn upload_remote_file_with_progress(
     Ok(())
 }
 
-fn collect_upload_items(base: &str, paths: &[PathBuf]) -> Result<Vec<LocalUploadItem>, String> {
+fn collect_upload_items(
+    base: &str,
+    paths: &[PathBuf],
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<Vec<LocalUploadItem>, String> {
     let mut items = Vec::new();
+    let mut budget = DirectoryBudget::new(cancellation);
+
     for path in paths {
+        budget.visit(path.as_os_str().len())?;
         let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
         if metadata.is_file() {
             items.push(LocalUploadItem::File {
@@ -688,7 +736,7 @@ fn collect_upload_items(base: &str, paths: &[PathBuf]) -> Result<Vec<LocalUpload
                 size: metadata.len(),
             });
         } else if metadata.is_dir() {
-            collect_upload_directory(base, path, &mut items)?;
+            collect_upload_directory(base, path, &mut items, &mut budget)?;
         }
     }
     Ok(items)
@@ -698,7 +746,11 @@ fn collect_upload_directory(
     remote_parent: &str,
     directory: &Path,
     items: &mut Vec<LocalUploadItem>,
+    budget: &mut DirectoryBudget,
 ) -> Result<(), String> {
+    if remote_parent.bytes().filter(|byte| *byte == b'/').count() >= 256 {
+        return Err("directory transfer exceeds the nesting limit".into());
+    }
     let name = directory
         .file_name()
         .and_then(|value| value.to_str())
@@ -709,10 +761,12 @@ fn collect_upload_directory(
         name: name.clone(),
     });
     let child_parent = join_remote_path(remote_parent, &name);
-    let mut children = std::fs::read_dir(directory)
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
+    let mut children = Vec::new();
+    for child in std::fs::read_dir(directory).map_err(|error| error.to_string())? {
+        let child = child.map_err(|error| error.to_string())?;
+        budget.visit(child.path().as_os_str().len() + child_parent.len())?;
+        children.push(child);
+    }
     children.sort_by_key(std::fs::DirEntry::file_name);
     for child in children {
         let file_type = child.file_type().map_err(|error| error.to_string())?;
@@ -720,7 +774,7 @@ fn collect_upload_directory(
             continue;
         }
         if file_type.is_dir() {
-            collect_upload_directory(&child_parent, &child.path(), items)?;
+            collect_upload_directory(&child_parent, &child.path(), items, budget)?;
         } else if file_type.is_file() {
             let metadata = child.metadata().map_err(|error| error.to_string())?;
             items.push(LocalUploadItem::File {
@@ -766,4 +820,70 @@ pub(super) fn remote_name(path: &str) -> Result<&str, String> {
         .next()
         .filter(|name| !name.is_empty())
         .ok_or_else(|| "remote path has no usable name".to_string())
+}
+
+/// Removing the staging file on Drop also covers cancellation while awaiting network IO.
+struct TemporaryDownload(PathBuf);
+impl Drop for TemporaryDownload {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// A single operation has an explicit scan limit, including names and queued entries.
+pub(super) struct DirectoryBudget {
+    cancellation: tokio_util::sync::CancellationToken,
+    started: std::time::Instant,
+    entries: usize,
+    bytes: usize,
+}
+impl DirectoryBudget {
+    pub(super) fn new(cancellation: tokio_util::sync::CancellationToken) -> Self {
+        Self {
+            cancellation,
+            started: std::time::Instant::now(),
+            entries: 0,
+            bytes: 0,
+        }
+    }
+    pub(super) fn visit(&mut self, name_bytes: usize) -> Result<(), String> {
+        if self.cancellation.is_cancelled() {
+            return Err("remote file transfer cancelled".into());
+        }
+        self.entries += 1;
+        self.bytes = self.bytes.saturating_add(name_bytes).saturating_add(256);
+        if self.entries > 100_000
+            || self.bytes > 24 * 1024 * 1024
+            || self.started.elapsed() > Duration::from_secs(30)
+        {
+            return Err(
+                "directory transfer exceeds the scan budget; select a smaller folder".into(),
+            );
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    #[test]
+    fn temporary_download_is_removed_when_cancelled_without_a_runtime() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("pending.part");
+        std::fs::write(&path, b"partial payload").unwrap();
+        let cleanup = TemporaryDownload(path.clone());
+        drop(cleanup);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn scan_budget_rejects_cancellation_and_excess_names_without_runtime() {
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let mut budget = DirectoryBudget::new(cancellation.clone());
+        assert!(budget.visit(20).is_ok());
+        cancellation.cancel();
+        assert!(budget.visit(20).is_err());
+        let mut budget = DirectoryBudget::new(tokio_util::sync::CancellationToken::new());
+        assert!(budget.visit(24 * 1024 * 1024).is_err());
+    }
 }

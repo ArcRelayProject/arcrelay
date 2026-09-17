@@ -9,6 +9,8 @@ impl ClipboardSyncManager {
         event_tx: mpsc::Sender<ServerEvent>,
     ) -> Arc<Self> {
         Arc::new(Self {
+            remote_transfer_slots: Arc::new(tokio::sync::Semaphore::new(4)),
+            remote_transfer_waiters: Arc::new(tokio::sync::Semaphore::new(16)),
             clipboard,
             network,
             commands: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -81,12 +83,41 @@ impl ClipboardSyncManager {
         devices
     }
 
+    async fn transfer_permits(
+        &self,
+    ) -> Result<
+        (
+            tokio::sync::OwnedSemaphorePermit,
+            tokio::sync::OwnedSemaphorePermit,
+        ),
+        String,
+    > {
+        let admission = self
+            .remote_transfer_waiters
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                "too many remote file transfers; wait for a running transfer".to_string()
+            })?;
+        let active = self
+            .remote_transfer_slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "remote file service is stopping".to_string())?;
+        Ok((admission, active))
+    }
+
     pub async fn upload_system_file(
         &self,
         peer_id: &str,
         request: RemoteFileRequest,
         source: PathBuf,
     ) -> RemoteFileResult<RemoteFileResponse> {
+        let _permits = self
+            .transfer_permits()
+            .await
+            .map_err(|error| RemoteFileError::new(RemoteFileErrorCode::Unavailable, error))?;
         match self
             .remote_file_route(peer_id)
             .await
@@ -162,9 +193,14 @@ impl ClipboardSyncManager {
     ) -> Result<Vec<RemoteFileEntry>, String> {
         let mut entries = Vec::new();
         let mut cursor = None;
+        let mut seen = HashSet::new();
+        let mut budget =
+            remote_files::DirectoryBudget::new(tokio_util::sync::CancellationToken::new());
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         loop {
-            let response = self
-                .remote_file_request(
+            let response = tokio::time::timeout_at(
+                deadline,
+                self.remote_file_request(
                     peer_id,
                     RemoteFileRequest::ListDirectory {
                         share_id: share_id.to_string(),
@@ -175,13 +211,21 @@ impl ClipboardSyncManager {
                         sort_key: RemoteFileSortKey::Name,
                         sort_direction: RemoteFileSortDirection::Ascending,
                     },
-                )
-                .await
-                .map_err(|error| error.to_string())?;
+                ),
+            )
+            .await
+            .map_err(|_| "remote directory listing timed out".to_string())?
+            .map_err(|error| error.to_string())?;
+            for entry in &response.entries {
+                budget.visit(entry.name.len().saturating_add(entry.relative_path.len()))?;
+            }
             entries.extend(response.entries);
             let Some(next_cursor) = response.next_cursor else {
                 return Ok(entries);
             };
+            if !seen.insert(next_cursor.clone()) {
+                return Err("remote directory returned a repeated cursor".into());
+            }
             cursor = Some(next_cursor);
         }
     }
@@ -235,6 +279,7 @@ impl ClipboardSyncManager {
         destination: PathBuf,
         progress: Option<RemoteFileProgressCallback>,
     ) -> Result<PathBuf, String> {
+        let _permits = self.transfer_permits().await?;
         match self.remote_file_route(peer_id).await? {
             RemoteFileRoute::Managed(sender) => {
                 let (response_tx, response_rx) = oneshot::channel();
@@ -272,6 +317,7 @@ impl ClipboardSyncManager {
         share_id: String,
         relative_path: String,
     ) -> Result<RemoteFileStreamReceiver, String> {
+        let permits = self.transfer_permits().await?;
         let (chunks, receiver) = mpsc::channel(8);
         match self.remote_file_route(peer_id).await? {
             RemoteFileRoute::Managed(sender) => sender
@@ -279,11 +325,13 @@ impl ClipboardSyncManager {
                     share_id,
                     relative_path,
                     chunks,
+                    permits,
                 })
                 .await
                 .map_err(|_| "remote device connection closed".to_string())?,
             RemoteFileRoute::Incoming(connection) => {
                 tokio::spawn(async move {
+                    let _permits = permits;
                     stream_remote_file(&connection, &share_id, &relative_path, chunks).await;
                 });
             }
@@ -310,6 +358,7 @@ impl ClipboardSyncManager {
         paths: Vec<PathBuf>,
         progress: Option<RemoteFileProgressCallback>,
     ) -> Result<usize, String> {
+        let _permits = self.transfer_permits().await?;
         match self.remote_file_route(peer_id).await? {
             RemoteFileRoute::Managed(sender) => {
                 let (response_tx, response_rx) = oneshot::channel();
@@ -341,6 +390,10 @@ impl ClipboardSyncManager {
         source: PathBuf,
         expected_modified_at_ms: i64,
     ) -> RemoteFileResult<()> {
+        let _permits = self
+            .transfer_permits()
+            .await
+            .map_err(|error| RemoteFileError::new(RemoteFileErrorCode::Unavailable, error))?;
         match self
             .remote_file_route(peer_id)
             .await
@@ -826,8 +879,16 @@ impl ClipboardSyncManager {
         let (incoming_tx, mut incoming_rx) = mpsc::channel(128);
         let reader_connection = connection.clone();
         let reader = tokio::spawn(async move {
+            let mut decoder = arcrelay_transport::FrameReader::new(MAX_CONTROL_FRAME_SIZE);
             loop {
-                match recv_server_frame(&mut recv, Duration::from_secs(60)).await {
+                let frame = tokio::time::timeout(Duration::from_secs(60), decoder.read(&mut recv))
+                    .await
+                    .map_err(|_| "timed out waiting for a remote control frame".to_string())
+                    .and_then(|frame| frame.map_err(|error| error.to_string()))
+                    .and_then(|frame| {
+                        proto::ServerControlFrame::decode(frame).map_err(|error| error.to_string())
+                    });
+                match frame {
                     Ok(frame) => {
                         if incoming_tx.send(frame).await.is_err() {
                             break;
@@ -941,35 +1002,36 @@ impl ClipboardSyncManager {
                 command = command_rx.recv() => {
                     let Some(command) = command else { break Ok(()) };
                     match command {
-                        ConnectionCommand::SystemUpload { request, source, response } => {
+                        ConnectionCommand::SystemUpload { request, source, mut response } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = remote_files::upload_system_file(&connection, request, &source).await;
-                                let _ = response.send(result);
+                                tokio::select! {
+                                    biased;
+                                    _ = response.closed() => {},
+                                    result = remote_files::upload_system_file(&connection, request, &source) => { let _ = response.send(result); }
+                                }
                             });
                         }
-                        ConnectionCommand::RemoteRequest(request, response) => {
+                        ConnectionCommand::RemoteRequest(request, mut response) => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = remote_file_request_on_connection(&connection, request).await;
-                                let _ = response.send(result);
+                                tokio::select! { biased; _ = response.closed() => {}, result = remote_file_request_on_connection(&connection, request) => { let _ = response.send(result); } }
                             });
                         }
                         ConnectionCommand::Thumbnail {
                             share_id,
                             relative_path,
                             max_dimension,
-                            response,
+                            mut response,
                         } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = download_remote_thumbnail(
+                                tokio::select! { biased; _ = response.closed() => {}, result = download_remote_thumbnail(
                                     &connection,
                                     &share_id,
                                     &relative_path,
                                     max_dimension,
-                                ).await;
-                                let _ = response.send(result);
+                                ) => { let _ = response.send(result); } }
                             });
                         }
                         ConnectionCommand::Download {
@@ -977,18 +1039,17 @@ impl ClipboardSyncManager {
                             relative_path,
                             destination,
                             progress,
-                            response,
+                            mut response,
                         } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = download_remote_entry(
+                                tokio::select! { biased; _ = response.closed() => {}, result = download_remote_entry(
                                     &connection,
                                     &share_id,
                                     &relative_path,
                                     &destination,
                                     progress,
-                                ).await;
-                                let _ = response.send(result);
+                                ) => { let _ = response.send(result); } }
                             });
                         }
                         #[cfg(target_os = "windows")]
@@ -996,14 +1057,17 @@ impl ClipboardSyncManager {
                             share_id,
                             relative_path,
                             chunks,
+                            permits,
                         } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
+                                let _permits = permits;
                                 stream_remote_file(
                                     &connection,
                                     &share_id,
                                     &relative_path,
                                     chunks,
+                            permits,
                                 ).await;
                             });
                         }
@@ -1012,18 +1076,17 @@ impl ClipboardSyncManager {
                             relative_path,
                             paths,
                             progress,
-                            response,
+                            mut response,
                         } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = upload_remote_paths(
+                                tokio::select! { biased; _ = response.closed() => {}, result = upload_remote_paths(
                                     &connection,
                                     &share_id,
                                     &relative_path,
                                     paths,
                                     progress,
-                                ).await;
-                                let _ = response.send(result);
+                                ) => { let _ = response.send(result); } }
                             });
                         }
                         ConnectionCommand::UploadEdit {
@@ -1031,18 +1094,17 @@ impl ClipboardSyncManager {
                             relative_path,
                             source,
                             expected_modified_at_ms,
-                            response,
+                            mut response,
                         } => {
                             let connection = connection.clone();
                             tokio::spawn(async move {
-                                let result = upload_remote_file(
+                                tokio::select! { biased; _ = response.closed() => {}, result = upload_remote_file(
                                     &connection,
                                     &share_id,
                                     &relative_path,
                                     &source,
                                     Some(expected_modified_at_ms),
-                                ).await;
-                                let _ = response.send(result);
+                                ) => { let _ = response.send(result); } }
                             });
                         }
                     }

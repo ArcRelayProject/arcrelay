@@ -52,7 +52,7 @@ pub fn clipboard_locked(state: &DesktopState) -> bool {
 
 pub fn require_clipboard_access(state: &DesktopState) -> Result<(), String> {
     if clipboard_locked(state) {
-        Err("剪贴板已锁定；确认本机用户后再试".to_string())
+        Err("clipboard is locked; confirm the local user and retry".to_string())
     } else {
         Ok(())
     }

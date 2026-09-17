@@ -16,13 +16,17 @@ fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, Stri
 
 #[cfg(target_os = "macos")]
 type PasteTarget = crate::windowing::ClipboardPasteRecipient;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+type PasteTarget = crate::windowing::clipboard_windows_policy::ForegroundTarget;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct PasteTarget;
 
 fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
     #[cfg(target_os = "macos")]
     return crate::windowing::clipboard_paste_recipient(_app).map_err(|error| error.to_string());
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    return crate::windowing::clipboard_windows::capture_paste_target();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     Ok(PasteTarget)
 }
 
@@ -886,6 +890,13 @@ async fn prepare_window_and_wait_for_paste(
     app: &AppHandle,
     _original: PasteTarget,
 ) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::windowing::clipboard_windows::on_main(app, |app| {
+            crate::windowing::clipboard_windows::prepare_paste(&app)
+        })
+        .await?;
+    }
     #[cfg(target_os = "macos")]
     let mut target = crate::windowing::prepare_clipboard_paste_target(app, _original)
         .map_err(|error| error.to_string())?;
@@ -937,7 +948,24 @@ async fn prepare_window_and_wait_for_paste(
         }
         Ok(restore_pinned_panel)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let started = std::time::Instant::now();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            if crate::windowing::clipboard_windows::target_ready(_original)?
+                && crate::windowing::clipboard_windows::modifiers_released()
+            {
+                break;
+            }
+            if started.elapsed() >= std::time::Duration::from_secs(1) {
+                return Err(
+                    "paste target or modifiers did not settle; content remains on clipboard".into(),
+                );
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     tokio::time::sleep(std::time::Duration::from_millis(130)).await;
     #[cfg(not(target_os = "macos"))]
     Ok(restore_pinned_panel)
@@ -1293,6 +1321,64 @@ pub async fn clipboard_set_label_membership(
 #[arcrelay_desktop_ipc::command]
 pub fn set_clipboard_context_menu_open(open: bool) {
     crate::windowing::set_clipboard_context_menu_open(open);
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn set_clipboard_window_editing(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    state: State<'_, DesktopState>,
+    editing: bool,
+) -> Result<u64, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    require_clipboard_surface(&window)?;
+    #[cfg(target_os = "windows")]
+    return crate::windowing::clipboard_windows::on_main(&app, move |app| {
+        crate::windowing::clipboard_windows::set_editing(&app, editing)
+    })
+    .await;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, editing);
+        Ok(0)
+    }
+}
+
+#[arcrelay_desktop_ipc::command]
+pub fn set_clipboard_navigation_ready(
+    window: tauri::WebviewWindow,
+    state: State<'_, DesktopState>,
+    ready: bool,
+) -> Result<u64, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    require_clipboard_surface(&window)?;
+    #[cfg(target_os = "windows")]
+    return Ok(crate::windowing::clipboard_windows::navigation_ready(ready));
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = ready;
+        Ok(0)
+    }
+}
+
+#[arcrelay_desktop_ipc::command]
+pub fn activate_clipboard_navigation(
+    window: tauri::WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<u64, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    require_clipboard_surface(&window)?;
+    #[cfg(target_os = "windows")]
+    return Ok(crate::windowing::clipboard_windows::activate());
+    #[cfg(not(target_os = "windows"))]
+    Ok(0)
+}
+
+fn require_clipboard_surface(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != crate::windowing::CLIPBOARD_WINDOW_LABEL {
+        return Err("clipboard navigation is restricted to the clipboard window".into());
+    }
+    Ok(())
 }
 
 #[arcrelay_desktop_ipc::command]

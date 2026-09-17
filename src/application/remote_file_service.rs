@@ -50,6 +50,9 @@ pub struct RemoteFileService {
     transfers: Mutex<HashMap<String, RemoteFileTransferSession>>,
     edit_tasks: Mutex<HashMap<String, tokio::task::AbortHandle>>,
     thumbnail_slots: tokio::sync::Semaphore,
+    work: crate::application::remote_work::RemoteWork,
+    thumbnail_scopes: Mutex<HashMap<String, (u64, tokio_util::sync::CancellationToken)>>,
+
     thumbnail_keys: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
 }
 impl Default for RemoteFileService {
@@ -60,6 +63,9 @@ impl Default for RemoteFileService {
             transfers: Mutex::default(),
             edit_tasks: Mutex::default(),
             thumbnail_slots: tokio::sync::Semaphore::new(4),
+            work: crate::application::remote_work::RemoteWork::default(),
+            thumbnail_scopes: Mutex::default(),
+
             thumbnail_keys: Mutex::default(),
         }
     }
@@ -89,7 +95,44 @@ impl RemoteFileService {
         keys.insert(key.into(), Arc::downgrade(&lock));
         lock
     }
+    fn thumbnail_scope(
+        &self,
+        owner: String,
+        generation: u64,
+    ) -> Result<tokio_util::sync::CancellationToken, String> {
+        let mut scopes = self
+            .thumbnail_scopes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((current, token)) = scopes.get(&owner) {
+            if generation < *current {
+                return Err("thumbnail request cancelled".into());
+            }
+            if generation == *current {
+                return Ok(token.clone());
+            }
+            token.cancel();
+        }
+        // Windows own their generations; an unknown owner never evicts live work.
+        if scopes.len() >= 128 && !scopes.contains_key(&owner) {
+            return Err("too many thumbnail owners".into());
+        }
+        let token = tokio_util::sync::CancellationToken::new();
+        scopes.insert(owner, (generation, token.clone()));
+        Ok(token)
+    }
+
     pub fn shutdown(&self) {
+        self.work.shutdown();
+        for (_, (_, token)) in self
+            .thumbnail_scopes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain()
+        {
+            token.cancel();
+        }
+
         for (_, task) in self
             .edit_tasks
             .lock()
@@ -150,7 +193,7 @@ struct RemoteFileEditEvent {
 #[derive(Debug, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteFileState {
-    pub devices: Vec<crate::clipboard_sync::RemoteFileDeviceView>,
+    pub devices: Vec<crate::application::remote_file_session::RemoteFileDeviceView>,
     pub local_shares: Vec<LocalSharedDirectory>,
 }
 
@@ -176,7 +219,7 @@ fn register_remote_file_transfer(
     peer_id: String,
     share_id: String,
     directory_path: String,
-) -> RemoteFileTransferSession {
+) -> Result<RemoteFileTransferSession, String> {
     let now = now_timestamp_ms();
     let session = RemoteFileTransferSession {
         id: uuid::Uuid::new_v4().to_string(),
@@ -195,6 +238,10 @@ fn register_remote_file_transfer(
         started_at_ms: now,
         updated_at_ms: now,
     };
+    app.state::<DesktopState>()
+        .remote_file_service
+        .work
+        .register(&session.id)?;
     let mut sessions = remote_file_transfers(app)
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -212,13 +259,30 @@ fn register_remote_file_transfer(
     sessions.insert(session.id.clone(), session.clone());
     drop(sessions);
     let _ = app.emit(REMOTE_FILE_TRANSFER_EVENT, &session);
-    session
+    Ok(session)
+}
+
+async fn cancellable_remote_work<T>(
+    app: &AppHandle,
+    session_id: &str,
+    work: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let cancellation = app
+        .state::<DesktopState>()
+        .remote_file_service
+        .work
+        .token(session_id)?;
+    tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => Err("remote file transfer cancelled".into()),
+        result = work => result,
+    }
 }
 
 fn remote_file_progress_callback(
     app: AppHandle,
     session_id: String,
-) -> crate::clipboard_sync::RemoteFileProgressCallback {
+) -> crate::application::remote_file_session::RemoteFileProgressCallback {
     Arc::new(move |progress| {
         let now = now_timestamp_ms();
         let mut sessions = remote_file_transfers(&app)
@@ -244,6 +308,10 @@ fn remote_file_progress_callback(
 }
 
 fn finish_remote_file_transfer(app: &AppHandle, session_id: &str, result: Result<(), String>) {
+    app.state::<DesktopState>()
+        .remote_file_service
+        .work
+        .finish(session_id);
     let mut sessions = remote_file_transfers(app)
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -258,7 +326,12 @@ fn finish_remote_file_transfer(app: &AppHandle, session_id: &str, result: Result
             session.error = None;
         }
         Err(error) => {
-            session.status = "failed".into();
+            session.status = if error == "remote file transfer cancelled" {
+                "cancelled"
+            } else {
+                "failed"
+            }
+            .into();
             session.error = Some(error);
         }
     }
@@ -266,7 +339,9 @@ fn finish_remote_file_transfer(app: &AppHandle, session_id: &str, result: Result
     let view = session.clone();
     drop(sessions);
     let _ = app.emit(REMOTE_FILE_TRANSFER_EVENT, &view);
-    show_remote_file_system_notification(app, &view);
+    if view.status != "cancelled" {
+        show_remote_file_system_notification(app, &view);
+    }
 }
 
 fn show_remote_file_system_notification(app: &AppHandle, session: &RemoteFileTransferSession) {
@@ -328,7 +403,7 @@ pub async fn list_remote_file_transfers(
 
 pub async fn get_remote_file_state(state: &DesktopState) -> Result<RemoteFileState, String> {
     Ok(RemoteFileState {
-        devices: state.clipboard_sync.remote_file_devices().await,
+        devices: state.remote_file_sessions().remote_file_devices().await,
         local_shares: state.remote_files.local_shares(),
     })
 }
@@ -344,7 +419,7 @@ pub async fn list_remote_file_shares(
     peer_id: String,
 ) -> arcrelay_protocol::remote_files::RemoteFileResult<Vec<RemoteFileShare>> {
     Ok(state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(&peer_id, RemoteFileRequest::ListShares)
         .await?
         .shares)
@@ -362,7 +437,7 @@ pub async fn list_remote_directory(
     sort_direction: RemoteFileSortDirection,
 ) -> arcrelay_protocol::remote_files::RemoteFileResult<RemoteFileDirectoryPage> {
     let response = state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(
             &peer_id,
             RemoteFileRequest::ListDirectory {
@@ -390,7 +465,7 @@ pub async fn create_remote_directory(
     name: String,
 ) -> arcrelay_protocol::remote_files::RemoteFileResult<RemoteFileEntry> {
     state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(
             &peer_id,
             RemoteFileRequest::CreateDirectory {
@@ -417,7 +492,7 @@ pub async fn rename_remote_entry(
     new_name: String,
 ) -> arcrelay_protocol::remote_files::RemoteFileResult<RemoteFileEntry> {
     state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(
             &peer_id,
             RemoteFileRequest::Rename {
@@ -443,7 +518,7 @@ pub async fn delete_remote_entry(
     relative_path: String,
 ) -> arcrelay_protocol::remote_files::RemoteFileResult<()> {
     state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(
             &peer_id,
             RemoteFileRequest::Delete {
@@ -485,7 +560,7 @@ pub async fn pick_remote_upload(
         return Ok(0);
     }
     state
-        .clipboard_sync
+        .remote_file_sessions()
         .upload_remote_files(&peer_id, share_id, relative_path, paths)
         .await
 }
@@ -498,7 +573,7 @@ pub async fn upload_remote_paths(
     paths: Vec<String>,
 ) -> Result<usize, String> {
     state
-        .clipboard_sync
+        .remote_file_sessions()
         .upload_remote_files(
             &peer_id,
             share_id,
@@ -510,12 +585,12 @@ pub async fn upload_remote_paths(
 
 fn launch_remote_upload(
     app: AppHandle,
-    manager: Arc<crate::clipboard_sync::ClipboardSyncManager>,
+    manager: Arc<dyn crate::application::remote_file_session::RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
     paths: Vec<PathBuf>,
-) -> RemoteFileTransferSession {
+) -> Result<RemoteFileTransferSession, String> {
     let name = if paths.len() == 1 {
         paths[0]
             .file_name()
@@ -532,11 +607,19 @@ fn launch_remote_upload(
         peer_id.clone(),
         share_id.clone(),
         relative_path.clone(),
-    );
+    )?;
     let session_id = session.id.clone();
     let progress = remote_file_progress_callback(app.clone(), session_id.clone());
+    let cancellation = app
+        .state::<DesktopState>()
+        .remote_file_service
+        .work
+        .token(&session_id)?;
     tauri::async_runtime::spawn(async move {
-        let result = manager
+        let result = tokio::select! {
+          biased;
+          _ = cancellation.cancelled() => Err("remote file transfer cancelled".into()),
+          result = manager
             .upload_remote_files_with_progress(
                 &peer_id,
                 share_id,
@@ -544,11 +627,11 @@ fn launch_remote_upload(
                 paths,
                 Some(progress),
             )
-            .await
-            .map(|_| ());
+            => result.map(|_| ()),
+        };
         finish_remote_file_transfer(&app, &session_id, result);
     });
-    session
+    Ok(session)
 }
 
 pub async fn start_remote_upload(
@@ -582,12 +665,12 @@ pub async fn start_remote_upload(
     }
     Ok(Some(launch_remote_upload(
         app,
-        state.clipboard_sync.clone(),
+        state.remote_file_sessions(),
         peer_id,
         share_id,
         relative_path,
         paths,
-    )))
+    )?))
 }
 
 pub async fn start_remote_upload_paths(
@@ -602,14 +685,14 @@ pub async fn start_remote_upload_paths(
     if paths.is_empty() {
         return Err("no files selected for upload".into());
     }
-    Ok(launch_remote_upload(
+    launch_remote_upload(
         app,
-        state.clipboard_sync.clone(),
+        state.remote_file_sessions(),
         peer_id,
         share_id,
         relative_path,
         paths,
-    ))
+    )
 }
 
 pub async fn start_remote_download_entries(
@@ -622,6 +705,9 @@ pub async fn start_remote_download_entries(
     if relative_paths.is_empty() {
         return Ok(Some(Vec::new()));
     }
+    if relative_paths.len() > 16 {
+        return Err("select at most 16 entries for one download batch".into());
+    }
     let Some(destination) = rfd::AsyncFileDialog::new()
         .set_title("选择下载位置")
         .pick_folder()
@@ -630,9 +716,9 @@ pub async fn start_remote_download_entries(
         return Ok(None);
     };
     let destination = destination.path().to_path_buf();
-    let manager = state.clipboard_sync.clone();
-    let mut sessions = Vec::with_capacity(relative_paths.len());
-    for relative_path in relative_paths {
+    let manager = state.remote_file_sessions();
+    let mut sessions: Vec<RemoteFileTransferSession> = Vec::with_capacity(relative_paths.len());
+    for relative_path in &relative_paths {
         let name = relative_path
             .trim_end_matches('/')
             .rsplit('/')
@@ -653,6 +739,21 @@ pub async fn start_remote_download_entries(
             share_id.clone(),
             directory_path,
         );
+        match session {
+            Ok(session) => sessions.push(session),
+            Err(error) => {
+                for pending in &sessions {
+                    finish_remote_file_transfer(
+                        &app,
+                        &pending.id,
+                        Err("remote file transfer cancelled".into()),
+                    );
+                }
+                return Err(error);
+            }
+        }
+    }
+    for (relative_path, session) in relative_paths.into_iter().zip(&sessions) {
         let session_id = session.id.clone();
         let app_task = app.clone();
         let manager_task = manager.clone();
@@ -660,8 +761,12 @@ pub async fn start_remote_download_entries(
         let share_task = share_id.clone();
         let destination_task = destination.clone();
         let progress = remote_file_progress_callback(app.clone(), session_id.clone());
+        let cancellation = state.remote_file_service.work.token(&session_id)?;
         tauri::async_runtime::spawn(async move {
-            let result = manager_task
+            let result = tokio::select! {
+              biased;
+              _ = cancellation.cancelled() => Err("remote file transfer cancelled".into()),
+              result = manager_task
                 .download_remote_file_with_progress(
                     &peer_task,
                     share_task,
@@ -669,11 +774,10 @@ pub async fn start_remote_download_entries(
                     destination_task,
                     Some(progress),
                 )
-                .await
-                .map(|_| ());
+                => result.map(|_| ()),
+            };
             finish_remote_file_transfer(&app_task, &session_id, result);
         });
-        sessions.push(session);
     }
     Ok(Some(sessions))
 }
@@ -695,7 +799,7 @@ pub async fn download_remote_entry(
     };
     let destination = destination.into_path().map_err(|error| error.to_string())?;
     let path = state
-        .clipboard_sync
+        .remote_file_sessions()
         .download_remote_file(&peer_id, share_id, relative_path, destination)
         .await?;
     Ok(Some(path.to_string_lossy().into_owned()))
@@ -723,7 +827,7 @@ pub async fn download_remote_entries(
     let mut paths = Vec::with_capacity(relative_paths.len());
     for relative_path in relative_paths {
         let path = state
-            .clipboard_sync
+            .remote_file_sessions()
             .download_remote_file(
                 &peer_id,
                 share_id.clone(),
@@ -762,18 +866,21 @@ pub async fn prepare_remote_drag(
         peer_id.clone(),
         share_id.clone(),
         directory_path,
-    );
+    )?;
     let progress = remote_file_progress_callback(app.clone(), session.id.clone());
-    let result = state
-        .clipboard_sync
-        .download_remote_file_with_progress(
+    let manager = state.remote_file_sessions();
+    let result = cancellable_remote_work(
+        &app,
+        &session.id,
+        manager.download_remote_file_with_progress(
             &peer_id,
             share_id,
             relative_path,
             destination,
             Some(progress),
-        )
-        .await;
+        ),
+    )
+    .await;
     let path = match result {
         Ok(path) => {
             finish_remote_file_transfer(&app, &session.id, Ok(()));
@@ -812,7 +919,7 @@ pub async fn start_remote_file_promise_drag(
         remote_file_drag_macos::start_remote_file_promise_drag(
             app,
             window,
-            state.clipboard_sync.clone(),
+            state.remote_file_sessions(),
             peer_id,
             share_id,
             relative_path,
@@ -827,7 +934,7 @@ pub async fn start_remote_file_promise_drag(
         remote_file_drag_windows::start_remote_file_promise_drag(
             app,
             window,
-            state.clipboard_sync.clone(),
+            state.remote_file_sessions(),
             peer_id,
             share_id,
             relative_path,
@@ -844,7 +951,7 @@ pub async fn start_remote_file_promise_drag(
         remote_file_drag_linux::start_remote_file_promise_drag(
             app,
             window,
-            state.clipboard_sync.clone(),
+            state.remote_file_sessions(),
             peer_id,
             share_id,
             relative_path,
@@ -854,6 +961,7 @@ pub async fn start_remote_file_promise_drag(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn get_remote_file_thumbnail(
     app: AppHandle,
     state: &DesktopState,
@@ -861,16 +969,13 @@ pub async fn get_remote_file_thumbnail(
     share_id: String,
     relative_path: String,
     modified_at_ms: i64,
+    owner: String,
+    generation: u64,
 ) -> Result<Option<String>, String> {
-    let key = format!("{peer_id}\0{share_id}\0{relative_path}\0{modified_at_ms}");
-    let key_lock = state.remote_file_service.thumbnail_key(&key);
-    let _key_guard = key_lock.lock().await;
-    let _slot = state
+    let cancellation = state
         .remote_file_service
-        .thumbnail_slots
-        .acquire()
-        .await
-        .map_err(|e| e.to_string())?;
+        .thumbnail_scope(owner, generation)?;
+    let key = format!("{peer_id}\0{share_id}\0{relative_path}\0{modified_at_ms}");
     let digest = Sha256::digest(key.as_bytes());
     let file_name = digest
         .iter()
@@ -882,41 +987,65 @@ pub async fn get_remote_file_thumbnail(
         .map_err(|error| error.to_string())?
         .join("remote-file-thumbnails");
     let destination = directory.join(format!("{file_name}.png"));
-    if destination.is_file() {
+    if tokio::fs::try_exists(&destination)
+        .await
+        .map_err(|e| e.to_string())?
+    {
         return Ok(Some(destination.to_string_lossy().into_owned()));
     }
-    let mut attempt = 0;
-    let (bytes, media_type) = loop {
-        match state
-            .clipboard_sync
-            .remote_file_thumbnail(&peer_id, share_id.clone(), relative_path.clone(), 320)
+    let download = async {
+        let key_lock = state.remote_file_service.thumbnail_key(&key);
+        let _key_guard = key_lock.lock().await;
+        let _slot = state
+            .remote_file_service
+            .thumbnail_slots
+            .acquire()
             .await
-        {
-            Ok(result) => break result,
-            Err(error) if attempt < 2 => {
-                attempt += 1;
-                tracing::debug!(%error, attempt, "retry remote thumbnail");
-                tokio::time::sleep(std::time::Duration::from_millis(300 * attempt)).await;
-            }
-            Err(error) => return Err(error),
-        }
-    };
-    if media_type != "image/png" {
-        return Ok(None);
-    }
-    tokio::fs::create_dir_all(&directory)
-        .await
-        .map_err(|error| error.to_string())?;
-    let cache_path = destination.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::infrastructure::durable_file::replace(&cache_path, &bytes)
             .map_err(|e| e.to_string())?;
-        prune_thumbnail_cache(&cache_path);
-        Ok::<_, String>(())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    Ok(Some(destination.to_string_lossy().into_owned()))
+        if tokio::fs::try_exists(&destination)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            return Ok(Some(destination.to_string_lossy().into_owned()));
+        }
+        let mut attempt = 0;
+        let (bytes, media_type) = loop {
+            match state
+                .remote_file_sessions()
+                .remote_file_thumbnail(&peer_id, share_id.clone(), relative_path.clone(), 320)
+                .await
+            {
+                Ok(result) => break result,
+                Err(error) if attempt < 2 => {
+                    attempt += 1;
+                    tracing::debug!(%error, attempt, "retry remote thumbnail");
+                    tokio::time::sleep(std::time::Duration::from_millis(300 * attempt)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        };
+        if media_type != "image/png" {
+            return Ok(None);
+        }
+        tokio::fs::create_dir_all(&directory)
+            .await
+            .map_err(|error| error.to_string())?;
+        let cache_path = destination.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::infrastructure::durable_file::replace(&cache_path, &bytes)
+                .map_err(|e| e.to_string())?;
+            prune_thumbnail_cache(&cache_path);
+            Ok::<_, String>(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        Ok(Some(destination.to_string_lossy().into_owned()))
+    };
+    tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => Err("thumbnail request cancelled".into()),
+        result = tokio::time::timeout(std::time::Duration::from_secs(15), download) => result.map_err(|_| "thumbnail request timed out".to_string())?,
+    }
 }
 
 async fn create_remote_drag_preview(source: PathBuf) -> Result<PathBuf, String> {
@@ -1077,7 +1206,7 @@ pub async fn open_remote_entry(
     }
     clean_stale_remote_open_files_once();
     let share = state
-        .clipboard_sync
+        .remote_file_sessions()
         .remote_file_request(&peer_id, RemoteFileRequest::ListShares)
         .await
         .map_err(|error| error.to_string())?
@@ -1085,8 +1214,13 @@ pub async fn open_remote_entry(
         .into_iter()
         .find(|share| share.id == share_id)
         .ok_or_else(|| "remote shared directory not found".to_string())?;
-    let entry =
-        fetch_remote_entry(&state.clipboard_sync, &peer_id, &share_id, &relative_path).await?;
+    let entry = fetch_remote_entry(
+        state.remote_file_sessions().as_ref(),
+        &peer_id,
+        &share_id,
+        &relative_path,
+    )
+    .await?;
     if entry.kind != arcrelay_protocol::remote_files::RemoteFileKind::File {
         return Err("only files can be opened with a system application".into());
     }
@@ -1099,18 +1233,21 @@ pub async fn open_remote_entry(
         peer_id.clone(),
         share_id.clone(),
         remote_parent_path(&relative_path)?,
-    );
+    )?;
     let progress = remote_file_progress_callback(app.clone(), transfer.id.clone());
-    let download = state
-        .clipboard_sync
-        .download_remote_file_with_progress(
+    let manager = state.remote_file_sessions();
+    let download = cancellable_remote_work(
+        &app,
+        &transfer.id,
+        manager.download_remote_file_with_progress(
             &peer_id,
             share_id.clone(),
             relative_path.clone(),
             destination,
             Some(progress),
-        )
-        .await;
+        ),
+    )
+    .await;
     let local_path = match download {
         Ok(path) => {
             finish_remote_file_transfer(&app, &transfer.id, Ok(()));
@@ -1140,7 +1277,7 @@ pub async fn open_remote_entry(
                     editable,
                 },
             );
-        let manager = state.clipboard_sync.clone();
+        let manager = state.remote_file_sessions();
         let app = app.clone();
         let local_path_for_task = local_path.clone();
         let remote_name = entry.name.clone();
@@ -1223,7 +1360,7 @@ fn remote_parent_path(relative_path: &str) -> Result<String, String> {
 }
 
 async fn fetch_remote_entry(
-    manager: &crate::clipboard_sync::ClipboardSyncManager,
+    manager: &dyn crate::application::remote_file_session::RemoteFileSession,
     peer_id: &str,
     share_id: &str,
     relative_path: &str,
@@ -1277,7 +1414,7 @@ async fn hash_file(path: &Path) -> Result<[u8; 32], String> {
 #[allow(clippy::too_many_arguments)]
 async fn monitor_remote_text_edit(
     app: AppHandle,
-    manager: Arc<crate::clipboard_sync::ClipboardSyncManager>,
+    manager: Arc<dyn crate::application::remote_file_session::RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -1364,7 +1501,7 @@ async fn monitor_remote_text_edit(
         }
 
         let current_remote =
-            match fetch_remote_entry(&manager, &peer_id, &share_id, &relative_path).await {
+            match fetch_remote_entry(manager.as_ref(), &peer_id, &share_id, &relative_path).await {
                 Ok(entry) => entry,
                 Err(error) => {
                     emit_remote_edit_event(
@@ -1411,7 +1548,9 @@ async fn monitor_remote_text_edit(
         match result {
             Ok(()) => {
                 let refreshed =
-                    match fetch_remote_entry(&manager, &peer_id, &share_id, &relative_path).await {
+                    match fetch_remote_entry(manager.as_ref(), &peer_id, &share_id, &relative_path)
+                        .await
+                    {
                         Ok(entry) => entry,
                         Err(error) => {
                             emit_remote_edit_event(
@@ -1785,7 +1924,7 @@ pub async fn delete_remote_entries(
     let mut results = Vec::with_capacity(paths.len());
     for path in paths {
         let result = state
-            .clipboard_sync
+            .remote_file_sessions()
             .remote_file_request(
                 &peer_id,
                 RemoteFileRequest::Delete {
@@ -1825,4 +1964,39 @@ pub async fn stop_remote_edit(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .remove(&key);
     Ok(())
+}
+
+pub fn cancel_remote_file_transfer(state: &DesktopState, id: &str) -> Result<(), String> {
+    state.remote_file_service.work.cancel(id)
+}
+pub fn cancel_remote_thumbnails(
+    state: &DesktopState,
+    owner: String,
+    generation: u64,
+) -> Result<(), String> {
+    state
+        .remote_file_service
+        .thumbnail_scope(owner, generation)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use super::*;
+    #[test]
+    fn thumbnail_generations_cancel_previous_work_and_reject_late_requests_without_runtime() {
+        let service = RemoteFileService::default();
+        let first = service.thumbnail_scope("files".into(), 1).unwrap();
+        let same = service.thumbnail_scope("files".into(), 1).unwrap();
+        let other = service.thumbnail_scope("preview".into(), 1).unwrap();
+        let next = service.thumbnail_scope("files".into(), 2).unwrap();
+        assert!(first.is_cancelled());
+        assert!(same.is_cancelled());
+        assert!(!other.is_cancelled());
+        assert!(!next.is_cancelled());
+        assert!(service.thumbnail_scope("files".into(), 1).is_err());
+        service.shutdown();
+        assert!(other.is_cancelled());
+        assert!(next.is_cancelled());
+    }
 }

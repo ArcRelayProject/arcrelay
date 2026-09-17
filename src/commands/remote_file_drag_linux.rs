@@ -8,15 +8,16 @@ use gtk::prelude::{DragContextExtManual, PixbufLoaderExt, WidgetExt, WidgetExtMa
 use gtk::{gdk, gdk_pixbuf};
 use tauri::{AppHandle, WebviewWindow};
 
-use crate::clipboard_sync::ClipboardSyncManager;
+use crate::application::remote_file_session::RemoteFileSession;
 
 use super::{
-    finish_remote_file_transfer, register_remote_file_transfer, remote_file_progress_callback,
+    cancellable_remote_work, finish_remote_file_transfer, register_remote_file_transfer,
+    remote_file_progress_callback,
 };
 
 struct LazyDownload {
     app: AppHandle,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -49,16 +50,19 @@ impl LazyDownload {
             self.peer_id.clone(),
             self.share_id.clone(),
             directory_path,
-        );
+        )?;
         let progress = remote_file_progress_callback(self.app.clone(), session.id.clone());
-        let result =
-            tauri::async_runtime::block_on(self.manager.download_remote_file_with_progress(
+        let result = tauri::async_runtime::block_on(cancellable_remote_work(
+            &self.app,
+            &session.id,
+            self.manager.download_remote_file_with_progress(
                 &self.peer_id,
                 self.share_id.clone(),
                 self.relative_path.clone(),
                 self.destination.clone(),
                 Some(progress),
-            ));
+            ),
+        ));
         finish_remote_file_transfer(
             &self.app,
             &session.id,
@@ -73,7 +77,7 @@ impl LazyDownload {
 pub async fn start_remote_file_promise_drag(
     app: AppHandle,
     window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -115,7 +119,7 @@ pub async fn start_remote_file_promise_drag(
 fn start_drag_on_main_thread(
     app: AppHandle,
     window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,

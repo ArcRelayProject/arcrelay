@@ -39,13 +39,14 @@ use windows::Win32::UI::Shell::{
 use arcrelay_protocol::remote_files::RemoteFileKind;
 use tauri::{AppHandle, WebviewWindow};
 
-use crate::clipboard_sync::{
-    ClipboardSyncManager, RemoteFileProgressCallback, RemoteFileStreamReceiver,
+use crate::application::remote_file_session::{
+    RemoteFileProgressCallback, RemoteFileSession, RemoteFileStreamReceiver,
     RemoteFileTransferProgress,
 };
 
 use super::{
-    finish_remote_file_transfer, register_remote_file_transfer, remote_file_progress_callback,
+    cancellable_remote_work, finish_remote_file_transfer, register_remote_file_transfer,
+    remote_file_progress_callback,
 };
 
 const MAX_VIRTUAL_DRAG_ENTRIES: usize = 10_000;
@@ -63,7 +64,7 @@ struct VirtualEntry {
 pub async fn start_remote_file_promise_drag(
     app: AppHandle,
     window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -87,7 +88,7 @@ pub async fn start_remote_file_promise_drag(
 }
 
 async fn collect_virtual_entries(
-    manager: &Arc<ClipboardSyncManager>,
+    manager: &Arc<dyn RemoteFileSession>,
     peer_id: &str,
     share_id: &str,
     relative_path: &str,
@@ -151,7 +152,7 @@ fn validate_virtual_path(path: &str) -> Result<(), String> {
 fn run_drag(
     app: AppHandle,
     _window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     entries: Vec<VirtualEntry>,
@@ -196,7 +197,7 @@ impl IDropSource_Impl for RemoteFileDropSource_Impl {
 #[implement(IDataObject, IDataObjectAsyncCapability)]
 struct RemoteFileDataObject {
     app: AppHandle,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     entries: Vec<VirtualEntry>,
@@ -209,7 +210,7 @@ struct RemoteFileDataObject {
 impl RemoteFileDataObject {
     fn new(
         app: AppHandle,
-        manager: Arc<ClipboardSyncManager>,
+        manager: Arc<dyn RemoteFileSession>,
         peer_id: String,
         share_id: String,
         entries: Vec<VirtualEntry>,
@@ -479,7 +480,7 @@ struct RemoteStreamState {
 #[implement(IStream)]
 struct RemoteFileStream {
     app: AppHandle,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -491,7 +492,7 @@ struct RemoteFileStream {
 impl RemoteFileStream {
     fn new(
         app: AppHandle,
-        manager: Arc<ClipboardSyncManager>,
+        manager: Arc<dyn RemoteFileSession>,
         peer_id: String,
         share_id: String,
         relative_path: String,
@@ -525,11 +526,8 @@ impl RemoteFileStream {
             .write(true)
             .open(&cache_path)
             .map_err(|error| error.to_string())?;
-        let receiver = tauri::async_runtime::block_on(self.manager.stream_remote_file(
-            &self.peer_id,
-            self.share_id.clone(),
-            self.relative_path.clone(),
-        ))?;
+        state.cache = Some(cache);
+        state.cache_path = Some(cache_path);
         let directory_path = self
             .relative_path
             .rsplit_once('/')
@@ -542,23 +540,53 @@ impl RemoteFileStream {
             self.peer_id.clone(),
             self.share_id.clone(),
             directory_path,
-        );
+        )?;
         state.progress = Some(remote_file_progress_callback(
             self.app.clone(),
             session.id.clone(),
         ));
-        state.session_id = Some(session.id);
-        state.receiver = Some(receiver);
-        state.cache = Some(cache);
-        state.cache_path = Some(cache_path);
+        state.session_id = Some(session.id.clone());
+        let receiver = tauri::async_runtime::block_on(cancellable_remote_work(
+            &self.app,
+            &session.id,
+            self.manager.stream_remote_file(
+                &self.peer_id,
+                self.share_id.clone(),
+                self.relative_path.clone(),
+            ),
+        ));
+        match receiver {
+            Ok(receiver) => state.receiver = Some(receiver),
+            Err(error) => {
+                state.error = Some(error.clone());
+                state.complete = true;
+                self.report_completion(state, Err(error.clone()));
+                return Err(error);
+            }
+        }
         Ok(())
     }
 
     fn receive_next(&self, state: &mut RemoteStreamState) -> Result<(), String> {
-        let next = state
-            .receiver
-            .as_mut()
-            .and_then(RemoteFileStreamReceiver::blocking_recv);
+        let session_id = state
+            .session_id
+            .clone()
+            .ok_or_else(|| "remote file transfer not found".to_string())?;
+        let next = if let Some(receiver) = state.receiver.as_mut() {
+            match tauri::async_runtime::block_on(cancellable_remote_work(
+                &self.app,
+                &session_id,
+                async { Ok(receiver.recv().await) },
+            )) {
+                Ok(next) => next,
+                Err(error) => {
+                    state.receiver.take();
+                    Some(Err(error))
+                }
+            }
+        } else {
+            None
+        };
         match next {
             Some(Ok(chunk)) => {
                 if let Some(cache) = state.cache.as_mut() {
@@ -655,10 +683,7 @@ impl Drop for RemoteFileStream {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.session_id.is_some() && !state.reported {
-            self.report_completion(
-                &mut state,
-                Err("dragged file transfer was cancelled".into()),
-            );
+            self.report_completion(&mut state, Err("remote file transfer cancelled".into()));
         }
         state.receiver.take();
         state.cache.take();

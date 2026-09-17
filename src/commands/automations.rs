@@ -179,3 +179,25 @@ pub async fn clear_automation_activities(state: State<'_, DesktopState>) -> Resu
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_commands_automations_ipc.rs"));
+
+#[arcrelay_desktop_ipc::command]
+pub async fn check_automations(
+    state: State<'_, DesktopState>,
+    definitions: Vec<AutomationDefinition>,
+    capabilities: Vec<Capability>,
+) -> Result<Vec<Vec<AutomationIssue>>, String> {
+    if definitions.len() > 128 {
+        return Err("too many automation definitions in one check".into());
+    }
+    let mut results = Vec::with_capacity(definitions.len());
+    for definition in definitions {
+        results.push(
+            state
+                .automations
+                .engine
+                .preflight_with_capabilities(&definition, &capabilities)
+                .await,
+        );
+    }
+    Ok(results)
+}

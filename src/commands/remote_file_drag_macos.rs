@@ -18,10 +18,11 @@ use tauri::{AppHandle, WebviewWindow};
 
 use arcrelay_protocol::remote_files::RemoteFileKind;
 
-use crate::clipboard_sync::ClipboardSyncManager;
+use crate::application::remote_file_session::RemoteFileSession;
 
 use super::{
-    finish_remote_file_transfer, register_remote_file_transfer, remote_file_progress_callback,
+    cancellable_remote_work, finish_remote_file_transfer, register_remote_file_transfer,
+    remote_file_progress_callback,
 };
 
 static ACTIVE_PROMISES: OnceLock<Mutex<HashMap<String, Retained<RemoteFilePromiseDelegate>>>> =
@@ -34,7 +35,7 @@ fn active_promises() -> &'static Mutex<HashMap<String, Retained<RemoteFilePromis
 struct RemoteFilePromiseIvars {
     id: String,
     app: AppHandle,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -94,29 +95,34 @@ fn fulfill_remote_file_promise(
         .map(|path| PathBuf::from(path.to_string()));
 
     let result = if let Some(destination) = destination {
-        let session = register_remote_file_transfer(
-            &ivars.app,
-            "download",
-            ivars.name.clone(),
-            ivars.peer_id.clone(),
-            ivars.share_id.clone(),
-            ivars.directory_path.clone(),
-        );
-        let progress = remote_file_progress_callback(ivars.app.clone(), session.id.clone());
-        let result =
-            tauri::async_runtime::block_on(ivars.manager.download_remote_file_with_progress(
-                &ivars.peer_id,
+        (|| -> Result<(), String> {
+            let session = register_remote_file_transfer(
+                &ivars.app,
+                "download",
+                ivars.name.clone(),
+                ivars.peer_id.clone(),
                 ivars.share_id.clone(),
-                ivars.relative_path.clone(),
-                destination,
-                Some(progress),
+                ivars.directory_path.clone(),
+            )?;
+            let progress = remote_file_progress_callback(ivars.app.clone(), session.id.clone());
+            let result = tauri::async_runtime::block_on(cancellable_remote_work(
+                &ivars.app,
+                &session.id,
+                ivars.manager.download_remote_file_with_progress(
+                    &ivars.peer_id,
+                    ivars.share_id.clone(),
+                    ivars.relative_path.clone(),
+                    destination,
+                    Some(progress),
+                ),
             ));
-        finish_remote_file_transfer(
-            &ivars.app,
-            &session.id,
-            result.as_ref().map(|_| ()).map_err(Clone::clone),
-        );
-        result.map(|_| ())
+            finish_remote_file_transfer(
+                &ivars.app,
+                &session.id,
+                result.as_ref().map(|_| ()).map_err(Clone::clone),
+            );
+            result.map(|_| ())
+        })()
     } else {
         Err("drag target is not a local folder".to_string())
     };
@@ -140,7 +146,7 @@ impl RemoteFilePromiseDelegate {
     fn new(
         id: String,
         app: AppHandle,
-        manager: Arc<ClipboardSyncManager>,
+        manager: Arc<dyn RemoteFileSession>,
         peer_id: String,
         share_id: String,
         relative_path: String,
@@ -262,7 +268,7 @@ fn schedule_promise_release(promise_id: String) {
 pub async fn start_remote_file_promise_drag(
     app: AppHandle,
     window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,
@@ -319,7 +325,7 @@ pub async fn start_remote_file_promise_drag(
 unsafe fn start_drag_on_main_thread(
     app: AppHandle,
     window: WebviewWindow,
-    manager: Arc<ClipboardSyncManager>,
+    manager: Arc<dyn RemoteFileSession>,
     peer_id: String,
     share_id: String,
     relative_path: String,

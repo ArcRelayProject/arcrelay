@@ -82,6 +82,8 @@ export type ClipboardLabel = { id: string, name: string, color: string, revision
 
 export type ClipboardMergeSummary = { devices: number, received: number, sent: number, labelsReceived: number, labelsSent: number, failed: number, totalRecords: number, complete: boolean, failures: Array<string>, };
 
+export type ClipboardNavigationKey = { key: string, code: string, ctrlKey: boolean, shiftKey: boolean, altKey: boolean, metaKey: boolean, repeat: boolean, generation: number, };
+
 export type ClipboardOcrBlock = { text: string, confidence: number, left: number, top: number, width: number, height: number,
 /**
  * Four corners in source-image pixel coordinates when the detector
@@ -103,7 +105,7 @@ points: [ClipboardOcrPoint, ClipboardOcrPoint, ClipboardOcrPoint, ClipboardOcrPo
 
 export type ClipboardOcrPoint = { x: number, y: number, };
 
-export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml";
+export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml" | "image_jpg" | "image_png";
 
 export type ClipboardSortPreference = "createdAt" | "updatedAt";
 
@@ -501,6 +503,7 @@ export type WorkspaceId = string;
 export type WorkspaceLayout = { workspaceId: WorkspaceId, revision: TopologyRevision, displays: { [key in DisplayId]: DisplaySurface }, portals: Array<Portal>, };
 
 export interface CommandMap {
+  activate_clipboard_navigation: { args: { }; result: number };
   add_remote_file_share: { args: { }; result: LocalSharedDirectory | null };
   add_system_folder: { args: { peerId: string; shareId: string; }; result: SystemFolder };
   arrange_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
@@ -510,9 +513,12 @@ export interface CommandMap {
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_presence_enrollment: { args: { }; result: GazeStatusView };
+  cancel_remote_file_transfer: { args: { id: string; }; result: null };
+  cancel_remote_thumbnails: { args: { generation: number; owner: string; }; result: null };
   cancel_transfer: { args: { transferId: string; }; result: null };
   capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
+  check_automations: { args: { capabilities: Array<Capability>; definitions: Array<AutomationDefinition>; }; result: Array<Array<AutomationIssue>> };
   check_for_app_update: { args: { }; result: AppUpdateCheckResult };
   choose_transfer_receive_directory: { args: { }; result: TransferSnapshot };
   clear_automation_activities: { args: { }; result: null };
@@ -595,7 +601,7 @@ export interface CommandMap {
   get_print_job_activity: { args: { }; result: PrintJobActivitySnapshot };
   get_printer_sharing_state: { args: { }; result: PrinterSharingSnapshot };
   get_remote_file_state: { args: { }; result: RemoteFileState };
-  get_remote_file_thumbnail: { args: { modifiedAtMs: number; peerId: string; relativePath: string; shareId: string; }; result: string | null };
+  get_remote_file_thumbnail: { args: { generation: number; modifiedAtMs: number; owner: string; peerId: string; relativePath: string; shareId: string; }; result: string | null };
   get_runtime_modules: { args: { }; result: Array<ModuleStatus> };
   get_sound_mute_until: { args: { }; result: number | null };
   get_transfer_state: { args: { }; result: TransferSnapshot };
@@ -621,6 +627,7 @@ export interface CommandMap {
   list_system_folders: { args: { }; result: Array<SystemFolder> };
   list_system_share_requests: { args: { }; result: Array<SystemShareRequest> };
   mark_notification_read: { args: { notificationId: string; }; result: Array<NotificationView> };
+  observe_action_output: { args: { actionId: string | null; }; result: null };
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
   open_accessibility_system_settings: { args: { }; result: null };
   open_automation_screen_permission: { args: { }; result: null };
@@ -673,6 +680,8 @@ export interface CommandMap {
   send_transfer: { args: { paths: Array<string>; peerId: string; }; result: string };
   set_automation_enabled: { args: { automationId: string; enabled: boolean; }; result: null };
   set_clipboard_context_menu_open: { args: { open: boolean; }; result: null };
+  set_clipboard_navigation_ready: { args: { ready: boolean; }; result: number };
+  set_clipboard_window_editing: { args: { editing: boolean; }; result: number };
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };
   set_device_auto_connect: { args: { deviceId: string; enabled: boolean; }; result: null };
@@ -724,6 +733,8 @@ export interface EventMap {
   "automation-configuration": null;
   "clipboard-changed": null;
   "clipboard-continuous-paste-error": string;
+  "clipboard-navigation-key": ClipboardNavigationKey;
+  "clipboard-navigation-paused": null;
   "clipboard-ocr-changed": number;
   "clipboard-window-hidden": null;
   "clipboard-window-pin-changed": boolean;

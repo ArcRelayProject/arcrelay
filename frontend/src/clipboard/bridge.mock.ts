@@ -164,6 +164,18 @@ function mockHistory(search: string, kind: ClipboardKind | null, favoriteOnly: b
     return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
 export const clipboardBridge = {
+    setEditing: async (_editing: boolean) => 0,
+    navigationReady: async (_ready: boolean) => 0,
+    activateNavigation: async () => 0,
+    onNavigation: async (handler: (key: import('../ipc/generated').ClipboardNavigationKey) => void): Promise<UnlistenFn> => {
+        const listener = (event: Event) => handler((event as CustomEvent).detail);
+        window.addEventListener('mock-clipboard-navigation', listener);
+        return () => window.removeEventListener('mock-clipboard-navigation', listener);
+    },
+    onNavigationPaused: async (handler: () => void): Promise<UnlistenFn> => {
+        window.addEventListener('mock-clipboard-navigation-paused', handler);
+        return () => window.removeEventListener('mock-clipboard-navigation-paused', handler);
+    },
     timeline: async (position: ClipboardTimelinePosition, sortBy: ClipboardSortPreference, limit = 30): Promise<ClipboardTimeline | null> => {
         const timestamp = (item: ClipboardItem) => sortBy === "createdAt" ? item.firstCapturedAtMs : item.updatedAtMs;
         const sorted = [...mockItems].sort((a, b) => timestamp(b) - timestamp(a) || (b.syncId > a.syncId ? 1 : b.syncId < a.syncId ? -1 : 0));

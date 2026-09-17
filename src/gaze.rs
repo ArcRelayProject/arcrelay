@@ -272,7 +272,7 @@ impl GazeService {
             return self.configure_tracker(tracker).await;
         }
         if self.model_pack.lock().await.state != "ready" {
-            return Err("请先下载眼动模型组件".into());
+            return Err("download the gaze model components first".into());
         }
         let _loading = self.tracker_loading.lock().await;
         if let Some(tracker) = self.initialized_tracker() {
@@ -361,7 +361,7 @@ impl GazeService {
             .snapshot()
             .configuration
             .layout
-            .ok_or_else(|| "请先完成跨屏输入的屏幕布局".to_string())?;
+            .ok_or_else(|| "configure the input sharing display layout first".to_string())?;
         let profile = self
             .load_profile()
             .and_then(|profile| compatible_profile(profile, &camera_id, &layout));
@@ -546,10 +546,10 @@ impl GazeService {
         let parent = self
             .model_directory
             .parent()
-            .ok_or_else(|| "眼动模型目录无效".to_string())?;
+            .ok_or_else(|| "invalid gaze model directory".to_string())?;
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|error| format!("创建眼动模型目录失败: {error}"))?;
+            .map_err(|error| format!("failed to create gaze model directory: {error}"))?;
         let download_path = parent.join(format!(
             ".gaze-models-{}-{}.zip.partial",
             MODEL_BUNDLE_VERSION,
@@ -590,22 +590,22 @@ impl GazeService {
         let client = reqwest::Client::builder()
             .user_agent(format!("ArcRelay/{}", env!("CARGO_PKG_VERSION")))
             .build()
-            .map_err(|error| format!("创建眼动模型下载器失败: {error}"))?;
+            .map_err(|error| format!("failed to create gaze model downloader: {error}"))?;
         let response = client
             .get(MODEL_ARCHIVE_URL)
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(|error| format!("下载眼动模型失败: {error}"))?;
+            .map_err(|error| format!("failed to download gaze models: {error}"))?;
         if response
             .content_length()
             .is_some_and(|size| size != MODEL_ARCHIVE_SIZE)
         {
-            return Err("眼动模型下载大小与发布清单不一致".into());
+            return Err("gaze model download size does not match the release manifest".into());
         }
         let mut output = tokio::fs::File::create(download_path)
             .await
-            .map_err(|error| format!("创建眼动模型临时文件失败: {error}"))?;
+            .map_err(|error| format!("failed to create temporary gaze model file: {error}"))?;
         let mut stream = response.bytes_stream();
         let mut digest = Sha256::new();
         let mut downloaded = 0_u64;
@@ -613,18 +613,18 @@ impl GazeService {
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|error| format!("接收眼动模型失败: {error}"))?;
+            let chunk = chunk.map_err(|error| format!("failed to receive gaze models: {error}"))?;
             downloaded = downloaded
                 .checked_add(chunk.len() as u64)
-                .ok_or_else(|| "眼动模型下载大小溢出".to_string())?;
+                .ok_or_else(|| "gaze model download size overflow".to_string())?;
             if downloaded > MODEL_ARCHIVE_SIZE {
-                return Err("眼动模型下载超过发布清单大小".into());
+                return Err("gaze model download exceeds the release manifest size".into());
             }
             digest.update(&chunk);
             output
                 .write_all(&chunk)
                 .await
-                .map_err(|error| format!("写入眼动模型失败: {error}"))?;
+                .map_err(|error| format!("failed to write gaze models: {error}"))?;
             self.model_pack.lock().await.downloaded_bytes = downloaded;
             if last_emitted.elapsed() >= Duration::from_millis(150) {
                 self.emit_status(app).await;
@@ -634,15 +634,15 @@ impl GazeService {
         output
             .flush()
             .await
-            .map_err(|error| format!("保存眼动模型失败: {error}"))?;
+            .map_err(|error| format!("failed to save gaze models: {error}"))?;
         drop(output);
         if downloaded != MODEL_ARCHIVE_SIZE {
             return Err(format!(
-                "眼动模型下载不完整：收到 {downloaded} 字节，预期 {MODEL_ARCHIVE_SIZE} 字节"
+                "incomplete gaze model download: received {downloaded} bytes, expected {MODEL_ARCHIVE_SIZE} bytes"
             ));
         }
         if format!("{:x}", digest.finalize()) != MODEL_ARCHIVE_SHA256 {
-            return Err("眼动模型压缩包 SHA-256 校验失败".into());
+            return Err("gaze model archive SHA-256 verification failed".into());
         }
 
         {
@@ -658,7 +658,7 @@ impl GazeService {
             extract_and_activate_model_bundle(&archive, &temporary, &destination)
         })
         .await
-        .map_err(|error| format!("眼动模型校验任务失败: {error}"))??;
+        .map_err(|error| format!("gaze model verification task failed: {error}"))??;
         Ok(())
     }
 
@@ -669,7 +669,7 @@ impl GazeService {
         match tokio::fs::remove_dir_all(&self.model_directory).await {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("删除眼动模型失败: {error}")),
+            Err(error) => return Err(format!("failed to remove gaze models: {error}")),
         }
         *self.model_pack.lock().await = GazeModelPackStatusView::not_installed();
         self.emit_status(&app).await;
@@ -786,14 +786,14 @@ impl GazeService {
             .snapshot()
             .configuration
             .layout
-            .ok_or_else(|| "请先完成跨屏输入的屏幕布局".to_string())?;
+            .ok_or_else(|| "configure the input sharing display layout first".to_string())?;
         if let Some(display_id) = refine_display_id.as_ref() {
             if !layout
                 .displays
                 .values()
                 .any(|display| display.display_id.as_str() == display_id)
             {
-                return Err("要优化的屏幕不在当前布局中".into());
+                return Err("the display to refine is not in the current layout".into());
             }
         }
         let base_profile = if refine_display_id.is_some() {
@@ -803,7 +803,9 @@ impl GazeService {
                 .await
                 .clone()
                 .and_then(|profile| compatible_profile(profile, &camera_id, &layout))
-                .ok_or_else(|| "请先完成一次全屏标定，再单独优化屏幕".to_string())?;
+                .ok_or_else(|| {
+                    "complete a full display calibration before refining a display".to_string()
+                })?;
             Some(profile)
         } else {
             None
@@ -826,7 +828,7 @@ impl GazeService {
             .borrow()
             .observation
             .clone()
-            .ok_or_else(|| "当前没有可用的头部姿态观测".to_string())?;
+            .ok_or_else(|| "no head pose observation is currently available".to_string())?;
         let point = DeskPointUm {
             x: desk_x_um,
             y: desk_y_um,
@@ -836,23 +838,23 @@ impl GazeService {
             .snapshot()
             .configuration
             .layout
-            .ok_or_else(|| "屏幕布局在标定期间被移除".to_string())?;
+            .ok_or_else(|| "display layout was removed during calibration".to_string())?;
         let display_id = layout
             .displays
             .values()
             .find(|display| display.desk_rect_um.contains(point))
             .map(|display| display.display_id.to_string())
-            .ok_or_else(|| "标定点不属于当前屏幕布局".to_string())?;
+            .ok_or_else(|| "calibration target is not in the current display layout".to_string())?;
         let mut calibration = self.calibration.lock().await;
         let calibration = calibration
             .as_mut()
-            .ok_or_else(|| "尚未开始标定".to_string())?;
+            .ok_or_else(|| "calibration has not started".to_string())?;
         if calibration
             .refine_display_id
             .as_ref()
             .is_some_and(|expected| expected != &display_id)
         {
-            return Err("当前优化样本不属于所选屏幕".into());
+            return Err("refinement sample does not belong to the selected display".into());
         }
         calibration
             .calibrator
@@ -868,7 +870,7 @@ impl GazeService {
             .await
             .as_ref()
             .cloned()
-            .ok_or_else(|| "尚未开始标定".to_string())?;
+            .ok_or_else(|| "calibration has not started".to_string())?;
         let refined_profile = calibration
             .calibrator
             .finish()
@@ -878,7 +880,7 @@ impl GazeService {
             .snapshot()
             .configuration
             .layout
-            .ok_or_else(|| "屏幕布局在标定期间被移除".to_string())?;
+            .ok_or_else(|| "display layout was removed during calibration".to_string())?;
         let profile = if let (Some(display_id), Some(mut base)) =
             (calibration.refine_display_id, calibration.base_profile)
         {
@@ -910,7 +912,7 @@ impl GazeService {
         match std::fs::remove_file(&self.profile_path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("删除眼动标定失败: {error}")),
+            Err(error) => return Err(format!("failed to remove gaze calibration: {error}")),
         }
         Ok(self.status().await)
     }
@@ -925,7 +927,7 @@ impl GazeService {
         display_name: String,
     ) -> Result<GazeStatusView, String> {
         if self.session.lock().await.is_none() {
-            return Err("请先启动摄像头追踪，再录入本机用户".into());
+            return Err("start camera tracking before enrolling the local user".into());
         }
         self.tracker()
             .await?
@@ -953,7 +955,11 @@ impl GazeService {
         match std::fs::remove_file(&self.presence_profile_path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("删除本机用户人脸模板失败: {error}")),
+            Err(error) => {
+                return Err(format!(
+                    "failed to remove local user face template: {error}"
+                ))
+            }
         }
         crate::desktop_notification::set_presence_preview_restricted(false);
         self.presence_access.update(false, PresenceState::Uncertain);
@@ -1037,19 +1043,19 @@ impl GazeService {
     fn save_profile(&self, profile: &CalibrationProfile) -> Result<(), String> {
         let bytes = serde_json::to_vec_pretty(profile).map_err(|error| error.to_string())?;
         crate::infrastructure::durable_file::replace_private(&self.profile_path, &bytes)
-            .map_err(|error| format!("保存眼动标定失败: {error}"))
+            .map_err(|error| format!("failed to save gaze calibration: {error}"))
     }
 
     fn save_presence_profile(&self, profile: &PresenceProfile) -> Result<(), String> {
         let bytes = serde_json::to_vec_pretty(profile).map_err(|error| error.to_string())?;
         crate::infrastructure::durable_file::replace_private(&self.presence_profile_path, &bytes)
-            .map_err(|error| format!("保存本机用户人脸模板失败: {error}"))
+            .map_err(|error| format!("failed to save local user face template: {error}"))
     }
 }
 
 fn model_load_timeout_message(timeout: Duration) -> String {
     format!(
-        "眼动与人脸识别模型加载超过 {} 秒；请重启 ArcRelay 后重试并导出诊断日志",
+        "gaze and face model loading exceeded {} seconds; restart ArcRelay, retry, and export diagnostic logs",
         timeout.as_secs()
     )
 }
@@ -1067,11 +1073,11 @@ fn extract_and_activate_model_bundle(
     destination: &Path,
 ) -> Result<(), String> {
     std::fs::create_dir_all(temporary_directory)
-        .map_err(|error| format!("创建眼动模型解压目录失败: {error}"))?;
+        .map_err(|error| format!("failed to create gaze model extraction directory: {error}"))?;
     let archive_file = std::fs::File::open(archive_path)
-        .map_err(|error| format!("打开眼动模型压缩包失败: {error}"))?;
+        .map_err(|error| format!("failed to open gaze model archive: {error}"))?;
     let mut archive = zip::ZipArchive::new(archive_file)
-        .map_err(|error| format!("读取眼动模型压缩包失败: {error}"))?;
+        .map_err(|error| format!("failed to read gaze model archive: {error}"))?;
     let mut allowed = MODEL_FILES
         .iter()
         .map(|model| model.name)
@@ -1081,33 +1087,35 @@ fn extract_and_activate_model_bundle(
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
-            .map_err(|error| format!("读取眼动模型压缩条目失败: {error}"))?;
+            .map_err(|error| format!("failed to read gaze model archive entry: {error}"))?;
         if entry.is_dir() {
-            return Err("眼动模型压缩包不能包含目录".into());
+            return Err("gaze model archive must not contain directories".into());
         }
         let name = entry.name().to_owned();
         let enclosed_path = entry
             .enclosed_name()
-            .ok_or_else(|| "眼动模型压缩包包含无效路径".to_string())?;
+            .ok_or_else(|| "gaze model archive contains an invalid path".to_string())?;
         let enclosed = enclosed_path
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| "眼动模型压缩包包含无效文件名".to_string())?;
+            .ok_or_else(|| "gaze model archive contains an invalid filename".to_string())?;
         if enclosed != name || !allowed.contains(enclosed) || !seen.insert(name.clone()) {
-            return Err(format!("眼动模型压缩包包含非预期条目: {name}"));
+            return Err(format!(
+                "gaze model archive contains an unexpected entry: {name}"
+            ));
         }
         let output_path = temporary_directory.join(enclosed);
         let mut output = std::fs::File::create(&output_path)
-            .map_err(|error| format!("创建 {} 失败: {error}", output_path.display()))?;
+            .map_err(|error| format!("failed to create {}: {error}", output_path.display()))?;
         std::io::copy(&mut entry, &mut output)
-            .map_err(|error| format!("解压 {name} 失败: {error}"))?;
+            .map_err(|error| format!("failed to extract {name}: {error}"))?;
         output
             .flush()
-            .map_err(|error| format!("保存 {name} 失败: {error}"))?;
+            .map_err(|error| format!("failed to save {name}: {error}"))?;
     }
     for model in MODEL_FILES {
         if !seen.contains(model.name) {
-            return Err(format!("眼动模型压缩包缺少 {}", model.name));
+            return Err(format!("gaze model archive is missing {}", model.name));
         }
     }
     arcrelay_gaze::OwnedModelBundle::load_from_directory(temporary_directory)
@@ -1115,10 +1123,10 @@ fn extract_and_activate_model_bundle(
 
     if destination.exists() {
         std::fs::remove_dir_all(destination)
-            .map_err(|error| format!("移除损坏的眼动模型失败: {error}"))?;
+            .map_err(|error| format!("failed to remove invalid gaze models: {error}"))?;
     }
     std::fs::rename(temporary_directory, destination)
-        .map_err(|error| format!("启用眼动模型失败: {error}"))?;
+        .map_err(|error| format!("failed to activate gaze models: {error}"))?;
     Ok(())
 }
 
@@ -1180,10 +1188,10 @@ fn presence_profile_status(
 }
 
 fn encode_preview(pixels: Arc<[u8]>, snapshot: TrackerSnapshot) -> Result<GazePreviewView, String> {
-    let image = image::RgbImage::from_raw(
+    let image = image::ImageBuffer::<image::Rgb<u8>, &[u8]>::from_raw(
         snapshot.frame_width,
         snapshot.frame_height,
-        pixels.as_ref().to_vec(),
+        pixels.as_ref(),
     )
     .ok_or_else(|| "camera preview dimensions do not match its RGB buffer".to_string())?;
     let mut jpeg = Vec::new();
@@ -1252,7 +1260,9 @@ fn merge_refined_profile(
         .head_regions
         .into_iter()
         .find(|region| region.display_id == display_id)
-        .ok_or_else(|| "没有生成所选屏幕的头部方向样本".to_string())?;
+        .ok_or_else(|| {
+            "no head direction samples were generated for the selected display".to_string()
+        })?;
     base.head_regions
         .retain(|region| region.display_id != display_id);
     base.head_regions.push(replacement);
@@ -1407,8 +1417,8 @@ mod profile_tests {
     #[test]
     fn model_load_timeout_is_reported_without_a_runtime() {
         let error = model_load_timeout_message(Duration::from_secs(17));
-        assert!(error.contains("17 秒"));
-        assert!(error.contains("重启 ArcRelay"));
+        assert!(error.contains("17 seconds"));
+        assert!(error.contains("restart ArcRelay"));
     }
 
     #[test]
@@ -1525,18 +1535,20 @@ pub fn open_gaze_calibration_windows(
             .skip_taskbar(true)
             .visible(false)
             .build()
-            .map_err(|error| format!("创建{name}标定覆盖层失败: {error}"))?;
+            .map_err(|error| format!("failed to create calibration overlay for {name}: {error}"))?;
         window
             .set_position(Position::Physical(PhysicalPosition::new(
                 position.x, position.y,
             )))
-            .map_err(|error| format!("定位{name}标定覆盖层失败: {error}"))?;
+            .map_err(|error| {
+                format!("failed to position calibration overlay for {name}: {error}")
+            })?;
         window
             .set_size(Size::Physical(PhysicalSize::new(size.width, size.height)))
-            .map_err(|error| format!("调整{name}标定覆盖层失败: {error}"))?;
+            .map_err(|error| format!("failed to resize calibration overlay for {name}: {error}"))?;
         window
             .show()
-            .map_err(|error| format!("显示{name}标定覆盖层失败: {error}"))?;
+            .map_err(|error| format!("failed to show calibration overlay for {name}: {error}"))?;
         screens.push(GazeCalibrationScreenView {
             index,
             name,
@@ -1557,7 +1569,7 @@ pub fn open_gaze_calibration_windows(
 #[tauri::command]
 pub fn focus_gaze_calibration_screen(app: AppHandle, index: usize) -> Result<(), String> {
     app.get_webview_window(&format!("{GAZE_CALIBRATION_WINDOW_PREFIX}{index}"))
-        .ok_or_else(|| format!("标定屏幕 {} 不可用", index + 1))?
+        .ok_or_else(|| format!("calibration display {} is unavailable", index + 1))?
         .set_focus()
         .map_err(|error| error.to_string())
 }
@@ -1799,12 +1811,12 @@ pub fn open_camera_permission_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let (program, argument) = ("cmd", "/C start ms-settings:privacy-webcam");
     #[cfg(target_os = "linux")]
-    return Err("请在系统设置中允许 ArcRelay 使用摄像头".into());
+    return Err("allow ArcRelay to use the camera in system settings".into());
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     std::process::Command::new(program)
         .args(argument.split_whitespace())
         .spawn()
         .map(|_| ())
-        .map_err(|error| format!("打开摄像头权限设置失败: {error}"))
+        .map_err(|error| format!("failed to open camera permission settings: {error}"))
 }

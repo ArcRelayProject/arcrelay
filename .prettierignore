@@ -1,0 +1,4 @@
+node_modules
+frontend/src/ipc/generated.ts
+frontend/src/locales
+frontend/src/assets

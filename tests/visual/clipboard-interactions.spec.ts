@@ -14,6 +14,36 @@ async function openHtml(page: import("@playwright/test").Page) {
   await expect(page.locator(".rendered-text h3")).toHaveText("设备列表");
 }
 
+test("image preview offers JPG and PNG paste actions with the selected encoding", async ({ page }) => {
+  await openClipboard(page);
+  await page.evaluate(async () => {
+    const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
+    (window as any).__imagePastes = [];
+    clipboardBridge.pasteAs = async (id: number, mode: string) => {
+      (window as any).__imagePastes.push({ id, mode });
+    };
+  });
+  const row = page.locator('[data-clipboard-id="101"] .clipboard-row');
+  await row.focus();
+  await row.press("Space");
+  await expect(page.getByRole("button", { name: "粘贴为 JPG", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "粘贴为 PNG", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "粘贴为 JPG", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__imagePastes))
+    .toEqual([{ id: 101, mode: "image_jpg" }]);
+  await page.getByRole("button", { name: "粘贴为 PNG", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__imagePastes))
+    .toEqual([{ id: 101, mode: "image_jpg" }, { id: 101, mode: "image_png" }]);
+  await page.setViewportSize({ width: 420, height: 580 });
+  for (const name of ["粘贴为 JPG", "粘贴为 PNG"]) {
+    const rect = await page.getByRole("button", { name, exact: true }).boundingBox();
+    expect(rect).not.toBeNull();
+    expect(rect!.x).toBeGreaterThanOrEqual(0);
+    expect(rect!.x + rect!.width).toBeLessThanOrEqual(420);
+  }
+  await page.screenshot({ path: "/tmp/arcrelay-clipboard-image-formats.png", animations: "disabled" });
+});
+
 test("HTML renders, double click selects, and source switching clears selection", async ({ page }) => {
   await openHtml(page);
   await page.locator(".rendered-text strong").dblclick();

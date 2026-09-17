@@ -40,6 +40,8 @@ const MAX_RICH_TEXT_BLOB_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct ClipboardSyncManager {
+    remote_transfer_slots: Arc<tokio::sync::Semaphore>,
+    remote_transfer_waiters: Arc<tokio::sync::Semaphore>,
     clipboard: Arc<ClipboardApplicationService>,
     network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
     commands: Arc<tokio::sync::Mutex<HashMap<String, mpsc::Sender<ConnectionCommand>>>>,
@@ -66,28 +68,11 @@ pub struct NearbyDesktopView {
     pub connecting: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteFileDeviceView {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RemoteFileTransferProgress {
-    pub bytes_transferred: u64,
-    pub total_bytes: u64,
-    pub files_transferred: usize,
-    pub total_files: usize,
-    pub current_name: String,
-}
-
-pub type RemoteFileProgressCallback =
-    Arc<dyn Fn(RemoteFileTransferProgress) + Send + Sync + 'static>;
-
 #[cfg(target_os = "windows")]
-pub type RemoteFileStreamReceiver = mpsc::Receiver<Result<Vec<u8>, String>>;
-
+pub use crate::application::remote_file_session::RemoteFileStreamReceiver;
+pub use crate::application::remote_file_session::{
+    RemoteFileDeviceView, RemoteFileProgressCallback, RemoteFileTransferProgress,
+};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConnectionIntent {
     Automatic,
@@ -123,6 +108,10 @@ enum ConnectionCommand {
         share_id: String,
         relative_path: String,
         chunks: mpsc::Sender<Result<Vec<u8>, String>>,
+        permits: (
+            tokio::sync::OwnedSemaphorePermit,
+            tokio::sync::OwnedSemaphorePermit,
+        ),
     },
     Upload {
         share_id: String,
@@ -259,3 +248,5 @@ use wire::*;
 
 #[cfg(test)]
 mod tests;
+
+mod session_adapter;

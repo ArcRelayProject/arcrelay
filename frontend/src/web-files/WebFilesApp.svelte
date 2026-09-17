@@ -28,12 +28,13 @@
   let exitError = "";
   let navigationRevision = 0;
 
-  initialize();
+  void initialize();
 
   onMount(() => {
-    const handlePopState = () => void syncFromLocation().catch((value) => {
-      fatalError = value instanceof Error ? value.message : String(value);
-    });
+    const handlePopState = () =>
+      void syncFromLocation().catch((value) => {
+        fatalError = value instanceof Error ? value.message : String(value);
+      });
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   });
@@ -97,7 +98,7 @@
       const unlocked = { ...pendingUnlock, unlocked: true };
       const path = pendingUnlockPath;
       const navigate = pendingUnlockNavigate;
-      shares = shares.map((share) => share.slug === unlocked.slug ? unlocked : share);
+      shares = shares.map((share) => (share.slug === unlocked.slug ? unlocked : share));
       pendingUnlock = null;
       pendingUnlockPath = "";
       openShare(unlocked, { path, navigate });
@@ -128,7 +129,8 @@
     navigationRevision += 1;
     pendingUnlock = null;
     pendingUnlockPath = "";
-    if (parseWebFilesRoute(location).kind === "share") history.replaceState(null, "", webFilesUrl({ kind: "home" }));
+    if (parseWebFilesRoute(location).kind === "share")
+      history.replaceState(null, "", webFilesUrl({ kind: "home" }));
     shares = await api.shares();
   }
 
@@ -139,7 +141,7 @@
     const locked = { ...selected, unlocked: false };
     selected = null;
     selectedPath = "";
-    shares = shares.map((share) => share.slug === locked.slug ? locked : share);
+    shares = shares.map((share) => (share.slug === locked.slug ? locked : share));
     history.replaceState(null, "", webFilesUrl({ kind: "home" }));
   }
 
@@ -166,8 +168,13 @@
     }
   }
 
-  $: unlockedCount = shares.filter((share) => share.mode === "password" && share.unlocked).length
-    + (selected?.mode === "password" && selected.unlocked && !shares.some((share) => share.slug === selected?.slug) ? 1 : 0);
+  $: unlockedCount =
+    shares.filter((share) => share.mode === "password" && share.unlocked).length +
+    (selected?.mode === "password" &&
+    selected.unlocked &&
+    !shares.some((share) => share.slug === selected?.slug)
+      ? 1
+      : 0);
 </script>
 
 <svelte:head>
@@ -179,16 +186,30 @@
   <main class="loading-screen" aria-live="polite">
     <BrandLogo size={54} />
     <span class="spinner"></span>
-    <div><strong>正在连接 ArcRelay</strong><p>正在确认这台 Mac 的共享状态…</p></div>
+    <div>
+      <strong>正在连接 ArcRelay</strong>
+      <p>正在确认这台 Mac 的共享状态…</p>
+    </div>
   </main>
 {:else if fatalError}
   <main class="loading-screen error-screen">
     <span class="status-illustration error">!</span>
-    <div><h1>无法连接这台 Mac</h1><p>{fatalError}</p></div>
+    <div>
+      <h1>无法连接这台 Mac</h1>
+      <p>{fatalError}</p>
+    </div>
     <button class="primary-action" on:click={initialize}>重新连接</button>
   </main>
 {:else if selected}
-  <FileBrowser share={selected} siteName={site?.siteName ?? "ArcRelay"} initialPath={selectedPath} {navigatePath} {goHome} lockShare={lockSelected} requestExit={requestExit} />
+  <FileBrowser
+    share={selected}
+    siteName={site?.siteName ?? "ArcRelay"}
+    initialPath={selectedPath}
+    {navigatePath}
+    {goHome}
+    lockShare={lockSelected}
+    {requestExit}
+  />
 {:else}
   <div class="site-shell">
     <header class="site-header">
@@ -201,20 +222,30 @@
       <div class="site-actions">
         <span class="connection-pill"><i></i><GlobeHemisphereWest size={16} /> 局域网连接</span>
         <span class="header-separator"></span>
-        <button class="secondary-button" on:click={requestExit}><SignOut size={17} /> 退出会话</button>
+        <button class="secondary-button" on:click={requestExit}
+          ><SignOut size={17} /> 退出会话</button
+        >
       </div>
     </header>
 
     <main class="home-main">
-      <ShareHome {shares} openShare={openShare} />
+      <ShareHome {shares} {openShare} />
     </main>
 
-    <footer class="site-footer"><span>ArcRelay {site?.version}</span><span>本机只读共享 · HTTP 局域网连接</span></footer>
+    <footer class="site-footer">
+      <span>ArcRelay {site?.version}</span><span>本机只读共享 · HTTP 局域网连接</span>
+    </footer>
   </div>
 {/if}
 
 {#if pendingUnlock}
-  <PasswordDialog shareName={pendingUnlock.name} busy={unlockBusy} error={unlockError} cancel={cancelUnlock} {unlock} />
+  <PasswordDialog
+    shareName={pendingUnlock.name}
+    busy={unlockBusy}
+    error={unlockError}
+    cancel={cancelUnlock}
+    {unlock}
+  />
 {/if}
 
 {#if exitOpen}

@@ -10,6 +10,11 @@ async function imageSource(command: "clipboard_thumbnail" | "clipboard_image_pre
     return path ? convertFileSrc(path) : null;
 }
 export const clipboardBridge = {
+    setEditing: (editing: boolean) => invoke("set_clipboard_window_editing", { editing }),
+    navigationReady: (ready: boolean) => invoke("set_clipboard_navigation_ready", { ready }),
+    activateNavigation: () => invoke("activate_clipboard_navigation"),
+    onNavigation: async (handler: (key: import('../ipc/generated').ClipboardNavigationKey) => void): Promise<UnlistenFn> => listen("clipboard-navigation-key", event => handler(event.payload)),
+    onNavigationPaused: async (handler: () => void): Promise<UnlistenFn> => listen("clipboard-navigation-paused", handler),
     timeline: (position: ClipboardTimelinePosition, sortBy: ClipboardSortPreference, limit = 30) =>
         invoke("clipboard_timeline", { position, sortBy, limit }),
     history: async (options: {

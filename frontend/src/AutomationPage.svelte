@@ -29,6 +29,8 @@
     Clock,
     FunnelSimple,
   } from "phosphor-svelte";
+  import { AutomationPreflightCache } from "./automationPreflight";
+  import { SubscriptionScope, createInvalidationLoader } from "./subscriptions";
   import { bridge } from "./bridge";
   import { errorMessage } from "./app_helpers";
   import {
@@ -113,9 +115,35 @@
   let templateError = "";
   let disposed = false;
   let version = 0;
+  let activityVersion = 0;
+  let checkedActionKey = "";
+  $: actionKey = JSON.stringify(actions.map((action) => [action.id, action.revision]));
+  $: if (dataReady && checkedActionKey !== actionKey) scheduleRefresh();
+  const activityEvents = new Map<string, { version: number; activity: AutomationActivity }>();
+  const preflight = new AutomationPreflightCache();
+  const subscriptions = new SubscriptionScope();
+  const refreshLoader = createInvalidationLoader(refreshData, (e) => {
+    error = errorMessage(e);
+  });
+  async function refresh() {
+    await refreshLoader.refresh();
+  }
+  function applyActivity(activity: AutomationActivity) {
+    if (disposed) return;
+    activityEvents.set(activity.id, { version: ++activityVersion, activity });
+    while (activityEvents.size > 100) activityEvents.delete(activityEvents.keys().next().value!);
+    activities = [activity, ...activities.filter((a) => a.id !== activity.id)]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 100);
+    stoppingIds = stoppingIds.filter((id) =>
+      activities.some((a) => a.id === id && isActive(a.status)),
+    );
+  }
+
   let refreshTimer: ReturnType<typeof setTimeout>;
   let pageNode: HTMLElement;
-  const tr = (zh: string, en: string) => uiTranslate(zh, language === "system" ? $uiLanguage : language);
+  const tr = (zh: string, en: string) =>
+    uiTranslate(zh, language === "system" ? $uiLanguage : language);
   const templates = [
     {
       name: "会议模式",
@@ -159,9 +187,7 @@
             ? !d.enabled
             : badges[d.id]?.length ||
               activities.some(
-                (a) =>
-                  a.automationId === d.id &&
-                  a.status === "awaitingConfirmation",
+                (a) => a.automationId === d.id && a.status === "awaitingConfirmation",
               ))),
   );
   $: selected = definitions.find((d) => d.id === selectedId);
@@ -173,19 +199,13 @@
         .toLowerCase()
         .includes(activityQuery.toLowerCase()),
   );
-  $: currentActivity =
-    shownActivities.find((a) => a.id === selectedActivity) ??
-    shownActivities[0];
+  $: currentActivity = shownActivities.find((a) => a.id === selectedActivity) ?? shownActivities[0];
   $: saveLabel =
-    editor && definitions.some((d) => d.id === editor?.id && d.enabled)
-      ? "保存"
-      : "保存并启用";
+    editor && definitions.some((d) => d.id === editor?.id && d.enabled) ? "保存" : "保存并启用";
   $: samples = editor ? samplesFor(editor, activities) : [];
   $: needsSample = editor
     ? referencedVariables(
-        testOnly === null
-          ? editor
-          : { ...editor, steps: [editor.steps[testOnly]] },
+        testOnly === null ? editor : { ...editor, steps: [editor.steps[testOnly]] },
       ).length > 0
     : false;
   $: if (screen !== "edit" || expanded !== 3) pane = null;
@@ -210,8 +230,9 @@
       busy = false;
     }
   }
-  async function refresh() {
+  async function refreshData() {
     const current = ++version;
+    const eventVersion = activityVersion;
     const [ds, logs, cs] = await Promise.all([
       bridge.listAutomations(),
       bridge.listAutomationActivities(),
@@ -219,27 +240,28 @@
     ]);
     if (disposed || current !== version) return;
     definitions = ds;
-    activities = logs;
+    const merged = new Map(logs.map((activity) => [activity.id, activity]));
+    for (const event of activityEvents.values())
+      if (event.version > eventVersion) merged.set(event.activity.id, event.activity);
+    activities = [...merged.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 100);
     capabilities = cs;
     dataReady = true;
     stoppingIds = stoppingIds.filter((id) =>
-      logs.some((a) => a.id === id && isActive(a.status)),
+      activities.some((a) => a.id === id && isActive(a.status)),
     );
-    const checks = await Promise.all(
-      ds.map(async (d) => [d.id, await bridge.checkAutomation(d)] as const),
+    checkedActionKey = actionKey;
+    const checks = await preflight.check(ds, cs, checkedActionKey, (definitions, capabilities) =>
+      bridge.checkAutomations(definitions, capabilities),
     );
-    if (!disposed && current === version) badges = Object.fromEntries(checks);
+    if (!disposed && current === version) badges = checks;
   }
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(
-      () => void refresh().catch((e) => (error = errorMessage(e))),
-      150,
-    );
+    refreshTimer = setTimeout(() => void refresh().catch((e) => (error = errorMessage(e))), 150);
   }
   onMount(() => {
-    let unlisten: (() => void) | undefined;
-    let unlistenConfiguration: (() => void) | undefined;
     void task(async () => {
       const [installed, state] = await Promise.all([
         bridge.listInstalledApps().catch((e) => {
@@ -251,17 +273,18 @@
       if (disposed) return;
       apps = installed;
       devices = state.pairedDevices;
-      unlisten = await bridge.onAutomationActivity(scheduleRefresh);
-      unlistenConfiguration = await bridge.onAutomationConfiguration(scheduleRefresh);
-      if (disposed) {
-        unlisten();
-        unlistenConfiguration();
-        return;
-      }
+      await Promise.all([
+        subscriptions.add(bridge.onAutomationActivity(applyActivity)),
+        subscriptions.add(bridge.onAutomationConfiguration(scheduleRefresh)),
+      ]);
+      if (disposed) return;
       await refresh();
       selectedId = definitions[0]?.id ?? null;
     }).finally(() => (loading = false));
-    return () => { unlisten?.(); unlistenConfiguration?.(); };
+    return () => {
+      subscriptions.dispose();
+      refreshLoader.dispose();
+    };
   });
   onDestroy(() => {
     disposed = true;
@@ -317,9 +340,7 @@
   }
   async function installAction(name: string, action_type: ActionType) {
     const existing = actions.find(
-      (a) =>
-        a.name === name &&
-        JSON.stringify(a.action_type) === JSON.stringify(action_type),
+      (a) => a.name === name && JSON.stringify(a.action_type) === JSON.stringify(action_type),
     );
     if (existing) return existing.id;
     const action: QuickAction = {
@@ -343,17 +364,14 @@
     if (name === "工作日开工") {
       workdaySetup = true;
       templateError = "";
-      workdayApp =
-        apps.find((a) => /code|studio|idea|zed/i.test(a.name))?.path || "";
+      workdayApp = apps.find((a) => /code|studio|idea|zed/i.test(a.name))?.path || "";
       workdayDirectory = "";
       workdayAction = "";
       return;
     }
     await task(async () => {
       const meeting = apps.filter((a) =>
-        /zoom|teams|腾讯会议|tencent.*meeting|wemeet|飞书|feishu|lark/i.test(
-          a.name,
-        ),
+        /zoom|teams|腾讯会议|tencent.*meeting|wemeet|飞书|feishu|lark/i.test(a.name),
       );
       const trigger: AutomationTrigger =
         name === "会议模式" || name === "离开会议"
@@ -384,9 +402,7 @@
           { type: "quickAction", actionId: "builtin-automation-privacy-on" },
         ];
       if (name === "离开会议")
-        d.steps = [
-          { type: "quickAction", actionId: "builtin-automation-privacy-off" },
-        ];
+        d.steps = [{ type: "quickAction", actionId: "builtin-automation-privacy-off" }];
       if (name === "锁屏安静模式")
         d.steps = [
           {
@@ -614,8 +630,7 @@
     });
   }
   async function repair(issue: AutomationIssue) {
-    if (issue.remedy === "inputPermission")
-      await task(() => bridge.openInputPermissionSettings());
+    if (issue.remedy === "inputPermission") await task(() => bridge.openInputPermissionSettings());
     else if (issue.remedy === "screenPermission")
       await task(() => bridge.openAutomationScreenPermission());
     else if (issue.remedy === "devices") requestLeave(openDevices);
@@ -649,11 +664,7 @@
     }
   }}
 />
-<main
-  class="au-page"
-  class:has-pane={pane !== null && screen === "edit"}
-  bind:this={pageNode}
->
+<main class="au-page" class:has-pane={pane !== null && screen === "edit"} bind:this={pageNode}>
   {#if !bridge.isTauri()}<div class="au-preview-notice">
       {uiTranslate("浏览器预览 · 仅模拟数据与交互，不执行这台电脑上的动作", $uiLanguage)}
     </div>{/if}
@@ -672,17 +683,13 @@
       </div>
       <div class="au-inline">
         <button class="au-button" on:click={() => openActivities()}
-          ><ClockCounterClockwise
-            size={19}
-          />{uiTranslate("活动记录", $uiLanguage)}{#if activities.some((a) => a.status === "awaitingConfirmation")}<span
-              class="au-count"
-              >{activities.filter((a) => a.status === "awaitingConfirmation")
-                .length}</span
+          ><ClockCounterClockwise size={19} />{uiTranslate(
+            "活动记录",
+            $uiLanguage,
+          )}{#if activities.some((a) => a.status === "awaitingConfirmation")}<span class="au-count"
+              >{activities.filter((a) => a.status === "awaitingConfirmation").length}</span
             >{/if}</button
-        ><button
-          class="au-button primary"
-          disabled={loading}
-          on:click={() => navigate("choose")}
+        ><button class="au-button primary" disabled={loading} on:click={() => navigate("choose")}
           ><Plus size={19} />{uiTranslate("新建自动化", $uiLanguage)}</button
         >
       </div>
@@ -699,9 +706,7 @@
           >{uiTranslate("重新加载", $uiLanguage)}</button
         >
       </div>{:else if !definitions.length}<section class="au-welcome">
-        <span class="au-hero-icon"
-          ><Lightning size={34} weight="duotone" /></span
-        >
+        <span class="au-hero-icon"><Lightning size={34} weight="duotone" /></span>
         <h2>{uiTranslate("让日常小事自动完成", $uiLanguage)}</h2>
         <p>{uiTranslate("选一个熟悉的场景，或从自己的想法开始。", $uiLanguage)}</p>
         <div class="au-example">
@@ -710,21 +715,22 @@
           ><CaretRight size={18} /><span>{uiTranslate("开启投屏隐私", $uiLanguage)}</span>
         </div>
         <div class="au-templates">
-          {#each templates as item}<button
-              disabled={busy}
-              on:click={() => useTemplate(item.name)}
+          {#each templates as item}<button disabled={busy} on:click={() => useTemplate(item.name)}
               ><span class="au-template-icon {item.color}"
                 ><svelte:component this={item.icon} size={25} /></span
               ><strong>{uiTranslate(item.name, $uiLanguage)}</strong>
               <p>{uiTranslate(item.detail, $uiLanguage)}</p>
-              <span class="au-text">{uiTranslate("使用模板", $uiLanguage)} <CaretRight size={16} /></span
+              <span class="au-text"
+                >{uiTranslate("使用模板", $uiLanguage)} <CaretRight size={16} /></span
               ></button
             >{/each}
         </div>
         <button class="au-button primary" on:click={() => create()}
           ><Plus size={19} />{uiTranslate("从空白创建", $uiLanguage)}</button
         >
-        <p class="au-note">{uiTranslate("在这台电脑上运行，创建后可先测试，再启用。", $uiLanguage)}</p>
+        <p class="au-note">
+          {uiTranslate("在这台电脑上运行，创建后可先测试，再启用。", $uiLanguage)}
+        </p>
       </section>
     {:else}<div class="au-management">
         <section class="au-list-region" aria-label={uiTranslate("自动化列表", $uiLanguage)}>
@@ -737,18 +743,14 @@
               /></label
             >
             <div class="au-tabs">
-              <button
-                class:chosen={filter === "all"}
-                on:click={() => (filter = "all")}
+              <button class:chosen={filter === "all"} on:click={() => (filter = "all")}
                 >{uiTranslate("全部", $uiLanguage)} {definitions.length}</button
-              ><button
-                class:chosen={filter === "enabled"}
-                on:click={() => (filter = "enabled")}
-                >{uiTranslate("已启用", $uiLanguage)} {definitions.filter((d) => d.enabled).length}</button
-              ><button
-                class:chosen={filter === "paused"}
-                on:click={() => (filter = "paused")}
-                >{uiTranslate("已停用", $uiLanguage)} {definitions.filter((d) => !d.enabled).length}</button
+              ><button class:chosen={filter === "enabled"} on:click={() => (filter = "enabled")}
+                >{uiTranslate("已启用", $uiLanguage)}
+                {definitions.filter((d) => d.enabled).length}</button
+              ><button class:chosen={filter === "paused"} on:click={() => (filter = "paused")}
+                >{uiTranslate("已停用", $uiLanguage)}
+                {definitions.filter((d) => !d.enabled).length}</button
               ><button
                 class:chosen={filter === "attention"}
                 on:click={() => (filter = "attention")}
@@ -780,16 +782,15 @@
                         size={25}
                       />{:else}<Lightning size={25} />{/if}</span
                   ><span
-                    ><strong>{d.name}</strong><small
-                      >{ruleSummary(d, actions, $uiLanguage)}</small
+                    ><strong>{d.name}</strong><small>{ruleSummary(d, actions, $uiLanguage)}</small
                     ></span
                   ></button
                 >
                 <span class="au-row-time"
-                  >{uiTranslate(latest
-                    ? formatDate(latest.createdAt)
-                    : "尚未运行", $uiLanguage)}{#if latest}<small
-                      class:au-danger-text={latest.status === "failed"}
+                  >{uiTranslate(
+                    latest ? formatDate(latest.createdAt) : "尚未运行",
+                    $uiLanguage,
+                  )}{#if latest}<small class:au-danger-text={latest.status === "failed"}
                       >{uiTranslate(statusLabels[latest.status], $uiLanguage)}</small
                     >{/if}</span
                 >
@@ -801,14 +802,16 @@
                   disabled={pendingIds.includes(d.id)}
                   on:click={() => toggle(d)}
                   ><span class:enabled={d.enabled}></span><small
-                    >{uiTranslate(pendingIds.includes(d.id)
-                      ? "处理中"
-                      : d.enabled
-                        ? "启用"
-                        : "停用", $uiLanguage)}</small
+                    >{uiTranslate(
+                      pendingIds.includes(d.id) ? "处理中" : d.enabled ? "启用" : "停用",
+                      $uiLanguage,
+                    )}</small
                   ></button
                 >
-                <div class="au-row-menu" use:dismissibleDropdown={{ open: menu === d.id, close: () => (menu = null) }}>
+                <div
+                  class="au-row-menu"
+                  use:dismissibleDropdown={{ open: menu === d.id, close: () => (menu = null) }}
+                >
                   <button
                     class="au-icon"
                     aria-label={uiTranslate(`${d.name} 更多操作`, $uiLanguage)}
@@ -823,7 +826,10 @@
                           initial = "";
                         }}><Copy size={17} />{uiTranslate("复制", $uiLanguage)}</button
                       ><button on:click={() => openActivities(d.id)}
-                        ><ClockCounterClockwise size={17} />{uiTranslate("查看活动", $uiLanguage)}</button
+                        ><ClockCounterClockwise size={17} />{uiTranslate(
+                          "查看活动",
+                          $uiLanguage,
+                        )}</button
                       ><button class="danger" on:click={() => remove(d)}
                         ><Trash size={17} />{uiTranslate("删除…", $uiLanguage)}</button
                       >
@@ -837,8 +843,8 @@
                       checked = true;
                       screen = "check";
                     }}
-                    ><WarningCircle size={16} />{uiTranslate("需要处理 ·", $uiLanguage)} {badges[d.id][0]
-                      .message}<CaretRight size={16} /></button
+                    ><WarningCircle size={16} />{uiTranslate("需要处理 ·", $uiLanguage)}
+                    {badges[d.id][0].message}<CaretRight size={16} /></button
                   >{/if}
               </article>
             {:else}<div class="au-empty">
@@ -855,9 +861,7 @@
               </div>{/each}
           </div>
         </section>
-        {#if selected}{@const latest = activities.find(
-            (a) => a.automationId === selected.id,
-          )}
+        {#if selected}{@const latest = activities.find((a) => a.automationId === selected.id)}
           <aside class="au-inspector">
             <div class="au-label-row">
               <h2>{selected.name}</h2>
@@ -868,18 +872,20 @@
               >
             </div>
             <p class="au-status" class:success={selected.enabled}>
-              <span class="au-dot"></span>{uiTranslate(selected.enabled
-                ? "已启用 · 等待触发"
-                : "已停用 · 不会自动触发", $uiLanguage)}
+              <span class="au-dot"></span>{uiTranslate(
+                selected.enabled ? "已启用 · 等待触发" : "已停用 · 不会自动触发",
+                $uiLanguage,
+              )}
             </p>
             <RuleSummary
               definition={selected}
               {actions}
               {devices}
             />{#if selected.trigger.type === "schedule"}<p class="au-note">
-                {selected.trigger.timezone} · {uiTranslate(selected.trigger.catchUp
-                  ? "错过后补跑一次"
-                  : "错过后跳过", $uiLanguage)}
+                {selected.trigger.timezone} · {uiTranslate(
+                  selected.trigger.catchUp ? "错过后补跑一次" : "错过后跳过",
+                  $uiLanguage,
+                )}
               </p>{/if}
             <div class="au-inline">
               <button class="au-button" on:click={() => edit(selected)}
@@ -887,9 +893,7 @@
               ><button
                 class="au-button"
                 disabled={busy ||
-                  activities.some(
-                    (a) => a.automationId === selected.id && isActive(a.status),
-                  )}
+                  activities.some((a) => a.automationId === selected.id && isActive(a.status))}
                 on:click={() => beginTest(null, selected)}
                 ><Play size={18} />{uiTranslate("测试动作", $uiLanguage)}</button
               >
@@ -897,9 +901,7 @@
             {#if selected.trigger.type === "manual" || selected.trigger.type === "hotkey"}<button
                 class="au-button primary"
                 disabled={busy ||
-                  activities.some(
-                    (a) => a.automationId === selected.id && isActive(a.status),
-                  )}
+                  activities.some((a) => a.automationId === selected.id && isActive(a.status))}
                 on:click={() => run(selected)}
                 ><Play size={18} />{uiTranslate("运行一次", $uiLanguage)}</button
               >{/if}
@@ -911,9 +913,10 @@
                   selectedActivity = latest.id;
                 }}
                 ><span
-                  >{formatDate(latest.createdAt)} · {uiTranslate(statusLabels[
-                    latest.status
-                  ], $uiLanguage)}</span
+                  >{formatDate(latest.createdAt)} · {uiTranslate(
+                    statusLabels[latest.status],
+                    $uiLanguage,
+                  )}</span
                 ><CaretRight size={17} /></button
               >{#if latest.reason}<p class="au-note">
                   {latest.reason}
@@ -936,14 +939,14 @@
       </div>
     </header>
     <div class="au-templates choose">
-      {#each templates as item}<button
-          disabled={busy}
-          on:click={() => useTemplate(item.name)}
+      {#each templates as item}<button disabled={busy} on:click={() => useTemplate(item.name)}
           ><span class="au-template-icon {item.color}"
             ><svelte:component this={item.icon} size={25} /></span
           ><strong>{uiTranslate(item.name, $uiLanguage)}</strong>
           <p>{uiTranslate(item.detail, $uiLanguage)}</p>
-          <span class="au-text">{uiTranslate("使用模板", $uiLanguage)} <CaretRight size={16} /></span></button
+          <span class="au-text"
+            >{uiTranslate("使用模板", $uiLanguage)} <CaretRight size={16} /></span
+          ></button
         >{/each}
     </div>
     <button class="au-button primary" on:click={() => create()}
@@ -952,11 +955,13 @@
   {:else if screen === "edit" && editor}
     <div class="au-editor-main">
       <button class="au-breadcrumb" on:click={() => navigate("list")}
-        ><ArrowLeft size={17} />{uiTranslate("自动化", $uiLanguage)} <span>{uiTranslate("/ 编辑", $uiLanguage)}</span></button
+        ><ArrowLeft size={17} />{uiTranslate("自动化", $uiLanguage)}
+        <span>{uiTranslate("/ 编辑", $uiLanguage)}</span></button
       >
       <header class="au-editor-heading">
         <h1 tabindex="-1">
-          <span class="au-sr-only">{uiTranslate(editor.name || "编辑自动化", $uiLanguage)}</span><input
+          <span class="au-sr-only">{uiTranslate(editor.name || "编辑自动化", $uiLanguage)}</span
+          ><input
             aria-label={uiTranslate("自动化名称", $uiLanguage)}
             bind:value={editor.name}
             maxlength={128}
@@ -964,9 +969,10 @@
           />
         </h1>
         <span class="au-tag"
-          >{uiTranslate(dirty || !definitions.some((d) => d.id === editor?.id)
-            ? "未保存"
-            : "已保存", $uiLanguage)}</span
+          >{uiTranslate(
+            dirty || !definitions.some((d) => d.id === editor?.id) ? "未保存" : "已保存",
+            $uiLanguage,
+          )}</span
         >
       </header>
       <section class="au-section">
@@ -982,12 +988,7 @@
             size={18}
           /></button
         >{#if expanded === 1}<div class="au-section-body">
-            <TriggerEditor
-              bind:trigger={editor.trigger}
-              {apps}
-              {devices}
-              {capabilities}
-            /><button
+            <TriggerEditor bind:trigger={editor.trigger} {apps} {devices} {capabilities} /><button
               class="au-button primary au-section-next"
               on:click={() => (expanded = 2)}
               >{uiTranslate("继续：附加条件", $uiLanguage)} <CaretRight size={17} /></button
@@ -1000,20 +1001,22 @@
           aria-expanded={expanded === 2}
           on:click={() => (expanded = expanded === 2 ? 0 : 2)}
           ><span class="au-section-number">2</span><span
-            ><strong>{uiTranslate("仅当……", $uiLanguage)} <em>{uiTranslate("可选", $uiLanguage)}</em></strong><small
-              >{uiTranslate(editor.conditions.length
-                ? editor.conditions.map(c => conditionSummary(c, $uiLanguage)).join(" · ")
-                : "没有附加条件，触发后即可运行", $uiLanguage)}</small
+            ><strong
+              >{uiTranslate("仅当……", $uiLanguage)}
+              <em>{uiTranslate("可选", $uiLanguage)}</em></strong
+            ><small
+              >{uiTranslate(
+                editor.conditions.length
+                  ? editor.conditions.map((c) => conditionSummary(c, $uiLanguage)).join(" · ")
+                  : "没有附加条件，触发后即可运行",
+                $uiLanguage,
+              )}</small
             ></span
           ><span class="au-section-edit">{uiTranslate("编辑", $uiLanguage)}</span><CaretDown
             size={18}
           /></button
         >{#if expanded === 2}<div class="au-section-body">
-            <ConditionsEditor
-              bind:conditions={editor.conditions}
-              {apps}
-              {devices}
-            /><button
+            <ConditionsEditor bind:conditions={editor.conditions} {apps} {devices} /><button
               class="au-button primary au-section-next"
               on:click={() => (expanded = 3)}
               >{uiTranslate("继续：添加动作", $uiLanguage)} <CaretRight size={17} /></button
@@ -1027,9 +1030,12 @@
           on:click={() => (expanded = expanded === 3 ? 0 : 3)}
           ><span class="au-section-number">3</span><span
             ><strong>{uiTranslate("执行以下操作", $uiLanguage)}</strong><small
-              >{uiTranslate(editor.steps.length
-                ? `${editor.steps.length} 个动作，按顺序执行`
-                : "添加你常用的快捷动作", $uiLanguage)}</small
+              >{uiTranslate(
+                editor.steps.length
+                  ? `${editor.steps.length} 个动作，按顺序执行`
+                  : "添加你常用的快捷动作",
+                $uiLanguage,
+              )}</small
             ></span
           ><CaretDown size={18} /></button
         >{#if expanded === 3}<div class="au-section-body">
@@ -1046,9 +1052,10 @@
           </div>{/if}
       </section>
       <p class="au-note">
-        <ShieldCheck
-          size={17}
-        />{uiTranslate("本机运行。保存不会执行动作；危险动作始终需要确认。", $uiLanguage)}
+        <ShieldCheck size={17} />{uiTranslate(
+          "本机运行。保存不会执行动作；危险动作始终需要确认。",
+          $uiLanguage,
+        )}
       </p>
     </div>
     <footer class="au-sticky-footer">
@@ -1056,7 +1063,8 @@
         <button
           class="au-button"
           disabled={busy || !editor.steps.length}
-          on:click={() => beginTest()}><Play size={18} />{uiTranslate("测试动作", $uiLanguage)}</button
+          on:click={() => beginTest()}
+          ><Play size={18} />{uiTranslate("测试动作", $uiLanguage)}</button
         ><span class="au-muted au-footer-hint">{uiTranslate("将实际执行动作", $uiLanguage)}</span>
       </div>
       <div class="au-inline">
@@ -1074,19 +1082,25 @@
         screen = "edit";
         void focusTitle();
       }}
-      ><ArrowLeft size={17} />{uiTranslate("自动化 /", $uiLanguage)} {uiTranslate(editor.name || "新自动化", $uiLanguage)} {uiTranslate("/ 启用检查", $uiLanguage)}</button
+      ><ArrowLeft size={17} />{uiTranslate("自动化 /", $uiLanguage)}
+      {uiTranslate(editor.name || "新自动化", $uiLanguage)}
+      {uiTranslate("/ 启用检查", $uiLanguage)}</button
     >
     <header class="au-heading">
       <div>
         <h1 tabindex="-1">
-          {uiTranslate(issues.length
-            ? "启用前，还有一些事项需要处理"
-            : "准备好了，让它自动完成", $uiLanguage)}
+          {uiTranslate(
+            issues.length ? "启用前，还有一些事项需要处理" : "准备好了，让它自动完成",
+            $uiLanguage,
+          )}
         </h1>
         <p>
-          {uiTranslate(issues.length
-            ? "你的配置仍保留在这里，修复后再检查一次。"
-            : "核对规则和运行方式，确认后保存并启用。", $uiLanguage)}
+          {uiTranslate(
+            issues.length
+              ? "你的配置仍保留在这里，修复后再检查一次。"
+              : "核对规则和运行方式，确认后保存并启用。",
+            $uiLanguage,
+          )}
         </p>
       </div>
     </header>
@@ -1104,18 +1118,16 @@
         <h3>{uiTranslate("运行方式", $uiLanguage)}</h3>
         <fieldset class="au-radio-list">
           <legend class="au-sr-only">{uiTranslate("运行方式", $uiLanguage)}</legend><label
-            ><input
-              type="radio"
-              bind:group={editor.runMode}
-              value="automatic"
-            /><span>{uiTranslate("自动运行", $uiLanguage)}<small>{uiTranslate("满足条件时，自动执行动作。", $uiLanguage)}</small></span
+            ><input type="radio" bind:group={editor.runMode} value="automatic" /><span
+              >{uiTranslate("自动运行", $uiLanguage)}<small
+                >{uiTranslate("满足条件时，自动执行动作。", $uiLanguage)}</small
+              ></span
             ></label
           ><label
-            ><input
-              type="radio"
-              bind:group={editor.runMode}
-              value="askBeforeRun"
-            /><span>{uiTranslate("运行前询问", $uiLanguage)}<small>{uiTranslate("满足条件时，先询问是否执行。", $uiLanguage)}</small></span
+            ><input type="radio" bind:group={editor.runMode} value="askBeforeRun" /><span
+              >{uiTranslate("运行前询问", $uiLanguage)}<small
+                >{uiTranslate("满足条件时，先询问是否执行。", $uiLanguage)}</small
+              ></span
             ></label
           >
         </fieldset>
@@ -1126,28 +1138,36 @@
       <section class="au-check-card">
         <h2>{uiTranslate("启用检查", $uiLanguage)}</h2>
         {#if checked && !issues.length}<div class="au-check-pass">
-            <CheckCircle size={22} weight="fill" />{uiTranslate("当前配置与所需能力检查通过", $uiLanguage)}
+            <CheckCircle size={22} weight="fill" />{uiTranslate(
+              "当前配置与所需能力检查通过",
+              $uiLanguage,
+            )}
           </div>
           <p class="au-note">
-            {uiTranslate("全局快捷键将在保存时进行最终占用检查。环境或权限变化会在运行前再次验证。", $uiLanguage)}
+            {uiTranslate(
+              "全局快捷键将在保存时进行最终占用检查。环境或权限变化会在运行前再次验证。",
+              $uiLanguage,
+            )}
           </p>{/if}{#each issues as issue}<div class="au-issue">
             <div>
               <WarningCircle size={21} /><strong>{issue.message}</strong>
             </div>
             {#if issue.stepIndex !== null}<p>
-                {uiTranslate("动作", $uiLanguage)} {issue.stepIndex + 1} · {stepSummary(
+                {uiTranslate("动作", $uiLanguage)}
+                {issue.stepIndex + 1} · {stepSummary(
                   editor.steps[issue.stepIndex],
-                  actions, $uiLanguage)}
-              </p>{/if}<button
-              class="au-button"
-              disabled={busy}
-              on:click={() => repair(issue)}
-              >{uiTranslate(issue.remedy === "inputPermission" ||
-              issue.remedy === "screenPermission"
-                ? "打开系统设置"
-                : issue.remedy === "devices"
-                  ? "设备与连接"
-                  : "修改配置", $uiLanguage)}</button
+                  actions,
+                  $uiLanguage,
+                )}
+              </p>{/if}<button class="au-button" disabled={busy} on:click={() => repair(issue)}
+              >{uiTranslate(
+                issue.remedy === "inputPermission" || issue.remedy === "screenPermission"
+                  ? "打开系统设置"
+                  : issue.remedy === "devices"
+                    ? "设备与连接"
+                    : "修改配置",
+                $uiLanguage,
+              )}</button
             >
           </div>{/each}<button class="au-text" disabled={busy} on:click={check}
           >{uiTranslate(busy ? "检查中…" : "重新检查", $uiLanguage)}</button
@@ -1155,10 +1175,7 @@
       </section>
     </div>
     <footer class="au-sticky-footer">
-      <button
-        class="au-button"
-        disabled={busy}
-        on:click={() => (screen = "edit")}
+      <button class="au-button" disabled={busy} on:click={() => (screen = "edit")}
         ><ArrowLeft size={17} />{uiTranslate("返回编辑", $uiLanguage)}</button
       >
       <div class="au-inline">
@@ -1172,12 +1189,11 @@
       </div>
     </footer>
   {:else if screen === "activity"}
-    <button
-      class="au-breadcrumb"
-      on:click={() => (editor ? (screen = "edit") : navigate("list"))}
-      ><ArrowLeft size={17} />{uiTranslate(editor
-        ? "返回编辑（内容已保留）"
-        : "自动化", $uiLanguage)}</button
+    <button class="au-breadcrumb" on:click={() => (editor ? (screen = "edit") : navigate("list"))}
+      ><ArrowLeft size={17} />{uiTranslate(
+        editor ? "返回编辑（内容已保留）" : "自动化",
+        $uiLanguage,
+      )}</button
     >
     <header class="au-heading">
       <div>
@@ -1199,15 +1215,24 @@
           aria-label={uiTranslate("搜索活动", $uiLanguage)}
           bind:value={activityQuery}
         /></label
-      ><AppSelect aria-label={uiTranslate("按自动化筛选活动", $uiLanguage)} bind:value={activityFilter}
+      ><AppSelect
+        aria-label={uiTranslate("按自动化筛选活动", $uiLanguage)}
+        bind:value={activityFilter}
         options={[
           { value: "", label: uiTranslate("全部自动化", $uiLanguage) },
-          ...([...new Map(activities.map( (a) => [a.automationId, a.definition.name] )).entries()]).map(([id, name]) => ({ value: id, label: name })),
+          ...[...new Map(activities.map((a) => [a.automationId, a.definition.name])).entries()].map(
+            ([id, name]) => ({ value: id, label: name }),
+          ),
         ]}
-      /><AppSelect aria-label={uiTranslate("按运行状态筛选", $uiLanguage)} bind:value={statusFilter}
+      /><AppSelect
+        aria-label={uiTranslate("按运行状态筛选", $uiLanguage)}
+        bind:value={statusFilter}
         options={[
           { value: "all", label: uiTranslate("全部状态", $uiLanguage) },
-          ...(Object.entries(statusLabels)).map(([value, label]) => ({ value: value, label: uiTranslate(label, $uiLanguage) })),
+          ...Object.entries(statusLabels).map(([value, label]) => ({
+            value: value,
+            label: uiTranslate(label, $uiLanguage),
+          })),
         ]}
       />
     </div>
@@ -1223,14 +1248,15 @@
               class:danger={activity.status === "failed"}
               >{#if activity.status === "succeeded"}<CheckCircle
                   size={23}
-                />{:else if activity.status === "failed"}<WarningCircle
+                />{:else if activity.status === "failed"}<WarningCircle size={23} />{:else}<Clock
                   size={23}
-                />{:else}<Clock size={23} />{/if}</span
+                />{/if}</span
             ><span
               ><strong>{activity.definition.name}</strong><small
-                >{formatDate(activity.createdAt)} · {uiTranslate(statusLabels[
-                  activity.status
-                ], $uiLanguage)}</small
+                >{formatDate(activity.createdAt)} · {uiTranslate(
+                  statusLabels[activity.status],
+                  $uiLanguage,
+                )}</small
               >{#if activity.reason}<small>{activity.reason}</small>{/if}</span
             ><CaretRight size={16} /></button
           >{:else}<div class="au-empty">
@@ -1264,9 +1290,7 @@
             ? () => (screen = "edit")
             : definitions.some((d) => d.id === currentActivity.automationId)
               ? () => {
-                  const d = definitions.find(
-                    (d) => d.id === currentActivity.automationId,
-                  );
+                  const d = definitions.find((d) => d.id === currentActivity.automationId);
                   if (d) edit(d);
                 }
               : null}
@@ -1282,25 +1306,32 @@
     wide
   >
     <p class="au-warning">
-      <WarningCircle size={20} />{uiTranslate("测试会实际执行当前未保存的", $uiLanguage)}{uiTranslate(testOnly === null
-        ? "全部动作"
-        : `第 ${testOnly + 1} 个动作`, $uiLanguage)}{uiTranslate("。不等待触发、不检查附加条件，也不会保存或启用自动化。", $uiLanguage)}
+      <WarningCircle size={20} />{uiTranslate(
+        "测试会实际执行当前未保存的",
+        $uiLanguage,
+      )}{uiTranslate(
+        testOnly === null ? "全部动作" : `第 ${testOnly + 1} 个动作`,
+        $uiLanguage,
+      )}{uiTranslate("。不等待触发、不检查附加条件，也不会保存或启用自动化。", $uiLanguage)}
     </p>
     <p class="au-note">
       {uiTranslate("危险动作仍会要求确认。已完成的动作无法通过“停止”撤销。", $uiLanguage)}
     </p>
     {#if needsSample}<label class="au-field"
-        >{uiTranslate("真实事件样本", $uiLanguage)}<AppSelect bind:value={sampleId} aria-label={uiTranslate("真实事件样本", $uiLanguage)}
+        >{uiTranslate("真实事件样本", $uiLanguage)}<AppSelect
+          bind:value={sampleId}
+          aria-label={uiTranslate("真实事件样本", $uiLanguage)}
           options={[
             { value: "", label: uiTranslate("选择一条历史触发事件", $uiLanguage) },
-            ...samples.map((a) => ({ value: a.id, label: [(formatDate(a.event.occurredAt)), " · ", (a.definition.name)].join("") })),
+            ...samples.map((a) => ({
+              value: a.id,
+              label: [formatDate(a.event.occurredAt), " · ", a.definition.name].join(""),
+            })),
           ]}
         /></label
       >{#if !samples.length}<p class="au-warning">
           {uiTranslate("需要真实事件样本，请先触发一次再测试；不会使用虚构变量。", $uiLanguage)}
-        </p>{:else if sampleId}{@const sample = samples.find(
-          (a) => a.id === sampleId,
-        )}
+        </p>{:else if sampleId}{@const sample = samples.find((a) => a.id === sampleId)}
         <details open>
           <summary>{uiTranslate("本次使用的事件变量", $uiLanguage)}</summary>
           <pre>{JSON.stringify(sample?.event.variables, null, 2)}</pre>
@@ -1309,14 +1340,11 @@
       </p>{/if}
     {#if error}<p class="au-error" role="alert">{error}</p>{/if}
     <footer>
-      <button
-        class="au-button"
-        disabled={busy}
-        on:click={() => (testModal = false)}>{uiTranslate("返回编辑", $uiLanguage)}</button
+      <button class="au-button" disabled={busy} on:click={() => (testModal = false)}
+        >{uiTranslate("返回编辑", $uiLanguage)}</button
       ><button
         class="au-button primary"
-        disabled={busy ||
-          (needsSample && !samples.some((a) => a.id === sampleId))}
+        disabled={busy || (needsSample && !samples.some((a) => a.id === sampleId))}
         on:click={runTest}
         ><Play size={18} />{uiTranslate(busy ? "正在提交…" : "开始测试", $uiLanguage)}</button
       >
@@ -1331,7 +1359,9 @@
       {uiTranslate("工作日 09:00，按顺序打开工作环境。生成后仍可自由修改。", $uiLanguage)}
     </p>
     <label class="au-field"
-      >{uiTranslate("1 · 常用编辑器", $uiLanguage)}<AppSelect bind:value={workdayApp} aria-label={uiTranslate("1 · 常用编辑器", $uiLanguage)}
+      >{uiTranslate("1 · 常用编辑器", $uiLanguage)}<AppSelect
+        bind:value={workdayApp}
+        aria-label={uiTranslate("1 · 常用编辑器", $uiLanguage)}
         options={[
           { value: "", label: uiTranslate("选择已安装应用", $uiLanguage) },
           ...apps.map((app) => ({ value: app.path, label: app.name })),
@@ -1357,7 +1387,9 @@
       >
     </div>
     <label class="au-field"
-      >{uiTranslate("3 · 开工快捷动作", $uiLanguage)}<AppSelect bind:value={workdayAction} aria-label={uiTranslate("3 · 开工快捷动作", $uiLanguage)}
+      >{uiTranslate("3 · 开工快捷动作", $uiLanguage)}<AppSelect
+        bind:value={workdayAction}
+        aria-label={uiTranslate("3 · 开工快捷动作", $uiLanguage)}
         options={[
           { value: "", label: uiTranslate("选择已有快捷动作", $uiLanguage) },
           ...actions.map((action) => ({ value: action.id, label: action.name })),
@@ -1372,10 +1404,8 @@
       <Info size={17} />{uiTranslate("生成只创建配置，不会立即执行或启用。", $uiLanguage)}
     </p>
     <footer>
-      <button
-        class="au-button"
-        disabled={busy}
-        on:click={() => (workdaySetup = false)}>{uiTranslate("取消", $uiLanguage)}</button
+      <button class="au-button" disabled={busy} on:click={() => (workdaySetup = false)}
+        >{uiTranslate("取消", $uiLanguage)}</button
       ><button class="au-button primary" disabled={busy} on:click={applyWorkday}
         >{uiTranslate(busy ? "正在生成…" : "生成自动化", $uiLanguage)}</button
       >

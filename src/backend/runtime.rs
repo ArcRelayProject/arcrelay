@@ -658,16 +658,13 @@ pub(super) async fn run_backend(
                     _ => break,
                 }
             }
-            if let Some(window) = output_app.get_webview_window("main") {
-                let snapshots = if lagged {
-                    output_state.output_manager.snapshots()
-                } else {
-                    changed
-                        .iter()
-                        .map(|id| output_state.output_manager.snapshot(id))
-                        .collect()
-                };
-                for snapshot in snapshots {
+            if let (Some(window), Some(action_id)) = (
+                output_app.get_webview_window("main"),
+                output_state.output_manager.observed_action(),
+            ) {
+                if window.is_visible().unwrap_or(false) && (lagged || changed.contains(&action_id))
+                {
+                    let snapshot = output_state.output_manager.snapshot(&action_id);
                     let _ = window.emit("action-output", snapshot);
                 }
             }
@@ -679,9 +676,11 @@ pub(super) async fn run_backend(
     let command_network = network.clone();
     let command_state = state.clone();
     let command_app = app.clone();
+    let command_coordinator = coordinator.clone();
     tokio::spawn(async move {
         while let Some(command) = command_rx.recv().await {
             handle_backend_command(
+                &command_coordinator,
                 &command_service,
                 &command_network,
                 &command_registry,
@@ -802,6 +801,7 @@ fn server_automation_event(
 }
 
 pub(super) async fn handle_backend_command(
+    coordinator: &StateCoordinator,
     service: &Arc<ArcRelayService>,
     network: &Arc<NetworkRuntime>,
     registry: &ConnectionRegistry,
@@ -861,6 +861,7 @@ pub(super) async fn handle_backend_command(
             }
         }
         BackendCommand::Shutdown(done) => {
+            coordinator.shutdown().await;
             state.modules.shutdown().await;
             service.clipboard.shutdown().await;
             state.remote_file_service.shutdown();

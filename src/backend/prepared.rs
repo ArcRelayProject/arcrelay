@@ -59,12 +59,13 @@ impl PreparedBackend {
             print_config,
             config_dir.join("print.sqlite3").is_file(),
         ));
+        let clipboard_resources = resources.clone();
         let service = tokio::task::spawn_blocking(move || {
             compose_native_service(
                 Some(clipboard_database),
                 clipboard_device_id,
                 clipboard_device_name,
-                resources,
+                clipboard_resources,
             )
             .map(Arc::new)
             .map_err(std::io::Error::other)
@@ -119,7 +120,7 @@ impl PreparedBackend {
         let (pairing_tx, pairing_rx) = mpsc::channel(4);
         let (command_tx, command_rx) = mpsc::channel(32);
         let network = Arc::new(tokio::sync::OnceCell::new());
-        let remote_files = RemoteFileManager::load(&config_dir)?;
+        let remote_files = RemoteFileManager::load_with_resources(&config_dir, resources.clone())?;
         let web_gateway = arcrelay_web_gateway::WebGatewaySupervisor::new(
             remote_files.service(),
             env!("CARGO_PKG_VERSION"),
