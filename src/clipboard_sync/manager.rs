@@ -1067,7 +1067,6 @@ impl ClipboardSyncManager {
                                     &share_id,
                                     &relative_path,
                                     chunks,
-                            permits,
                                 ).await;
                             });
                         }
