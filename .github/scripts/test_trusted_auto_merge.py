@@ -6,6 +6,9 @@ import trusted_auto_merge as policy
 
 class TrustedAutoMergeTests(unittest.TestCase):
     def setUp(self):
+        readiness = patch.object(policy, "quality_checks_passed", return_value=True)
+        self.ready = readiness.start()
+        self.addCleanup(readiness.stop)
         self.pr = {"state": "open", "draft": False, "user": {"login": "zibo-chen", "id": 58510061}, "base": {"ref": "main", "repo": {"full_name": "ArcRelayProject/arcrelay"}}, "head": {"sha": "a" * 40}}
         self.repo = "ArcRelayProject/arcrelay"
 
@@ -62,6 +65,110 @@ class TrustedAutoMergeTests(unittest.TestCase):
             gh.side_effect = [json.dumps(self.pr), json.dumps([review]), *approval, "", json.dumps(merged), ""]
             policy.configure(self.repo, 12)
             self.assertEqual(gh.call_count, expected_calls)
+
+
+class QualityCheckTests(unittest.TestCase):
+    @patch.object(policy, "gh")
+    def test_pending_failed_and_missing_checks_wait(self, gh):
+        import json
+        for checks in [[], [{"name": "check", "status": "IN_PROGRESS"}],
+                       [{"name": "check", "status": "COMPLETED", "conclusion": "FAILURE"}],
+                       [{"name": "check", "status": "COMPLETED", "conclusion": "NEUTRAL"}],
+                       [{"name": "check", "status": "COMPLETED", "conclusion": "SKIPPED"}],
+                       [{"name": "check", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                        {"name": "Analyze (rust)", "status": "COMPLETED", "conclusion": "NEUTRAL"}],
+                       [{"name": "check", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                        {"name": "Analyze (rust)", "status": "IN_PROGRESS"}]]:
+            gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": checks})
+            self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "gh")
+    def test_successful_checks_ignore_only_own_workflow(self, gh):
+        import json
+        checks = [{"name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+                  for name in policy.EXPECTED_TECHNICAL_CHECKS]
+        checks.append({"workflowName": "Trusted maintainer auto-merge", "status": "IN_PROGRESS"})
+        gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": checks})
+        self.assertTrue(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "gh")
+    def test_every_configured_technical_check_must_be_reported(self, gh):
+        import json
+        for missing in policy.EXPECTED_TECHNICAL_CHECKS:
+            checks = [{"name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+                      for name in policy.EXPECTED_TECHNICAL_CHECKS if name != missing]
+            gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": checks})
+            self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "gh")
+    def test_changed_head_never_reuses_successful_checks(self, gh):
+        import json
+        gh.return_value = json.dumps({"headRefOid": "b" * 40, "statusCheckRollup": [
+            {"name": "check", "status": "COMPLETED", "conclusion": "SUCCESS"}]})
+        self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "quality_checks_passed", return_value=False)
+    @patch.object(policy, "gh")
+    def test_waiting_checks_never_approve_or_request_merge(self, gh, ready):
+        import json
+        gh.return_value = json.dumps({"state": "open", "draft": False,
+            "user": {"login": "zibo-chen", "id": 58510061},
+            "base": {"ref": "main", "repo": {"full_name": "owner/repo"}},
+            "head": {"sha": "a" * 40}})
+        policy.configure("owner/repo", 1)
+        self.assertEqual(gh.call_count, 1)
+
+
+class DesktopQualityCheckTests(unittest.TestCase):
+    def successful_checks(self):
+        return [{"name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+                for name in policy.EXPECTED_TECHNICAL_CHECKS]
+
+    def test_every_desktop_ci_job_is_explicitly_required(self):
+        import re
+        from pathlib import Path
+        workflow = (Path(__file__).parents[1] / "workflows" / "ci.yml").read_text()
+        jobs = set(re.findall(r"^  ([a-z][a-z0-9-]+):$", workflow.split("jobs:\n", 1)[1], re.MULTILINE))
+        expected = {name for name in policy.EXPECTED_TECHNICAL_CHECKS if not name.startswith("Analyze (")}
+        self.assertEqual(jobs, expected)
+
+    @patch.object(policy, "gh")
+    def test_a_failed_or_unfinished_windows_job_blocks_otherwise_successful_checks(self, gh):
+        import json
+        for status, conclusion in [("QUEUED", ""), ("IN_PROGRESS", ""),
+                                   ("COMPLETED", "FAILURE"), ("COMPLETED", "NEUTRAL"),
+                                   ("COMPLETED", "SKIPPED"), ("COMPLETED", "CANCELLED"),
+                                   ("COMPLETED", "TIMED_OUT"), ("COMPLETED", "ACTION_REQUIRED")]:
+            with self.subTest(status=status, conclusion=conclusion):
+                checks = self.successful_checks()
+                windows = next(check for check in checks if check["name"] == "windows-clipboard")
+                windows.update(status=status, conclusion=conclusion)
+                gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": checks})
+                self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "gh")
+    def test_additional_reported_checks_must_succeed_even_when_not_in_the_required_set(self, gh):
+        import json
+        for extra in [
+            {"name": "CodeQL", "status": "IN_PROGRESS", "conclusion": ""},
+            {"name": "CodeQL", "status": "COMPLETED", "conclusion": "NEUTRAL"},
+            {"name": "review", "status": "COMPLETED", "conclusion": "FAILURE"},
+            {"name": "cla", "status": "COMPLETED", "conclusion": "SKIPPED"},
+            {"context": "external-policy", "state": "PENDING"},
+        ]:
+            with self.subTest(extra=extra):
+                gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": self.successful_checks() + [extra]})
+                self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+        for extra in [[], [{"name": "CodeQL", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+                      [{"context": "external-policy", "state": "SUCCESS"}]]:
+            gh.return_value = json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": self.successful_checks() + extra})
+            self.assertTrue(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
+
+    @patch.object(policy, "gh")
+    def test_changed_head_with_all_checks_green_still_waits(self, gh):
+        import json
+        gh.return_value = json.dumps({"headRefOid": "b" * 40, "statusCheckRollup": self.successful_checks()})
+        self.assertFalse(policy.quality_checks_passed("owner/repo", 1, "a" * 40))
 
 
 if __name__ == "__main__":

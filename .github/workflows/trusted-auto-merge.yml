@@ -5,7 +5,7 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_run:
-    workflows: [CI, CLA, Dependency review]
+    workflows: [CI, CLA, CodeQL, Dependency review]
     types: [completed]
   workflow_dispatch:
 
