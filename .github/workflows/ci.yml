@@ -34,7 +34,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm test
+      - run: npx playwright install chromium
+      - run: npm run test:runtime-ui
       - run: npm run check:installers
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: npm run version:check

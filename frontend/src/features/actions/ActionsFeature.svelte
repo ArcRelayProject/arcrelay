@@ -30,7 +30,13 @@
   import { captureActionShortcut } from "../../actionShortcutCapture";
   import { translate } from "../../i18n";
   import { actionIconCatalog, sanitizeImportedSvg } from "../../quickActionIcons";
-  import type { ActionPreset, ActionView, AppSettings, BootstrapState, InstalledApp } from "../../types";
+  import type {
+    ActionPreset,
+    ActionView,
+    AppSettings,
+    BootstrapState,
+    InstalledApp,
+  } from "../../types";
   import {
     actionContentTitle,
     actionDescription,
@@ -101,9 +107,12 @@
   $: actions = snapshot?.actions ?? [];
   $: filteredActions = actions.filter((action) => {
     const query = search.trim().toLocaleLowerCase("zh-CN");
-    return !query || action.name.toLocaleLowerCase("zh-CN").includes(query)
-      || action.group.toLocaleLowerCase("zh-CN").includes(query)
-      || action.actionTypeLabel.toLocaleLowerCase("zh-CN").includes(query);
+    return (
+      !query ||
+      action.name.toLocaleLowerCase("zh-CN").includes(query) ||
+      action.group.toLocaleLowerCase("zh-CN").includes(query) ||
+      action.actionTypeLabel.toLocaleLowerCase("zh-CN").includes(query)
+    );
   });
   $: selectedAction = actions.find((action) => action.id === selectedActionId);
   $: shortcutError = shortcutCaptureError || shortcutConflict;
@@ -111,17 +120,23 @@
   $: groups = [...new Set(actions.map((action) => action.group))];
   $: filteredPresets = actionPresets.filter((preset) => {
     const query = presetSearch.trim().toLocaleLowerCase("zh-CN");
-    return !query || preset.name.toLocaleLowerCase("zh-CN").includes(query)
-      || preset.group.toLocaleLowerCase("zh-CN").includes(query)
-      || preset.description.toLocaleLowerCase("zh-CN").includes(query);
+    return (
+      !query ||
+      preset.name.toLocaleLowerCase("zh-CN").includes(query) ||
+      preset.group.toLocaleLowerCase("zh-CN").includes(query) ||
+      preset.description.toLocaleLowerCase("zh-CN").includes(query)
+    );
   });
   $: selectedInstalledApp = installedApps.find((app) => app.path === actionDraft.appPath);
   $: filteredInstalledApps = installedApps.filter((app) => {
     const query = appSearch.trim().toLocaleLowerCase("zh-CN");
-    return !query || app.name.toLocaleLowerCase("zh-CN").includes(query)
-      || app.version?.toLocaleLowerCase("zh-CN").includes(query)
-      || app.identifier?.toLocaleLowerCase("zh-CN").includes(query)
-      || app.path.toLocaleLowerCase("zh-CN").includes(query);
+    return (
+      !query ||
+      app.name.toLocaleLowerCase("zh-CN").includes(query) ||
+      app.version?.toLocaleLowerCase("zh-CN").includes(query) ||
+      app.identifier?.toLocaleLowerCase("zh-CN").includes(query) ||
+      app.path.toLocaleLowerCase("zh-CN").includes(query)
+    );
   });
   $: if (!selectedActionId || !actions.some((action) => action.id === selectedActionId)) {
     selectedActionId = actions[0]?.id ?? "";
@@ -129,30 +144,51 @@
   }
 
   onMount(() => {
+    outputDisposed = false;
     const scope = new SubscriptionScope();
-    void scope.add(bridge.onActionOutput(applyOutput)).catch((error) => notify(String(error), "error"));
+    void scope
+      .add(bridge.onActionOutput(applyOutput))
+      .catch((error) => notify(String(error), "error"));
     return () => {
+      outputDisposed = true;
       scope.dispose();
+      void bridge.observeActionOutput(null).catch(console.error);
     };
   });
 
-  function tr(source: string) { return translate(source, language); }
+  function tr(source: string) {
+    return translate(source, language);
+  }
 
   async function selectAction(actionId: string) {
     selectedActionId = actionId;
     await loadOutput(actionId);
   }
 
+  let outputDisposed = false;
   let outputActionId = "";
   let outputRevision = -1;
   function applyOutput(value: import("../../types").ActionOutputEvent) {
-    if (value.actionId !== selectedActionId) return;
+    if (outputDisposed || value.actionId !== selectedActionId) return;
     if (outputActionId === value.actionId && value.revision <= outputRevision) return;
-    outputActionId = value.actionId; outputRevision = value.revision; actionOutput = value.lines;
+    outputActionId = value.actionId;
+    outputRevision = value.revision;
+    actionOutput = value.lines;
   }
   async function loadOutput(actionId: string) {
-    if (!actionId) { actionOutput = []; return; }
-    applyOutput(await bridge.getActionOutput(actionId));
+    if (outputDisposed) return;
+    try {
+      if (!actionId) {
+        actionOutput = [];
+        await bridge.observeActionOutput(null);
+        return;
+      }
+      await bridge.observeActionOutput(actionId);
+      if (outputDisposed || selectedActionId !== actionId) return;
+      applyOutput(await bridge.getActionOutput(actionId));
+    } catch (error) {
+      if (!outputDisposed && selectedActionId === actionId) notify(errorMessage(error), "error");
+    }
   }
 
   function openNewAction() {
@@ -182,9 +218,13 @@
   async function loadInstalledApps(refresh: boolean) {
     if (appsLoading || (!refresh && installedApps.length > 0)) return;
     appsLoading = true;
-    try { installedApps = await bridge.listInstalledApps(refresh); }
-    catch (error) { notify(errorMessage(error), "error"); }
-    finally { appsLoading = false; }
+    try {
+      installedApps = await bridge.listInstalledApps(refresh);
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    } finally {
+      appsLoading = false;
+    }
   }
 
   async function openInstalledAppPicker() {
@@ -218,7 +258,9 @@
       actionDraft.iconId = "custom";
       actionDraft.iconSvg = sanitizeImportedSvg(await file.text());
       notify(`已导入图标“${file.name}”`);
-    } catch (error) { notify(errorMessage(error), "error"); }
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    }
   }
 
   async function openPresetPicker() {
@@ -233,7 +275,9 @@
       onSnapshot(await bridge.installActionPreset(preset.id));
       actionPresets = await bridge.getActionPresets();
       notify(`已添加“${preset.name}”`);
-    } catch (error) { notify(errorMessage(error), "error"); }
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    }
   }
 
   function openImport() {
@@ -246,14 +290,22 @@
     transferMode = "export";
     transferBusy = true;
     transferOpen = true;
-    try { actionText = await bridge.exportActionsText(); }
-    catch (error) { notify(errorMessage(error), "error"); }
-    finally { transferBusy = false; }
+    try {
+      actionText = await bridge.exportActionsText();
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    } finally {
+      transferBusy = false;
+    }
   }
 
   async function copyActionText() {
-    try { await navigator.clipboard.writeText(actionText); notify(tr("动作文本已复制")); }
-    catch (error) { notify(errorMessage(error), "error"); }
+    try {
+      await navigator.clipboard.writeText(actionText);
+      notify(tr("动作文本已复制"));
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    }
   }
 
   async function importActionText() {
@@ -265,8 +317,11 @@
       actionPresets = await bridge.getActionPresets();
       transferOpen = false;
       notify(`已导入 ${response.result.importedCount} 个动作`);
-    } catch (error) { notify(errorMessage(error), "error"); }
-    finally { transferBusy = false; }
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    } finally {
+      transferBusy = false;
+    }
   }
 
   function focusActionName(event: Event) {
@@ -320,8 +375,11 @@
       selectedActionId = actionDraft.id || state.actions.at(-1)?.id || selectedActionId;
       actionEditorOpen = false;
       notify(tr("动作已保存"));
-    } catch (error) { actionSaveError = errorMessage(error); }
-    finally { actionSaving = false; }
+    } catch (error) {
+      actionSaveError = errorMessage(error);
+    } finally {
+      actionSaving = false;
+    }
   }
 
   function deleteSelectedAction() {
@@ -332,7 +390,10 @@
       description: t("“{name}”将被永久删除，此操作无法撤销。", language, { name: action.name }),
       confirmLabel: tr("确认删除"),
       kind: "danger",
-      onConfirm: async () => { onSnapshot(await bridge.deleteAction(action.id)); notify(tr("动作已删除")); },
+      onConfirm: async () => {
+        onSnapshot(await bridge.deleteAction(action.id));
+        notify(tr("动作已删除"));
+      },
     });
   }
 
@@ -340,10 +401,14 @@
     if (action.requiresConfirmation) {
       confirm({
         title: tr("运行需确认的动作？"),
-        description: t("“{name}”会改变当前系统状态，请确认是否继续执行。", language, { name: action.name }),
+        description: t("“{name}”会改变当前系统状态，请确认是否继续执行。", language, {
+          name: action.name,
+        }),
         confirmLabel: tr("确认运行"),
         kind: "primary",
-        onConfirm: () => { void executeAction(action); },
+        onConfirm: () => {
+          void executeAction(action);
+        },
       });
       return;
     }
@@ -352,9 +417,14 @@
 
   async function executeAction(action: ActionView) {
     busyActionId = action.id;
-    try { notify(await bridge.executeAction(action.id) || tr("动作已执行")); await loadOutput(action.id); }
-    catch (error) { notify(errorMessage(error), "error"); }
-    finally { busyActionId = ""; }
+    try {
+      notify((await bridge.executeAction(action.id)) || tr("动作已执行"));
+      await loadOutput(action.id);
+    } catch (error) {
+      notify(errorMessage(error), "error");
+    } finally {
+      busyActionId = "";
+    }
   }
 
   function handleShortcut(event: KeyboardEvent) {
@@ -380,240 +450,363 @@
   }
 
   function actionContentIsCode(action: ActionView) {
-    return action.action_type.type === "ShellCommand"
-      || action.action_type.type === "AppleScript"
-      || action.action_type.type === "ToggleShellCommand";
+    return (
+      action.action_type.type === "ShellCommand" ||
+      action.action_type.type === "AppleScript" ||
+      action.action_type.type === "ToggleShellCommand"
+    );
   }
 </script>
 
-<svelte:window on:keydown={handleShortcut} />
-    <div class="actions-layout">
-      <main class="content actions-content">
-        <header class="page-header actions-header">
-          <div class="actions-title-row">
-            <div class="actions-title-copy">
-              <div>
-                <h1>{uiTranslate("快捷动作", $uiLanguage)}</h1>
-                <span class="action-count-pill">{filteredActions.length}</span>
-              </div>
-              <p>{uiTranslate("运行常用操作，或从预设库添加更多跨平台动作。", $uiLanguage)}</p>
-            </div>
-            <button class="primary-button create-action-button" on:click={openNewAction}>
-              <Plus size={18} weight="bold" />
-              {uiTranslate("新建动作", $uiLanguage)}
-            </button>
+<svelte:window
+  on:keydown={handleShortcut}
+  on:focus={() => {
+    void loadOutput(selectedActionId);
+  }}
+/>
+<div class="actions-layout">
+  <main class="content actions-content">
+    <header class="page-header actions-header">
+      <div class="actions-title-row">
+        <div class="actions-title-copy">
+          <div>
+            <h1>{uiTranslate("快捷动作", $uiLanguage)}</h1>
+            <span class="action-count-pill">{filteredActions.length}</span>
           </div>
+          <p>{uiTranslate("运行常用操作，或从预设库添加更多跨平台动作。", $uiLanguage)}</p>
+        </div>
+        <button class="primary-button create-action-button" on:click={openNewAction}>
+          <Plus size={18} weight="bold" />
+          {uiTranslate("新建动作", $uiLanguage)}
+        </button>
+      </div>
 
-          <div class="actions-toolbar">
-            <label class="search-box">
-              <MagnifyingGlass size={19} />
-              <input bind:this={searchInput} bind:value={search} placeholder={uiTranslate("搜索动作", $uiLanguage)} />
-              <kbd>{shortcutModifier} K</kbd>
-            </label>
-            <div class="utility-actions">
-              <button class="secondary-button" on:click={openPresetPicker}>
-                <PuzzlePiece size={17} /> {uiTranslate("预设库", $uiLanguage)}
-              </button>
-              <button class="secondary-button" on:click={openImport}>{uiTranslate("导入", $uiLanguage)}</button>
-              <button class="secondary-button" on:click={openExport}>{uiTranslate("导出", $uiLanguage)}</button>
+      <div class="actions-toolbar">
+        <label class="search-box">
+          <MagnifyingGlass size={19} />
+          <input
+            bind:this={searchInput}
+            bind:value={search}
+            placeholder={uiTranslate("搜索动作", $uiLanguage)}
+          />
+          <kbd>{shortcutModifier} K</kbd>
+        </label>
+        <div class="utility-actions">
+          <button class="secondary-button" on:click={openPresetPicker}>
+            <PuzzlePiece size={17} />
+            {uiTranslate("预设库", $uiLanguage)}
+          </button>
+          <button class="secondary-button" on:click={openImport}
+            >{uiTranslate("导入", $uiLanguage)}</button
+          >
+          <button class="secondary-button" on:click={openExport}
+            >{uiTranslate("导出", $uiLanguage)}</button
+          >
+        </div>
+      </div>
+    </header>
+
+    <div class="actions-scroll">
+      <section
+        class="action-table"
+        aria-label={uiTranslate("快捷动作列表", $uiLanguage)}
+        role="table"
+      >
+        <div class="table-heading" role="row">
+          <span role="columnheader">{uiTranslate("动作名称", $uiLanguage)}</span>
+          <span role="columnheader">{uiTranslate("动作类型", $uiLanguage)}</span>
+          <span role="columnheader">{uiTranslate("所属分组", $uiLanguage)}</span>
+          <span role="columnheader">{tr("全局快捷键")}</span>
+          <span role="columnheader">{uiTranslate("操作", $uiLanguage)}</span>
+        </div>
+
+        <div class="action-rows-scroll" role="rowgroup">
+          {#if filteredActions.length === 0}
+            <div class="empty-state">
+              <MagnifyingGlass size={28} />
+              <strong>{uiTranslate("没有找到动作", $uiLanguage)}</strong>
+              <span>{uiTranslate("换一个关键词，或者新建一个动作。", $uiLanguage)}</span>
             </div>
-          </div>
-        </header>
-
-        <div class="actions-scroll">
-          <section class="action-table" aria-label={uiTranslate("快捷动作列表", $uiLanguage)} role="table">
-            <div class="table-heading" role="row">
-              <span role="columnheader">{uiTranslate("动作名称", $uiLanguage)}</span>
-              <span role="columnheader">{uiTranslate("动作类型", $uiLanguage)}</span>
-              <span role="columnheader">{uiTranslate("所属分组", $uiLanguage)}</span>
-              <span role="columnheader">{tr("全局快捷键")}</span>
-              <span role="columnheader">{uiTranslate("操作", $uiLanguage)}</span>
-            </div>
-
-            <div class="action-rows-scroll" role="rowgroup">
-              {#if filteredActions.length === 0}
-                <div class="empty-state">
-                  <MagnifyingGlass size={28} />
-                  <strong>{uiTranslate("没有找到动作", $uiLanguage)}</strong>
-                  <span>{uiTranslate("换一个关键词，或者新建一个动作。", $uiLanguage)}</span>
-                </div>
-              {:else}
-                {#each filteredActions as action (action.id)}
-                  <div
-                    class="action-row"
-                    class:selected={selectedActionId === action.id}
-                    role="row"
+          {:else}
+            {#each filteredActions as action (action.id)}
+              <div class="action-row" class:selected={selectedActionId === action.id} role="row">
+                <div class="action-name-cell" role="cell">
+                  <button
+                    type="button"
+                    class="action-name-cell action-select-button"
+                    aria-pressed={selectedActionId === action.id}
+                    on:click={() => selectAction(action.id)}
                   >
-                    <div class="action-name-cell" role="cell">
-                      <button type="button" class="action-name-cell action-select-button" aria-pressed={selectedActionId === action.id} on:click={() => selectAction(action.id)}>
-                        <span class="action-icon" style:--icon-color={action.color}>
-                          <ActionIcon iconId={action.icon_id} iconSvg={action.icon_svg} size={25} color={action.color} />
-                        </span>
-                        <span>
-                          <strong>{action.name}</strong>
-                          <small>{uiTranslate(action.actionTypeLabel, $uiLanguage)}</small>
-                        </span>
-                      </button>
-                    </div>
-                    <span class="muted-cell" role="cell">{uiTranslate(action.actionTypeLabel, $uiLanguage)}</span>
-                    <span class="muted-cell" role="cell"><span class="group-chip">{action.group}</span></span>
-                    <span class="shortcut-cell" role="cell">
-                      {#if action.global_shortcut}<kbd>{uiTranslate(shortcutLabel(action, shortcutModifier === "⌘" ? "⌘" : "Super"), $uiLanguage)}</kbd>{:else}—{/if}
+                    <span class="action-icon" style:--icon-color={action.color}>
+                      <ActionIcon
+                        iconId={action.icon_id}
+                        iconSvg={action.icon_svg}
+                        size={25}
+                        color={action.color}
+                      />
                     </span>
-                    <div role="cell">
-                      <button
-                        class="run-icon-button"
-                        class:running={action.isRunning}
-                        aria-label={uiTranslate((`运行 ${action.name}`), $uiLanguage)}
-                        disabled={busyActionId === action.id}
-                        on:click|stopPropagation={() => runAction(action)}
-                      >
-                        <Play size={16} weight="fill" />
-                      </button>
-                    </div>
-                  </div>
-                {/each}
-              {/if}
+                    <span>
+                      <strong>{action.name}</strong>
+                      <small>{uiTranslate(action.actionTypeLabel, $uiLanguage)}</small>
+                    </span>
+                  </button>
+                </div>
+                <span class="muted-cell" role="cell"
+                  >{uiTranslate(action.actionTypeLabel, $uiLanguage)}</span
+                >
+                <span class="muted-cell" role="cell"
+                  ><span class="group-chip">{action.group}</span></span
+                >
+                <span class="shortcut-cell" role="cell">
+                  {#if action.global_shortcut}<kbd
+                      >{uiTranslate(
+                        shortcutLabel(action, shortcutModifier === "⌘" ? "⌘" : "Super"),
+                        $uiLanguage,
+                      )}</kbd
+                    >{:else}—{/if}
+                </span>
+                <div role="cell">
+                  <button
+                    class="run-icon-button"
+                    class:running={action.isRunning}
+                    aria-label={uiTranslate(`运行 ${action.name}`, $uiLanguage)}
+                    disabled={busyActionId === action.id}
+                    on:click|stopPropagation={() => runAction(action)}
+                  >
+                    <Play size={16} weight="fill" />
+                  </button>
+                </div>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <aside class="inspector">
+    {#if selectedAction}
+      <div class="inspector-heading">
+        <strong>{selectedAction.name}</strong>
+        <button
+          aria-label={uiTranslate("取消选择", $uiLanguage)}
+          on:click={() => (selectedActionId = "")}><X size={18} /></button
+        >
+      </div>
+
+      <div class="inspector-scroll action-inspector-scroll">
+        <div class="inspector-hero">
+          <div class="inspector-summary">
+            <span class="large-action-icon" style:--icon-color={selectedAction.color}>
+              <ActionIcon
+                iconId={selectedAction.icon_id}
+                iconSvg={selectedAction.icon_svg}
+                size={30}
+                color={selectedAction.color}
+              />
+            </span>
+            <div>
+              <span class:running={selectedAction.isRunning} class="status-chip">
+                {uiTranslate(selectedAction.isRunning ? "运行中" : "就绪", $uiLanguage)}
+              </span>
+              <p>{uiTranslate(actionDescription(selectedAction), $uiLanguage)}</p>
+            </div>
+          </div>
+          <button class="outline-run-button" on:click={() => runAction(selectedAction)}>
+            <Play size={17} weight="fill" />
+            {uiTranslate(selectedAction.isRunning ? "停止动作" : "运行动作", $uiLanguage)}
+          </button>
+        </div>
+
+        <div class="action-inspector-details">
+          <section class="action-inspector-section">
+            <h2 class="action-inspector-section-title">
+              <Info size={16} weight="bold" />
+              {uiTranslate("基本信息", $uiLanguage)}
+            </h2>
+            <dl class="detail-list action-detail-list">
+              <div>
+                <dt>{uiTranslate("动作类型", $uiLanguage)}</dt>
+                <dd>{uiTranslate(selectedAction.actionTypeLabel, $uiLanguage)}</dd>
+              </div>
+              <div>
+                <dt>{uiTranslate("所属分组", $uiLanguage)}</dt>
+                <dd>{selectedAction.group}</dd>
+              </div>
+              <div>
+                <dt>{tr("全局快捷键")}</dt>
+                <dd>
+                  <button
+                    class="action-shortcut-button"
+                    on:click={openShortcutSettings}
+                    title={uiTranslate(tr("设置全局快捷键"), $uiLanguage)}
+                  >
+                    {#if selectedAction.global_shortcut}<kbd
+                        >{uiTranslate(
+                          shortcutLabel(selectedAction, shortcutModifier === "⌘" ? "⌘" : "Super"),
+                          $uiLanguage,
+                        )}</kbd
+                      >{:else}<Plus size={14} />{tr("添加全局快捷键")}{/if}
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt>{uiTranslate("运行状态", $uiLanguage)}</dt>
+                <dd class="action-detail-status">
+                  <span class="activity-dot" aria-hidden="true"></span>
+                  {uiTranslate(selectedAction.isRunning ? "运行中" : "就绪", $uiLanguage)}
+                </dd>
+              </div>
+            </dl>
+            {#if selectedAction.globalShortcutError}
+              <p class="action-shortcut-error" role="status">
+                <WarningCircle size={16} />{selectedAction.globalShortcutError}
+              </p>
+            {/if}
+          </section>
+
+          <section class="action-inspector-section action-content-section">
+            <h2 class="action-inspector-section-title">
+              <FileText size={16} weight="bold" />
+              {uiTranslate(actionContentTitle(selectedAction), $uiLanguage)}
+            </h2>
+            <div
+              class="action-content-well"
+              class:code-content={actionContentIsCode(selectedAction)}
+            >
+              <pre>{actionSummary(selectedAction)}</pre>
+              <p>{uiTranslate(actionContentDescription(selectedAction), $uiLanguage)}</p>
             </div>
           </section>
+
+          {#if actionOutput.length > 0}
+            <section class="action-inspector-section action-output-section">
+              <h2 class="action-inspector-section-title">{uiTranslate("最近输出", $uiLanguage)}</h2>
+              <pre>{actionOutput.slice(-5).join("\n")}</pre>
+            </section>
+          {/if}
         </div>
-      </main>
+      </div>
 
-      <aside class="inspector">
-        {#if selectedAction}
-          <div class="inspector-heading">
-            <strong>{selectedAction.name}</strong>
-            <button aria-label={uiTranslate("取消选择", $uiLanguage)} on:click={() => (selectedActionId = "")}><X size={18} /></button>
-          </div>
-
-          <div class="inspector-scroll action-inspector-scroll">
-            <div class="inspector-hero">
-              <div class="inspector-summary">
-                <span class="large-action-icon" style:--icon-color={selectedAction.color}>
-                  <ActionIcon iconId={selectedAction.icon_id} iconSvg={selectedAction.icon_svg} size={30} color={selectedAction.color} />
-                </span>
-                <div>
-                  <span class:running={selectedAction.isRunning} class="status-chip">
-                    {uiTranslate(selectedAction.isRunning ? "运行中" : "就绪", $uiLanguage)}
-                  </span>
-                  <p>{uiTranslate(actionDescription(selectedAction), $uiLanguage)}</p>
-                </div>
-              </div>
-              <button class="outline-run-button" on:click={() => runAction(selectedAction)}>
-                <Play size={17} weight="fill" />
-                {uiTranslate(selectedAction.isRunning ? "停止动作" : "运行动作", $uiLanguage)}
-              </button>
-            </div>
-
-            <div class="action-inspector-details">
-              <section class="action-inspector-section">
-                <h2 class="action-inspector-section-title">
-                  <Info size={16} weight="bold" />
-                  {uiTranslate("基本信息", $uiLanguage)}
-                </h2>
-                <dl class="detail-list action-detail-list">
-                  <div><dt>{uiTranslate("动作类型", $uiLanguage)}</dt><dd>{uiTranslate(selectedAction.actionTypeLabel, $uiLanguage)}</dd></div>
-                  <div><dt>{uiTranslate("所属分组", $uiLanguage)}</dt><dd>{selectedAction.group}</dd></div>
-                  <div>
-                    <dt>{tr("全局快捷键")}</dt>
-                    <dd>
-                      <button class="action-shortcut-button" on:click={openShortcutSettings} title={uiTranslate((tr("设置全局快捷键")), $uiLanguage)}>
-                        {#if selectedAction.global_shortcut}<kbd>{uiTranslate(shortcutLabel(selectedAction, shortcutModifier === "⌘" ? "⌘" : "Super"), $uiLanguage)}</kbd>{:else}<Plus size={14} />{tr("添加全局快捷键")}{/if}
-                      </button>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{uiTranslate("运行状态", $uiLanguage)}</dt>
-                    <dd class="action-detail-status">
-                      <span class="activity-dot" aria-hidden="true"></span>
-                      {uiTranslate(selectedAction.isRunning ? "运行中" : "就绪", $uiLanguage)}
-                    </dd>
-                  </div>
-                </dl>
-                {#if selectedAction.globalShortcutError}
-                  <p class="action-shortcut-error" role="status"><WarningCircle size={16} />{selectedAction.globalShortcutError}</p>
-                {/if}
-              </section>
-
-              <section class="action-inspector-section action-content-section">
-                <h2 class="action-inspector-section-title">
-                  <FileText size={16} weight="bold" />
-                  {uiTranslate(actionContentTitle(selectedAction), $uiLanguage)}
-                </h2>
-                <div class="action-content-well" class:code-content={actionContentIsCode(selectedAction)}>
-                  <pre>{actionSummary(selectedAction)}</pre>
-                  <p>{uiTranslate(actionContentDescription(selectedAction), $uiLanguage)}</p>
-                </div>
-              </section>
-
-              {#if actionOutput.length > 0}
-                <section class="action-inspector-section action-output-section">
-                  <h2 class="action-inspector-section-title">{uiTranslate("最近输出", $uiLanguage)}</h2>
-                  <pre>{actionOutput.slice(-5).join("\n")}</pre>
-                </section>
-              {/if}
-            </div>
-          </div>
-
-          <div class="inspector-footer">
-            <button class="secondary-button" on:click={openEditAction}>
-              <PencilSimple size={17} /> {uiTranslate("编辑", $uiLanguage)}
-            </button>
-            <button class="danger-button" on:click={deleteSelectedAction}>
-              <Trash size={17} /> {uiTranslate("删除", $uiLanguage)}
-            </button>
-          </div>
-        {:else}
-          <div class="inspector-empty">
-            <Lightning size={28} />
-            <strong>{uiTranslate("选择一个动作", $uiLanguage)}</strong>
-            <span>{uiTranslate("查看详细信息、测试或编辑动作。", $uiLanguage)}</span>
-          </div>
-        {/if}
-      </aside>
-    </div>
+      <div class="inspector-footer">
+        <button class="secondary-button" on:click={openEditAction}>
+          <PencilSimple size={17} />
+          {uiTranslate("编辑", $uiLanguage)}
+        </button>
+        <button class="danger-button" on:click={deleteSelectedAction}>
+          <Trash size={17} />
+          {uiTranslate("删除", $uiLanguage)}
+        </button>
+      </div>
+    {:else}
+      <div class="inspector-empty">
+        <Lightning size={28} />
+        <strong>{uiTranslate("选择一个动作", $uiLanguage)}</strong>
+        <span>{uiTranslate("查看详细信息、测试或编辑动作。", $uiLanguage)}</span>
+      </div>
+    {/if}
+  </aside>
+</div>
 <Dialog.Root bind:open={actionEditorOpen}>
   <Dialog.Portal>
     <Dialog.Overlay class="modal-backdrop" />
     <Dialog.Content class="modal action-modal" onOpenAutoFocus={focusActionName}>
       <header class="modal-header">
         <div>
-          <Dialog.Title class="modal-title" level={2}>{uiTranslate(actionDraft.id ? "编辑动作" : "新建动作", $uiLanguage)}</Dialog.Title>
-          <Dialog.Description class="modal-description">{uiTranslate("配置一个可由桌面端或移动端运行的本地动作。", $uiLanguage)}</Dialog.Description>
+          <Dialog.Title class="modal-title" level={2}
+            >{uiTranslate(actionDraft.id ? "编辑动作" : "新建动作", $uiLanguage)}</Dialog.Title
+          >
+          <Dialog.Description class="modal-description"
+            >{uiTranslate(
+              "配置一个可由桌面端或移动端运行的本地动作。",
+              $uiLanguage,
+            )}</Dialog.Description
+          >
         </div>
-        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}><X size={19} /></Dialog.Close>
+        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}
+          ><X size={19} /></Dialog.Close
+        >
       </header>
       <div class="modal-body action-modal-body">
         <div class="form-grid two-fields">
-          <label><span>{uiTranslate("动作名称", $uiLanguage)}</span><input bind:this={actionNameInput} bind:value={actionDraft.name} placeholder={uiTranslate("例如：启动开发环境", $uiLanguage)} /></label>
-          <label><span>{uiTranslate("所属分组", $uiLanguage)}</span><input bind:value={actionDraft.group} list="groups" placeholder={uiTranslate("常用", $uiLanguage)} /></label>
-          <datalist id="groups">{#each groups as group}<option value={group}></option>{/each}</datalist>
+          <label
+            ><span>{uiTranslate("动作名称", $uiLanguage)}</span><input
+              bind:this={actionNameInput}
+              bind:value={actionDraft.name}
+              placeholder={uiTranslate("例如：启动开发环境", $uiLanguage)}
+            /></label
+          >
+          <label
+            ><span>{uiTranslate("所属分组", $uiLanguage)}</span><input
+              bind:value={actionDraft.group}
+              list="groups"
+              placeholder={uiTranslate("常用", $uiLanguage)}
+            /></label
+          >
+          <datalist id="groups"
+            >{#each groups as group}<option value={group}></option>{/each}</datalist
+          >
         </div>
         <div class="action-global-shortcut-field">
           <label for="action-global-shortcut">{tr("全局快捷键（可选）")}</label>
           <div class="action-global-shortcut-control">
-            <input id="action-global-shortcut" bind:this={globalShortcutInput} value={actionDraft.globalShortcut ? shortcutLabel({ global_shortcut: actionDraft.globalShortcut }, shortcutModifier === "⌘" ? "⌘" : "Super") : ""} placeholder={tr("点击后按下组合键")} readonly on:keydown={captureGlobalShortcut} aria-invalid={!!shortcutError} aria-describedby="action-global-shortcut-hint action-global-shortcut-status" disabled={actionSaving} />
-            <button type="button" class="secondary-button compact-button" disabled={(!actionDraft.globalShortcut && !shortcutError) || actionSaving} on:click={clearGlobalShortcut}>{tr("清除")}</button>
+            <input
+              id="action-global-shortcut"
+              bind:this={globalShortcutInput}
+              value={actionDraft.globalShortcut
+                ? shortcutLabel(
+                    { global_shortcut: actionDraft.globalShortcut },
+                    shortcutModifier === "⌘" ? "⌘" : "Super",
+                  )
+                : ""}
+              placeholder={tr("点击后按下组合键")}
+              readonly
+              on:keydown={captureGlobalShortcut}
+              aria-invalid={!!shortcutError}
+              aria-describedby="action-global-shortcut-hint action-global-shortcut-status"
+              disabled={actionSaving}
+            />
+            <button
+              type="button"
+              class="secondary-button compact-button"
+              disabled={(!actionDraft.globalShortcut && !shortcutError) || actionSaving}
+              on:click={clearGlobalShortcut}>{tr("清除")}</button
+            >
           </div>
-          <small id="action-global-shortcut-hint">{tr("点击后直接按下组合键，需包含 Ctrl、Alt 或 Command / Super。按 Backspace / Delete 或点击“清除”取消绑定；保存时检查系统或其他应用占用。")}</small>
+          <small id="action-global-shortcut-hint"
+            >{tr(
+              "点击后直接按下组合键，需包含 Ctrl、Alt 或 Command / Super。按 Backspace / Delete 或点击“清除”取消绑定；保存时检查系统或其他应用占用。",
+            )}</small
+          >
           <div id="action-global-shortcut-status" aria-live="polite">
-            {#if shortcutError}<p class="action-shortcut-error"><WarningCircle size={16} />{tr(shortcutError)}</p>
+            {#if shortcutError}<p class="action-shortcut-error">
+                <WarningCircle size={16} />{tr(shortcutError)}
+              </p>
             {:else if shortcutChecking}<small>{tr("正在检测快捷键冲突…")}</small>{/if}
           </div>
         </div>
         <div class="form-grid action-settings-grid">
           <label>
             <span>{uiTranslate("动作类型", $uiLanguage)}</span>
-            <AppSelect bind:value={actionDraft.type}
+            <AppSelect
+              bind:value={actionDraft.type}
               aria-label={uiTranslate("动作类型", $uiLanguage)}
               placeholder={uiTranslate("选择动作类型", $uiLanguage)}
-              options={actionTypeOptions.map((option) => ({ ...option, label: uiTranslate(option.label, $uiLanguage) }))}
+              options={actionTypeOptions.map((option) => ({
+                ...option,
+                label: uiTranslate(option.label, $uiLanguage),
+              }))}
             />
           </label>
           <label class="color-field">
             <span>{uiTranslate("强调色", $uiLanguage)}</span>
             <span class="color-control">
-              <input class="color-input" type="color" bind:value={actionDraft.color} aria-label={uiTranslate("选择强调色", $uiLanguage)} />
+              <input
+                class="color-input"
+                type="color"
+                bind:value={actionDraft.color}
+                aria-label={uiTranslate("选择强调色", $uiLanguage)}
+              />
               <code>{actionDraft.color.toUpperCase()}</code>
             </span>
           </label>
@@ -625,7 +818,11 @@
               <strong>{uiTranslate("动作图标", $uiLanguage)}</strong>
               <small>{uiTranslate("桌面端与移动端会渲染同一份 SVG。", $uiLanguage)}</small>
             </div>
-            <button class="secondary-button compact-button" type="button" on:click={() => iconFileInput.click()}>
+            <button
+              class="secondary-button compact-button"
+              type="button"
+              on:click={() => iconFileInput.click()}
+            >
               {uiTranslate("导入 SVG", $uiLanguage)}
             </button>
             <input
@@ -636,7 +833,11 @@
               on:change={importActionIcon}
             />
           </div>
-          <div class="action-icon-picker" role="list" aria-label={uiTranslate("内置动作图标", $uiLanguage)}>
+          <div
+            class="action-icon-picker"
+            role="list"
+            aria-label={uiTranslate("内置动作图标", $uiLanguage)}
+          >
             {#each actionIconCatalog as icon (icon.id)}
               <button
                 type="button"
@@ -645,16 +846,30 @@
                 title={icon.label}
                 on:click={() => selectActionIcon(icon.id)}
               >
-                <ActionIcon iconId={icon.id} iconSvg={icon.svg} size={21} color={actionDraft.color} />
+                <ActionIcon
+                  iconId={icon.id}
+                  iconSvg={icon.svg}
+                  size={21}
+                  color={actionDraft.color}
+                />
               </button>
             {/each}
           </div>
           {#if actionDraft.iconId === "custom"}
             <div class="custom-icon-status">
               <span class="custom-icon-preview" style:--icon-color={actionDraft.color}>
-                <ActionIcon iconId={actionDraft.iconId} iconSvg={actionDraft.iconSvg} size={22} color={actionDraft.color} />
+                <ActionIcon
+                  iconId={actionDraft.iconId}
+                  iconSvg={actionDraft.iconSvg}
+                  size={22}
+                  color={actionDraft.color}
+                />
               </span>
-              <span><strong>{uiTranslate("自定义 SVG", $uiLanguage)}</strong><small>{uiTranslate("已通过安全检查，将随快捷动作同步。", $uiLanguage)}</small></span>
+              <span
+                ><strong>{uiTranslate("自定义 SVG", $uiLanguage)}</strong><small
+                  >{uiTranslate("已通过安全检查，将随快捷动作同步。", $uiLanguage)}</small
+                ></span
+              >
             </div>
           {/if}
         </section>
@@ -663,28 +878,57 @@
           {#if actionDraft.type === "LaunchApp"}
             <div class="full-field">
               <span>{uiTranslate("已安装应用", $uiLanguage)}</span>
-              <div class="app-picker" use:dismissibleDropdown={{ open: appPickerOpen, close: () => (appPickerOpen = false) }}>
+              <div
+                class="app-picker"
+                use:dismissibleDropdown={{
+                  open: appPickerOpen,
+                  close: () => (appPickerOpen = false),
+                }}
+              >
                 <button
                   class="app-picker-trigger"
                   class:open={appPickerOpen}
                   type="button"
                   aria-haspopup="listbox"
                   aria-expanded={appPickerOpen}
-                  on:click={() => appPickerOpen ? (appPickerOpen = false) : openInstalledAppPicker()}
+                  on:click={() =>
+                    appPickerOpen ? (appPickerOpen = false) : openInstalledAppPicker()}
                 >
                   {#if selectedInstalledApp}
                     <span class="app-icon app-icon-large">
-                      <InstalledAppIcon path={selectedInstalledApp.path} name={selectedInstalledApp.name} initialIcon={selectedInstalledApp.iconDataUrl} size={28} />
+                      <InstalledAppIcon
+                        path={selectedInstalledApp.path}
+                        name={selectedInstalledApp.name}
+                        initialIcon={selectedInstalledApp.iconDataUrl}
+                        size={28}
+                      />
                     </span>
                     <span class="app-picker-trigger-copy">
                       <strong>{selectedInstalledApp.name}</strong>
-                      <small>{uiTranslate(selectedInstalledApp.version ? `版本 ${selectedInstalledApp.version}` : selectedInstalledApp.path, $uiLanguage)}</small>
+                      <small
+                        >{uiTranslate(
+                          selectedInstalledApp.version
+                            ? `版本 ${selectedInstalledApp.version}`
+                            : selectedInstalledApp.path,
+                          $uiLanguage,
+                        )}</small
+                      >
                     </span>
                   {:else}
                     <span class="app-picker-placeholder-icon"><SquaresFour size={19} /></span>
                     <span class="app-picker-trigger-copy">
-                      <strong>{uiTranslate(appsLoading ? "正在扫描应用…" : "选择一个应用", $uiLanguage)}</strong>
-                      <small>{uiTranslate(appsLoading ? "正在读取应用名称和图标" : "支持按名称、版本或路径搜索", $uiLanguage)}</small>
+                      <strong
+                        >{uiTranslate(
+                          appsLoading ? "正在扫描应用…" : "选择一个应用",
+                          $uiLanguage,
+                        )}</strong
+                      >
+                      <small
+                        >{uiTranslate(
+                          appsLoading ? "正在读取应用名称和图标" : "支持按名称、版本或路径搜索",
+                          $uiLanguage,
+                        )}</small
+                      >
                     </span>
                   {/if}
                   <CaretDown class="app-picker-caret" size={17} weight="bold" />
@@ -705,15 +949,27 @@
                           type="button"
                           aria-label={uiTranslate("清除搜索", $uiLanguage)}
                           on:mousedown|preventDefault
-                          on:click={() => (appSearch = "")}
-                        ><X size={15} /></button>
+                          on:click={() => (appSearch = "")}><X size={15} /></button
+                        >
                       {/if}
                     </div>
-                    <div class="app-picker-results" role="listbox" aria-label={uiTranslate("已安装应用", $uiLanguage)}>
+                    <div
+                      class="app-picker-results"
+                      role="listbox"
+                      aria-label={uiTranslate("已安装应用", $uiLanguage)}
+                    >
                       {#if appsLoading}
-                        <div class="app-picker-state"><span class="loading-spinner"></span><span>{uiTranslate("正在扫描已安装应用…", $uiLanguage)}</span></div>
+                        <div class="app-picker-state">
+                          <span class="loading-spinner"></span><span
+                            >{uiTranslate("正在扫描已安装应用…", $uiLanguage)}</span
+                          >
+                        </div>
                       {:else if filteredInstalledApps.length === 0}
-                        <div class="app-picker-state"><MagnifyingGlass size={22} /><span>{uiTranslate("没有找到“", $uiLanguage)}{appSearch}”</span><small>{uiTranslate("可在下方直接填写应用路径", $uiLanguage)}</small></div>
+                        <div class="app-picker-state">
+                          <MagnifyingGlass size={22} /><span
+                            >{uiTranslate("没有找到“", $uiLanguage)}{appSearch}”</span
+                          ><small>{uiTranslate("可在下方直接填写应用路径", $uiLanguage)}</small>
+                        </div>
                       {:else}
                         {#each filteredInstalledApps as app (app.path)}
                           <button
@@ -725,20 +981,41 @@
                             on:click={() => selectInstalledApp(app)}
                           >
                             <span class="app-icon">
-                              <InstalledAppIcon path={app.path} name={app.name} initialIcon={app.iconDataUrl} size={24} />
+                              <InstalledAppIcon
+                                path={app.path}
+                                name={app.name}
+                                initialIcon={app.iconDataUrl}
+                                size={24}
+                              />
                             </span>
                             <span class="app-picker-option-copy">
                               <strong>{app.name}</strong>
-                              <small>{uiTranslate(app.version ? `版本 ${app.version}` : app.identifier ?? app.path, $uiLanguage)}</small>
+                              <small
+                                >{uiTranslate(
+                                  app.version
+                                    ? `版本 ${app.version}`
+                                    : (app.identifier ?? app.path),
+                                  $uiLanguage,
+                                )}</small
+                              >
                             </span>
-                            {#if app.path === actionDraft.appPath}<Check size={18} weight="bold" />{/if}
+                            {#if app.path === actionDraft.appPath}<Check
+                                size={18}
+                                weight="bold"
+                              />{/if}
                           </button>
                         {/each}
                       {/if}
                     </div>
                     <div class="app-picker-footer">
-                      <span>{uiTranslate("共", $uiLanguage)} {installedApps.length} {uiTranslate("个应用", $uiLanguage)}</span>
-                      <button type="button" on:click={() => loadInstalledApps(true)}>{uiTranslate("重新扫描", $uiLanguage)}</button>
+                      <span
+                        >{uiTranslate("共", $uiLanguage)}
+                        {installedApps.length}
+                        {uiTranslate("个应用", $uiLanguage)}</span
+                      >
+                      <button type="button" on:click={() => loadInstalledApps(true)}
+                        >{uiTranslate("重新扫描", $uiLanguage)}</button
+                      >
                     </div>
                   </div>
                 {/if}
@@ -749,23 +1026,54 @@
             </div>
             <label class="full-field">
               <span>{uiTranslate("自定义应用路径（可选）", $uiLanguage)}</span>
-              <input bind:value={actionDraft.appPath} placeholder={uiTranslate("绿色版或未被扫描到的应用路径", $uiLanguage)} />
+              <input
+                bind:value={actionDraft.appPath}
+                placeholder={uiTranslate("绿色版或未被扫描到的应用路径", $uiLanguage)}
+              />
             </label>
           {:else if actionDraft.type === "OpenPath"}
-            <label class="full-field"><span>{uiTranslate("文件或目录路径", $uiLanguage)}</span><input bind:value={actionDraft.path} placeholder={uiTranslate("~/Downloads 或 C:\\Users\\name\\Downloads", $uiLanguage)} /></label>
+            <label class="full-field"
+              ><span>{uiTranslate("文件或目录路径", $uiLanguage)}</span><input
+                bind:value={actionDraft.path}
+                placeholder={uiTranslate("~/Downloads 或 C:\\Users\\name\\Downloads", $uiLanguage)}
+              /></label
+            >
           {:else if actionDraft.type === "OpenUrl"}
-            <label class="full-field"><span>URL</span><input bind:value={actionDraft.url} placeholder="https://example.com" /></label>
+            <label class="full-field"
+              ><span>URL</span><input
+                bind:value={actionDraft.url}
+                placeholder="https://example.com"
+              /></label
+            >
           {:else if actionDraft.type === "Hotkey"}
             <div class="form-grid two-fields">
-              <label><span>{uiTranslate("修饰键", $uiLanguage)}</span><input bind:value={actionDraft.modifiers} placeholder="command, shift" /></label>
-              <label><span>{uiTranslate("按键", $uiLanguage)}</span><input bind:value={actionDraft.key} placeholder="P" /></label>
+              <label
+                ><span>{uiTranslate("修饰键", $uiLanguage)}</span><input
+                  bind:value={actionDraft.modifiers}
+                  placeholder="command, shift"
+                /></label
+              >
+              <label
+                ><span>{uiTranslate("按键", $uiLanguage)}</span><input
+                  bind:value={actionDraft.key}
+                  placeholder="P"
+                /></label
+              >
             </div>
           {:else if actionDraft.type === "AppleScript"}
-            <label class="full-field"><span>AppleScript</span><textarea bind:value={actionDraft.script} rows="6" placeholder="tell application…"></textarea></label>
+            <label class="full-field"
+              ><span>AppleScript</span><textarea
+                bind:value={actionDraft.script}
+                rows="6"
+                placeholder="tell application…"
+              ></textarea></label
+            >
           {:else if actionDraft.type === "System"}
             <label class="full-field">
               <span>{uiTranslate("系统操作", $uiLanguage)}</span>
-              <AppSelect bind:value={actionDraft.systemOperation} aria-label={uiTranslate("系统操作", $uiLanguage)}
+              <AppSelect
+                bind:value={actionDraft.systemOperation}
+                aria-label={uiTranslate("系统操作", $uiLanguage)}
                 options={[
                   { value: "lock_screen", label: uiTranslate("锁定电脑", $uiLanguage) },
                   { value: "display_sleep", label: uiTranslate("关闭显示器", $uiLanguage) },
@@ -780,7 +1088,9 @@
           {:else if actionDraft.type === "Media"}
             <label class="full-field">
               <span>{uiTranslate("媒体操作", $uiLanguage)}</span>
-              <AppSelect bind:value={actionDraft.mediaOperation} aria-label={uiTranslate("媒体操作", $uiLanguage)}
+              <AppSelect
+                bind:value={actionDraft.mediaOperation}
+                aria-label={uiTranslate("媒体操作", $uiLanguage)}
                 options={[
                   { value: "toggle_play_pause", label: uiTranslate("播放 / 暂停", $uiLanguage) },
                   { value: "play", label: uiTranslate("播放", $uiLanguage) },
@@ -793,11 +1103,21 @@
               />
             </label>
           {:else if actionDraft.type === "SetSystemVolume"}
-            <label class="full-field"><span>{uiTranslate("系统音量：", $uiLanguage)}{actionDraft.volume}%</span><input type="range" min="0" max="100" step="1" bind:value={actionDraft.volume} /></label>
+            <label class="full-field"
+              ><span>{uiTranslate("系统音量：", $uiLanguage)}{actionDraft.volume}%</span><input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                bind:value={actionDraft.volume}
+              /></label
+            >
           {:else if actionDraft.type === "SetSystemMuted"}
             <label class="full-field">
               <span>{uiTranslate("声音状态", $uiLanguage)}</span>
-              <AppSelect bind:value={actionDraft.muted} aria-label={uiTranslate("声音状态", $uiLanguage)}
+              <AppSelect
+                bind:value={actionDraft.muted}
+                aria-label={uiTranslate("声音状态", $uiLanguage)}
                 options={[
                   { value: true, label: uiTranslate("静音", $uiLanguage) },
                   { value: false, label: uiTranslate("取消静音", $uiLanguage) },
@@ -807,7 +1127,9 @@
           {:else if actionDraft.type === "SetMicrophone"}
             <label class="full-field">
               <span>{uiTranslate("麦克风状态", $uiLanguage)}</span>
-              <AppSelect bind:value={actionDraft.microphoneActive} aria-label={uiTranslate("麦克风状态", $uiLanguage)}
+              <AppSelect
+                bind:value={actionDraft.microphoneActive}
+                aria-label={uiTranslate("麦克风状态", $uiLanguage)}
                 options={[
                   { value: false, label: uiTranslate("静音", $uiLanguage) },
                   { value: true, label: uiTranslate("开启", $uiLanguage) },
@@ -815,12 +1137,37 @@
               />
             </label>
           {:else if actionDraft.type === "ToggleShellCommand"}
-            <label class="full-field"><span>{uiTranslate("启动命令", $uiLanguage)}</span><textarea bind:value={actionDraft.startCommand} rows="3"></textarea></label>
-            <label class="full-field"><span>{uiTranslate("停止命令（可选）", $uiLanguage)}</span><textarea bind:value={actionDraft.stopCommand} rows="2"></textarea></label>
-            <label class="full-field"><span>{uiTranslate("工作目录（可选）", $uiLanguage)}</span><input bind:value={actionDraft.workingDir} /></label>
+            <label class="full-field"
+              ><span>{uiTranslate("启动命令", $uiLanguage)}</span><textarea
+                bind:value={actionDraft.startCommand}
+                rows="3"
+              ></textarea></label
+            >
+            <label class="full-field"
+              ><span>{uiTranslate("停止命令（可选）", $uiLanguage)}</span><textarea
+                bind:value={actionDraft.stopCommand}
+                rows="2"
+              ></textarea></label
+            >
+            <label class="full-field"
+              ><span>{uiTranslate("工作目录（可选）", $uiLanguage)}</span><input
+                bind:value={actionDraft.workingDir}
+              /></label
+            >
           {:else}
-            <label class="full-field"><span>{uiTranslate("Shell 命令", $uiLanguage)}</span><textarea bind:value={actionDraft.command} rows="3" placeholder="npm run dev"></textarea></label>
-            <label class="full-field"><span>{uiTranslate("工作目录（可选）", $uiLanguage)}</span><input bind:value={actionDraft.workingDir} placeholder="~/projects/my-app" /></label>
+            <label class="full-field"
+              ><span>{uiTranslate("Shell 命令", $uiLanguage)}</span><textarea
+                bind:value={actionDraft.command}
+                rows="3"
+                placeholder="npm run dev"
+              ></textarea></label
+            >
+            <label class="full-field"
+              ><span>{uiTranslate("工作目录（可选）", $uiLanguage)}</span><input
+                bind:value={actionDraft.workingDir}
+                placeholder="~/projects/my-app"
+              /></label
+            >
           {/if}
         </div>
         <label class="confirmation-field">
@@ -829,9 +1176,16 @@
         </label>
       </div>
       <footer class="modal-footer">
-        {#if actionSaveError}<p class="action-shortcut-error action-save-error" role="alert"><WarningCircle size={16} />{tr(actionSaveError)}</p>{/if}
+        {#if actionSaveError}<p class="action-shortcut-error action-save-error" role="alert">
+            <WarningCircle size={16} />{tr(actionSaveError)}
+          </p>{/if}
         <Dialog.Close class="secondary-button">{uiTranslate("取消", $uiLanguage)}</Dialog.Close>
-        <button class="primary-button" disabled={actionSaving || shortcutChecking || !!shortcutError} on:click={saveAction}>{uiTranslate(actionSaving ? tr("保存中…") : tr("保存动作"), $uiLanguage)}</button>
+        <button
+          class="primary-button"
+          disabled={actionSaving || shortcutChecking || !!shortcutError}
+          on:click={saveAction}
+          >{uiTranslate(actionSaving ? tr("保存中…") : tr("保存动作"), $uiLanguage)}</button
+        >
       </footer>
     </Dialog.Content>
   </Dialog.Portal>
@@ -843,10 +1197,19 @@
     <Dialog.Content class="modal preset-modal">
       <header class="modal-header">
         <div>
-          <Dialog.Title class="modal-title" level={2}>{uiTranslate("通用动作预设", $uiLanguage)}</Dialog.Title>
-          <Dialog.Description class="modal-description">{uiTranslate("这些动作使用系统原生能力，不依赖特定第三方应用。", $uiLanguage)}</Dialog.Description>
+          <Dialog.Title class="modal-title" level={2}
+            >{uiTranslate("通用动作预设", $uiLanguage)}</Dialog.Title
+          >
+          <Dialog.Description class="modal-description"
+            >{uiTranslate(
+              "这些动作使用系统原生能力，不依赖特定第三方应用。",
+              $uiLanguage,
+            )}</Dialog.Description
+          >
         </div>
-        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}><X size={19} /></Dialog.Close>
+        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}
+          ><X size={19} /></Dialog.Close
+        >
       </header>
       <div class="modal-body preset-modal-body">
         <label class="preset-search">
@@ -857,7 +1220,12 @@
           {#each filteredPresets as preset (preset.id)}
             <article class="preset-card" class:installed={preset.installed}>
               <span class="preset-card-icon" style:--preset-color={preset.color}>
-                <ActionIcon iconId={preset.iconId} iconSvg={preset.iconSvg} size={22} color={preset.color} />
+                <ActionIcon
+                  iconId={preset.iconId}
+                  iconSvg={preset.iconSvg}
+                  size={22}
+                  color={preset.color}
+                />
               </span>
               <div>
                 <strong>{preset.name}</strong>
@@ -884,14 +1252,24 @@
     <Dialog.Content class="modal transfer-modal">
       <header class="modal-header">
         <div>
-          <Dialog.Title class="modal-title" level={2}>{uiTranslate(transferMode === "import" ? "导入动作文本" : "导出动作文本", $uiLanguage)}</Dialog.Title>
+          <Dialog.Title class="modal-title" level={2}
+            >{uiTranslate(
+              transferMode === "import" ? "导入动作文本" : "导出动作文本",
+              $uiLanguage,
+            )}</Dialog.Title
+          >
           <Dialog.Description class="modal-description">
-            {uiTranslate(transferMode === "import"
-              ? "粘贴来自 GitHub 或其他来源的 ArcRelay JSON。导入前请检查其中的脚本和命令。"
-              : "复制这段 JSON 保存为文本文件，或分享到 GitHub。", $uiLanguage)}
+            {uiTranslate(
+              transferMode === "import"
+                ? "粘贴来自 GitHub 或其他来源的 ArcRelay JSON。导入前请检查其中的脚本和命令。"
+                : "复制这段 JSON 保存为文本文件，或分享到 GitHub。",
+              $uiLanguage,
+            )}
           </Dialog.Description>
         </div>
-        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}><X size={19} /></Dialog.Close>
+        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)}
+          ><X size={19} /></Dialog.Close
+        >
       </header>
       <div class="modal-body">
         <textarea
@@ -902,15 +1280,30 @@
           placeholder={uiTranslate("粘贴 ArcRelay JSON 动作文本", $uiLanguage)}
         ></textarea>
         {#if transferMode === "import"}
-          <p class="security-note"><WarningCircle size={16} /> {uiTranslate("Shell、AppleScript 和自定义程序路径拥有本机执行权限，只导入可信内容。", $uiLanguage)}</p>
+          <p class="security-note">
+            <WarningCircle size={16} />
+            {uiTranslate(
+              "Shell、AppleScript 和自定义程序路径拥有本机执行权限，只导入可信内容。",
+              $uiLanguage,
+            )}
+          </p>
         {/if}
       </div>
       <footer class="modal-footer">
         <Dialog.Close class="secondary-button">{uiTranslate("取消", $uiLanguage)}</Dialog.Close>
         {#if transferMode === "export"}
-          <button class="primary-button" disabled={transferBusy || !actionText} on:click={copyActionText}><Copy size={17} /> {uiTranslate("复制文本", $uiLanguage)}</button>
+          <button
+            class="primary-button"
+            disabled={transferBusy || !actionText}
+            on:click={copyActionText}
+            ><Copy size={17} /> {uiTranslate("复制文本", $uiLanguage)}</button
+          >
         {:else}
-          <button class="primary-button" disabled={transferBusy || !actionText.trim()} on:click={importActionText}>{uiTranslate("导入动作", $uiLanguage)}</button>
+          <button
+            class="primary-button"
+            disabled={transferBusy || !actionText.trim()}
+            on:click={importActionText}>{uiTranslate("导入动作", $uiLanguage)}</button
+          >
         {/if}
       </footer>
     </Dialog.Content>

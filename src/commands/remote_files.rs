@@ -291,6 +291,8 @@ pub async fn get_remote_file_thumbnail(
     share_id: String,
     relative_path: String,
     modified_at_ms: i64,
+    owner: String,
+    generation: u64,
 ) -> Result<Option<String>, String> {
     service::get_remote_file_thumbnail(
         app,
@@ -299,6 +301,8 @@ pub async fn get_remote_file_thumbnail(
         share_id,
         relative_path,
         modified_at_ms,
+        owner,
+        generation,
     )
     .await
 }
@@ -416,3 +420,19 @@ include!(concat!(
     env!("OUT_DIR"),
     "/src_commands_remote_files_ipc.rs"
 ));
+
+#[arcrelay_desktop_ipc::command]
+pub async fn cancel_remote_file_transfer(
+    state: State<'_, DesktopState>,
+    id: String,
+) -> Result<(), String> {
+    service::cancel_remote_file_transfer(state.inner(), &id)
+}
+#[arcrelay_desktop_ipc::command]
+pub async fn cancel_remote_thumbnails(
+    state: State<'_, DesktopState>,
+    owner: String,
+    generation: u64,
+) -> Result<(), String> {
+    service::cancel_remote_thumbnails(state.inner(), owner, generation)
+}

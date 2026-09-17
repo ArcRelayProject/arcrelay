@@ -41,10 +41,7 @@ function action(id: string) {
 function emit(a: AutomationActivity) {
   listeners.forEach((fn) => fn(structuredClone(a)));
 }
-function snapshot(
-  d: AutomationDefinition,
-  e: AutomationEvent,
-): AutomationActivity {
+function snapshot(d: AutomationDefinition, e: AutomationEvent): AutomationActivity {
   return {
     id: crypto.randomUUID(),
     automationId: d.id,
@@ -64,8 +61,7 @@ function snapshot(
         action:
           step.type === "quickAction"
             ? {
-                name:
-                  builtinNames[step.actionId] ?? source?.name ?? "动作已删除",
+                name: builtinNames[step.actionId] ?? source?.name ?? "动作已删除",
                 definition: source
                   ? structuredClone(source)
                   : {
@@ -76,9 +72,7 @@ function snapshot(
                   step.actionId.endsWith("-off") ||
                   Boolean(source?.confirm_before_run) ||
                   (source?.action_type.type === "System" &&
-                    ["shutdown", "restart"].includes(
-                      source.action_type.operation,
-                    )),
+                    ["shutdown", "restart"].includes(source.action_type.operation)),
                 requiresUnlockedSession: false,
                 requirements: [],
               }
@@ -91,11 +85,7 @@ function snapshot(
     }),
   };
 }
-function finish(
-  a: AutomationActivity,
-  status: ActivityStatus,
-  reason: string | null = null,
-) {
+function finish(a: AutomationActivity, status: ActivityStatus, reason: string | null = null) {
   a.status = status;
   a.reason = reason;
   a.finishedAt = new Date().toISOString();
@@ -114,10 +104,7 @@ function execute(a: AutomationActivity) {
     finish(a, "succeeded", "预览演示已完成；没有执行任何系统动作。");
     return;
   }
-  if (
-    step.action?.requiresConfirmation &&
-    !a.confirmedSteps.includes(step.index)
-  ) {
+  if (step.action?.requiresConfirmation && !a.confirmedSteps.includes(step.index)) {
     step.status = "awaitingConfirmation";
     a.status = "awaitingConfirmation";
     a.reason = "预览：需要在本机确认此动作";
@@ -150,11 +137,7 @@ function execute(a: AutomationActivity) {
 function start(d: AutomationDefinition, e: AutomationEvent) {
   const a = snapshot(d, e);
   activities.unshift(a);
-  if (
-    activities.some(
-      (v) => v.id !== a.id && v.automationId === d.id && isActive(v.status),
-    )
-  )
+  if (activities.some((v) => v.id !== a.id && v.automationId === d.id && isActive(v.status)))
     finish(a, "skipped", "已有同一自动化正在运行");
   else execute(a);
   return a.id;
@@ -168,10 +151,8 @@ function validation(d: AutomationDefinition): AutomationIssue[] {
     remedy = "edit",
   ) => issues.push({ message, stepIndex, code, remedy });
   if (!d.steps.length) add("请添加至少一个动作");
-  if (d.trigger.type === "application" && !d.trigger.apps.length)
-    add("请从已安装应用中选择应用");
-  if (d.trigger.type === "hotkey" && !d.trigger.shortcut.trim())
-    add("请录入全局快捷键");
+  if (d.trigger.type === "application" && !d.trigger.apps.length) add("请从已安装应用中选择应用");
+  if (d.trigger.type === "hotkey" && !d.trigger.shortcut.trim()) add("请录入全局快捷键");
   if (
     d.trigger.type === "schedule" &&
     (!d.trigger.weekdays.length || !/^\d{2}:\d{2}$/.test(d.trigger.time))
@@ -183,11 +164,7 @@ function validation(d: AutomationDefinition): AutomationIssue[] {
     if (c.type === "timeRange" && !c.weekdays.length) add("请选择条件日期");
   }
   d.steps.forEach((s, i) => {
-    if (
-      s.type === "quickAction" &&
-      !builtinNames[s.actionId] &&
-      !action(s.actionId)
-    )
+    if (s.type === "quickAction" && !builtinNames[s.actionId] && !action(s.actionId))
       add("快捷动作已被删除，请重新选择动作", i, "action.missing", "actions");
     if (
       s.type === "shell" &&
@@ -199,9 +176,7 @@ function validation(d: AutomationDefinition): AutomationIssue[] {
       add("脚本不能为空，超时应为 1–3600 秒", i);
     if (
       s.type === "delay" &&
-      (!Number.isInteger(s.durationSeconds) ||
-        s.durationSeconds < 0 ||
-        s.durationSeconds > 86400)
+      (!Number.isInteger(s.durationSeconds) || s.durationSeconds < 0 || s.durationSeconds > 86400)
     )
       add("等待时间应为 0–86400 秒", i);
     if (s.type === "notification" && !s.title.trim()) add("请填写通知标题", i);
@@ -218,12 +193,7 @@ function validation(d: AutomationDefinition): AutomationIssue[] {
   return issues;
 }
 if (scenario) {
-  const addAction = (
-    id: string,
-    name: string,
-    type: ActionType,
-    icon: string,
-  ) => {
+  const addAction = (id: string, name: string, type: ActionType, icon: string) => {
     if (!action(id))
       mockData.state.actions.push({
         id,
@@ -236,7 +206,7 @@ if (scenario) {
         sort_order: mockData.state.actions.length,
         source_preset_id: null,
         revision: 0,
-      confirm_before_run: false,
+        confirm_before_run: false,
         actionTypeLabel: name,
         isToggle: false,
         isRunning: false,
@@ -244,24 +214,14 @@ if (scenario) {
         globalShortcutError: null,
       });
   };
-  addAction(
-    "automation-music",
-    "暂停音乐",
-    { type: "Media", operation: "pause" },
-    "radio",
-  );
+  addAction("automation-music", "暂停音乐", { type: "Media", operation: "pause" }, "radio");
   addAction(
     "automation-folder",
     "打开工作目录",
     { type: "OpenPath", path: "/Users/demo/Projects" },
     "folder",
   );
-  addAction(
-    "automation-mic",
-    "麦克风静音",
-    { type: "SetMicrophone", active: false },
-    "radio",
-  );
+  addAction("automation-mic", "麦克风静音", { type: "SetMicrophone", active: false }, "radio");
   addAction(
     "automation-capture",
     "全屏截图",
@@ -301,9 +261,7 @@ if (scenario) {
     apps: meeting.trigger.type === "application" ? meeting.trigger.apps : [],
   });
   leave.name = "离开会议";
-  leave.steps = [
-    { type: "quickAction", actionId: "builtin-automation-privacy-off" },
-  ];
+  leave.steps = [{ type: "quickAction", actionId: "builtin-automation-privacy-off" }];
   const work = newDefinition({
     type: "schedule",
     time: "09:00",
@@ -345,11 +303,7 @@ if (scenario) {
   definitions.push(meeting, leave, work, file, lock);
   for (const [i, d] of definitions.entries()) {
     const e = event(
-      d === file
-        ? "transfer.received"
-        : d === meeting
-          ? "application.foreground"
-          : "manual",
+      d === file ? "transfer.received" : d === meeting ? "application.foreground" : "manual",
     );
     if (d === file)
       e.variables = {
@@ -412,8 +366,7 @@ export const automationMock: typeof automationsBridge = {
   },
   async saveAutomation(d) {
     const issues = validation(d);
-    if (issues.some((i) => d.enabled || i.code === "configuration"))
-      throw Error(issues[0].message);
+    if (issues.some((i) => d.enabled || i.code === "configuration")) throw Error(issues[0].message);
     const saved = {
       ...structuredClone(d),
       revision: d.revision + 1,
@@ -468,19 +421,19 @@ export const automationMock: typeof automationsBridge = {
       },
     ];
   },
+  async checkAutomations(definitions) {
+    return definitions.map(validation);
+  },
   async checkAutomation(d) {
     return validation(d);
   },
   async listAutomationActivities(id = null, limit = 100) {
-    return structuredClone(
-      activities.filter((a) => !id || a.automationId === id).slice(0, limit),
-    );
+    return structuredClone(activities.filter((a) => !id || a.automationId === id).slice(0, limit));
   },
   async confirmAutomationActivity(id) {
     const a = activities.find((a) => a.id === id);
     if (!a || a.status !== "awaitingConfirmation") throw Error("activity was already handled");
-    if (a.definition.runMode === "askBeforeRun" && !a.runConfirmed)
-      a.runConfirmed = true;
+    if (a.definition.runMode === "askBeforeRun" && !a.runConfirmed) a.runConfirmed = true;
     else {
       const step = a.steps.find((s) => s.status === "awaitingConfirmation");
       if (step) a.confirmedSteps.push(step.index);
@@ -503,7 +456,9 @@ export const automationMock: typeof automationsBridge = {
     for (let i = activities.length - 1; i >= 0; i--)
       if (!isActive(activities[i].status)) activities.splice(i, 1);
   },
-  async onAutomationConfiguration(_listener) { return () => {}; },
+  async onAutomationConfiguration(_listener) {
+    return () => {};
+  },
   async onAutomationActivity(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);

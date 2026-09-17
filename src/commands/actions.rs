@@ -443,3 +443,12 @@ pub async fn get_mcp_config(state: State<'_, DesktopState>) -> Result<McpConfigV
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_commands_actions_ipc.rs"));
+
+#[arcrelay_desktop_ipc::command]
+pub async fn observe_action_output(
+    state: State<'_, DesktopState>,
+    action_id: Option<String>,
+) -> Result<(), String> {
+    state.output_manager.observe(action_id);
+    Ok(())
+}

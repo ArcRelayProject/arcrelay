@@ -18,9 +18,12 @@ pub struct RemoteFileManager {
 }
 
 impl RemoteFileManager {
-    pub fn load(config_directory: &Path) -> std::io::Result<Arc<Self>> {
+    pub fn load_with_resources(
+        config_directory: &Path,
+        resources: Arc<arcrelay_content::ContentResources>,
+    ) -> std::io::Result<Arc<Self>> {
         Ok(Arc::new(Self {
-            service: FileShareService::load(config_directory)?,
+            service: FileShareService::load_with_resources(config_directory, resources)?,
         }))
     }
 
@@ -324,7 +327,11 @@ mod tests {
     async fn adapter_keeps_paired_device_writes_separate_from_web_policy() {
         let config = tempfile::tempdir().unwrap();
         let shared = tempfile::tempdir().unwrap();
-        let manager = RemoteFileManager::load(config.path()).unwrap();
+        let manager = RemoteFileManager::load_with_resources(
+            config.path(),
+            Arc::new(arcrelay_content::ContentResources::default()),
+        )
+        .unwrap();
         let share = manager.add_share(shared.path()).unwrap();
         manager
             .set_web_policy(

@@ -513,9 +513,12 @@ export interface CommandMap {
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_presence_enrollment: { args: { }; result: GazeStatusView };
+  cancel_remote_file_transfer: { args: { id: string; }; result: null };
+  cancel_remote_thumbnails: { args: { generation: number; owner: string; }; result: null };
   cancel_transfer: { args: { transferId: string; }; result: null };
   capture_gaze_calibration_sample: { args: { deskXUm: number; deskYUm: number; }; result: number };
   check_automation: { args: { definition: AutomationDefinition; }; result: Array<AutomationIssue> };
+  check_automations: { args: { capabilities: Array<Capability>; definitions: Array<AutomationDefinition>; }; result: Array<Array<AutomationIssue>> };
   check_for_app_update: { args: { }; result: AppUpdateCheckResult };
   choose_transfer_receive_directory: { args: { }; result: TransferSnapshot };
   clear_automation_activities: { args: { }; result: null };
@@ -598,7 +601,7 @@ export interface CommandMap {
   get_print_job_activity: { args: { }; result: PrintJobActivitySnapshot };
   get_printer_sharing_state: { args: { }; result: PrinterSharingSnapshot };
   get_remote_file_state: { args: { }; result: RemoteFileState };
-  get_remote_file_thumbnail: { args: { modifiedAtMs: number; peerId: string; relativePath: string; shareId: string; }; result: string | null };
+  get_remote_file_thumbnail: { args: { generation: number; modifiedAtMs: number; owner: string; peerId: string; relativePath: string; shareId: string; }; result: string | null };
   get_runtime_modules: { args: { }; result: Array<ModuleStatus> };
   get_sound_mute_until: { args: { }; result: number | null };
   get_transfer_state: { args: { }; result: TransferSnapshot };
@@ -624,6 +627,7 @@ export interface CommandMap {
   list_system_folders: { args: { }; result: Array<SystemFolder> };
   list_system_share_requests: { args: { }; result: Array<SystemShareRequest> };
   mark_notification_read: { args: { notificationId: string; }; result: Array<NotificationView> };
+  observe_action_output: { args: { actionId: string | null; }; result: null };
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
   open_accessibility_system_settings: { args: { }; result: null };
   open_automation_screen_permission: { args: { }; result: null };

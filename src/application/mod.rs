@@ -10,3 +10,7 @@ pub mod remote_file_service;
 pub mod runtime_modules;
 pub mod settings_service;
 pub mod text_selection;
+
+pub mod remote_file_session;
+
+pub mod remote_work;

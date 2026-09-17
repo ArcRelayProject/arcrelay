@@ -36,22 +36,34 @@ export async function observeSnapshot<T extends { revision: number }>(
 }
 
 /** Coalesces invalidations without dropping one arriving during an in-flight read. */
-export function createInvalidationLoader(load: () => Promise<void>, onError: (error: unknown) => void) {
-  let running = false;
+export function createInvalidationLoader(
+  load: () => Promise<void>,
+  onError: (error: unknown) => void,
+) {
+  let running: Promise<void> | undefined;
   let dirty = false;
   let disposed = false;
   return {
-    async refresh() {
+    refresh(): Promise<void> {
+      if (disposed) return Promise.resolve();
       dirty = true;
-      if (running || disposed) return;
-      running = true;
-      try {
+      if (running) return running;
+      running = (async () => {
         while (dirty && !disposed) {
           dirty = false;
-          try { await load(); } catch (error) { onError(error); }
+          try {
+            await load();
+          } catch (error) {
+            onError(error);
+          }
         }
-      } finally { running = false; }
+      })().finally(() => {
+        running = undefined;
+      });
+      return running;
     },
-    dispose() { disposed = true; },
+    dispose() {
+      disposed = true;
+    },
   };
 }

@@ -121,9 +121,14 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 npm run check
+npm run lint
+npm run format:check
 npm test
+npm run test:runtime-ui
 npm run version:check
 ```
+
+`npm run format` formats new and changed frontend, test and tooling sources. `.format-baseline.json` records untouched legacy files by content hash; changing a file opts it into formatting. Do not regenerate the baseline to bypass a check. `test:runtime-ui` requires Playwright Chromium (`npx playwright install chromium`).
 
 Official builds include an optional proprietary screenshot/OCR sidecar. Community builds work without it. Maintainers supply official sidecars through `SNIPTRA_ARTIFACT_DIR` and build with `npm run bundle:official`.
 

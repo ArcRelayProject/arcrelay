@@ -1030,6 +1030,12 @@ impl DesktopState {
         self.emit_runtime_snapshot(app);
     }
 
+    pub fn remote_file_sessions(
+        &self,
+    ) -> Arc<dyn crate::application::remote_file_session::RemoteFileSession> {
+        self.clipboard_sync.clone()
+    }
+
     pub async fn shutdown_and_exit(&self, app: AppHandle) {
         if self.quitting.swap(true, Ordering::SeqCst) {
             return;
@@ -1039,19 +1045,29 @@ impl DesktopState {
             tokio::task::spawn_blocking(crate::sound::shutdown),
         )
         .await;
-        let (done_tx, done_rx) = oneshot::channel();
-        let _ = self
-            .command_tx
-            .send(BackendCommand::Shutdown(done_tx))
-            .await;
-        if tokio::time::timeout(std::time::Duration::from_secs(10), done_rx)
-            .await
-            .is_err()
-        {
+        if !drain_backend_shutdown(&self.command_tx, std::time::Duration::from_secs(10)).await {
             tracing::warn!("application shutdown exceeded its drain deadline");
         }
         app.exit(0);
     }
+}
+
+async fn drain_backend_shutdown(
+    commands: &mpsc::Sender<BackendCommand>,
+    deadline: std::time::Duration,
+) -> bool {
+    tokio::time::timeout(deadline, async {
+        let (done_tx, done_rx) = oneshot::channel();
+        if commands
+            .send(BackendCommand::Shutdown(done_tx))
+            .await
+            .is_ok()
+        {
+            let _ = done_rx.await;
+        }
+    })
+    .await
+    .is_ok()
 }
 
 async fn clone_initialized_service<T: Clone>(slot: &tokio::sync::RwLock<Option<T>>) -> Option<T> {

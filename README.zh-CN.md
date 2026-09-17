@@ -113,9 +113,14 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 npm run check
+npm run lint
+npm run format:check
 npm test
+npm run test:runtime-ui
 npm run version:check
 ```
+
+`npm run format` 格式化新增和修改的前端、测试与工具源码。`.format-baseline.json` 用内容哈希保留尚未调整的旧文件；文件修改后即进入格式检查，不应重新生成基线来绕过检查。`test:runtime-ui` 需要 Playwright Chromium（`npx playwright install chromium`）。
 
 官方构建可包含专有的截图/OCR sidecar，社区构建不依赖该组件也能运行。维护者通过 `SNIPTRA_ARTIFACT_DIR` 提供官方 sidecar，并使用 `npm run bundle:official` 构建。
 

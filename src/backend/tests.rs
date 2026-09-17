@@ -216,3 +216,25 @@ fn received_clipboard_files_ignore_incomplete_and_outgoing_tasks() {
     assert!(tracker.update(&missing)[0].is_err());
     assert!(tracker.update(&missing).is_empty());
 }
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_deadline_includes_waiting_for_a_full_command_queue() {
+    let (commands, _receiver) = mpsc::channel(1);
+    let (done, _) = oneshot::channel();
+    commands.send(BackendCommand::Shutdown(done)).await.unwrap();
+    let start = tokio::time::Instant::now();
+    assert!(!drain_backend_shutdown(&commands, std::time::Duration::from_secs(10)).await);
+    assert_eq!(start.elapsed(), std::time::Duration::from_secs(10));
+}
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_completes_after_the_backend_acknowledges() {
+    let (commands, mut receiver) = mpsc::channel(1);
+    let backend = tokio::spawn(async move {
+        if let Some(BackendCommand::Shutdown(done)) = receiver.recv().await {
+            let _ = done.send(());
+        }
+    });
+    assert!(drain_backend_shutdown(&commands, std::time::Duration::from_secs(10)).await);
+    backend.await.unwrap();
+}
