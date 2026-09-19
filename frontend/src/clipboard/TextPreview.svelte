@@ -192,17 +192,18 @@
     <span class="selection-hint" aria-live="polite"
       >{tr(selectedText ? "已选择部分内容" : "拖动选择内容，双击选择词汇", language)}</span
     >
-    <select
+    <AppSelect
       class="text-drag-format"
       aria-label={tr("拖出格式", language)}
       bind:value={textDragMode}
       {disabled}
-    >
-      <option value="auto">{tr("自动格式", language)}</option>
-      <option value="plain_text">{tr("纯文本", language)}</option>
-      {#if item.kind === "html"}<option value="rich_text">{tr("富文本", language)}</option>{/if}
-      <option value="text_file">TXT</option>
-    </select>
+      options={[
+        { value: "auto", label: tr("自动格式", language) },
+        { value: "plain_text", label: tr("纯文本", language) },
+        ...(item.kind === "html" ? [{ value: "rich_text", label: tr("富文本", language) }] : []),
+        { value: "text_file", label: "TXT" },
+      ]}
+    />
     <DragHandle
       label={tr(selectedText ? "拖出选择" : "拖出", language)}
       disabled={disabled || !item.available}
@@ -297,7 +298,8 @@
     align-items: center;
     flex-wrap: wrap;
   }
-  .text-drag-format {
+  .text-preview-actions :global(.text-drag-format) {
+    min-height: 30px;
     min-width: 76px;
     max-width: 110px;
     padding: 5px;

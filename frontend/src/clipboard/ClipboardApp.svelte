@@ -25,6 +25,7 @@
   } from "phosphor-svelte";
 
   import BrandLogo from "../BrandLogo.svelte";
+  import AppSelect from "../components/AppSelect.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
   import ClipboardRow from "./ClipboardRow.svelte";
@@ -2145,17 +2146,18 @@
       {/if}
     </div>
     <div class="footer-actions">
-      <select
+      <AppSelect
         class="clipboard-drag-format"
         aria-label={uiTranslate("拖出格式", $uiLanguage)}
         bind:value={dragMode}
         disabled={dragBusy}
-      >
-        <option value="auto">{uiTranslate("自动格式", $uiLanguage)}</option>
-        <option value="plain_text">{uiTranslate("纯文本", $uiLanguage)}</option>
-        <option value="rich_text">{uiTranslate("富文本", $uiLanguage)}</option>
-        <option value="text_file">TXT</option>
-      </select>
+        options={[
+          { value: "auto", label: uiTranslate("自动格式", $uiLanguage) },
+          { value: "plain_text", label: uiTranslate("纯文本", $uiLanguage) },
+          { value: "rich_text", label: uiTranslate("富文本", $uiLanguage) },
+          { value: "text_file", label: "TXT" },
+        ]}
+      />
       <DragHandle
         label={uiTranslate("拖出", $uiLanguage)}
         disabled={pasteInFlight || dragBusy || (!selectedItem && selectedItems.length === 0)}

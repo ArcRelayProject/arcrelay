@@ -3,7 +3,8 @@
 @import "./styles/image-preview.css";
 @import "./styles/labels.css";
 @import "./styles/nearby.css";
-.clipboard-drag-format {
+.clipboard-drag-format.app-select-trigger {
+  min-height: 30px;
   min-width: 0;
   max-width: 92px;
   padding: 5px;

@@ -135,7 +135,8 @@ test("TXT option is passed for full text while double click still inserts normal
   await row.dblclick();
   await expect.poll(() => page.evaluate(() => (window as any).__dragTest.pasted)).toEqual([102]);
   expect(await page.evaluate(() => (window as any).__dragTest.started)).toEqual([]);
-  await page.locator(".clipboard-drag-format").selectOption("text_file");
+  await page.locator(".clipboard-drag-format").click();
+  await page.getByRole("option", { name: "TXT", exact: true }).click();
   await pressAndMove(page, '[data-clipboard-id="102"] .clipboard-row');
   await expect
     .poll(() => page.evaluate(() => (window as any).__dragTest.prepared.at(-1)))
@@ -184,7 +185,8 @@ test("selected text TXT handle and image original handle are available in previe
   await page.locator('[data-clipboard-id="103"] .clipboard-row').focus();
   await page.keyboard.press("Space");
   await page.locator(".rendered-text strong").dblclick();
-  await page.locator(".text-drag-format").selectOption("text_file");
+  await page.locator(".text-drag-format").click();
+  await page.getByRole("option", { name: "TXT", exact: true }).click();
   await pressAndMove(page, ".text-preview-actions .clipboard-drag-handle");
   await expect
     .poll(() => page.evaluate(() => (window as any).__dragTest.prepared.at(-1)?.mode))
