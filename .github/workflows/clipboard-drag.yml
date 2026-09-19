@@ -79,11 +79,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential clang libclang-dev cmake ninja-build pkg-config protobuf-compiler \
+            build-essential clang libclang-dev cmake ninja-build nasm pkg-config protobuf-compiler \
             libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
             libssl-dev libasound2-dev libdbus-1-dev libudev-dev libv4l-dev \
             libx11-dev libxdo-dev libxi-dev libxtst-dev libxrandr-dev libxfixes-dev libxkbcommon-dev \
             dbus-x11 xvfb xauth
+      - name: Install Windows native dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "NASM installation failed: $LASTEXITCODE" }
+          $env:Path = @(
+            $env:Path
+            [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            [Environment]::GetEnvironmentVariable('Path', 'User')
+          ) -join ';'
+          if (-not (Get-Command nasm.exe -ErrorAction SilentlyContinue)) {
+            # NASM's installer records its directory but does not add it to PATH.
+            $nasmDirectory = (Get-Item 'HKCU:\Software\nasm' -ErrorAction Stop).GetValue('')
+            $env:Path = "$nasmDirectory;$env:Path"
+          }
+          $nasmExecutable = (Get-Command nasm.exe -CommandType Application -ErrorAction Stop).Source
+          Split-Path $nasmExecutable | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $nasmExecutable -v
+          if ($LASTEXITCODE -ne 0) { throw "NASM verification failed: $LASTEXITCODE" }
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: rustfmt
