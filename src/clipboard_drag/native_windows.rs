@@ -225,7 +225,7 @@ mod implementation {
         }
         let mut bgra = image.into_raw();
         // InitializeFromBitmap performs alpha premultiplication itself.
-        for pixel in bgra.chunks_exact_mut(4) {
+        for pixel in bgra.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         unsafe { std::ptr::copy_nonoverlapping(bgra.as_ptr(), pixels.cast(), bgra.len()) };
