@@ -3,3 +3,68 @@
 @import "./styles/image-preview.css";
 @import "./styles/labels.css";
 @import "./styles/nearby.css";
+.clipboard-drag-format.app-select-trigger {
+  min-height: 30px;
+  min-width: 0;
+  max-width: 92px;
+  padding: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.clipboard-drag-notice {
+  position: absolute;
+  z-index: 25;
+  left: 14px;
+  right: 14px;
+  bottom: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px #0002;
+  font-size: 12px;
+  pointer-events: none;
+}
+.clipboard-drag-notice button {
+  pointer-events: auto;
+  padding: 2px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+.clipboard-row {
+  cursor: grab;
+}
+.clipboard-row:active {
+  cursor: grabbing;
+}
+.clipboard-row.unavailable {
+  cursor: default;
+}
+.clipboard-footer {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+}
+.clipboard-footer .record-count {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.clipboard-footer .record-count strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clipboard-footer .footer-actions {
+  grid-column: 2;
+  gap: 4px;
+}

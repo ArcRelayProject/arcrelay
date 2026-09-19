@@ -1,7 +1,11 @@
 <script lang="ts">
   import { translate as uiTranslate, language as uiLanguage } from "../../../i18n";
   import { onDestroy } from "svelte";
-  import type { DisplaySurface as DisplayType, WorkspaceLayout, RuntimeSnapshot } from "../../../types";
+  import type {
+    DisplaySurface as DisplayType,
+    WorkspaceLayout,
+    RuntimeSnapshot,
+  } from "../../../types";
   import { displayStatusLabel } from "../workspaceMembership";
   import { snapDisplayPosition } from "../topologyGeometry";
   import DeviceGroup from "./DeviceGroup.svelte";
@@ -25,22 +29,45 @@
   const padding = 72;
   let width = 0;
   let height = 0;
-  let drag: { id: string; startX: number; startY: number; originalX: number; originalY: number } | null = null;
-  let resize: { id: string; startX: number; startY: number; originalWidth: number; originalHeight: number; projectScale: number } | null = null;
+  let drag: {
+    id: string;
+    startX: number;
+    startY: number;
+    originalX: number;
+    originalY: number;
+  } | null = null;
+  let resize: {
+    id: string;
+    startX: number;
+    startY: number;
+    originalWidth: number;
+    originalHeight: number;
+    projectScale: number;
+  } | null = null;
 
   $: displayList = Object.values(layout.displays);
   $: renderList = selectedDisplayId
-    ? [...displayList].sort((left, right) => Number(left.displayId === selectedDisplayId) - Number(right.displayId === selectedDisplayId))
+    ? [...displayList].sort(
+        (left, right) =>
+          Number(left.displayId === selectedDisplayId) -
+          Number(right.displayId === selectedDisplayId),
+      )
     : displayList;
   $: minX = Math.min(...displayList.map((display) => display.deskRectUm.x), 0);
   $: minY = Math.min(...displayList.map((display) => display.deskRectUm.y), 0);
-  $: maxX = Math.max(...displayList.map((display) => display.deskRectUm.x + display.deskRectUm.width), 1);
-  $: maxY = Math.max(...displayList.map((display) => display.deskRectUm.y + display.deskRectUm.height), 1);
+  $: maxX = Math.max(
+    ...displayList.map((display) => display.deskRectUm.x + display.deskRectUm.width),
+    1,
+  );
+  $: maxY = Math.max(
+    ...displayList.map((display) => display.deskRectUm.y + display.deskRectUm.height),
+    1,
+  );
   $: measured = width > padding * 2 && height > padding * 2;
   $: scale = measured
     ? Math.min((width - padding * 2) / (maxX - minX), (height - padding * 2) / (maxY - minY)) * zoom
     : 0;
-  $: deviceGroups = groupDisplays(displayList, deviceNames, displayAvailability);
+  $: deviceGroups = groupDisplays(displayList, deviceNames, displayAvailability, $uiLanguage);
 
   function observeCanvas(node: HTMLElement) {
     let frame = 0;
@@ -65,7 +92,12 @@
     };
   }
 
-  function groupDisplays(displays: DisplayType[], names: Record<string, string>, availability: RuntimeSnapshot["displayAvailability"]) {
+  function groupDisplays(
+    displays: DisplayType[],
+    names: Record<string, string>,
+    availability: RuntimeSnapshot["displayAvailability"],
+    currentLanguage: typeof $uiLanguage,
+  ) {
     const groups = new Map<string, DisplayType[]>();
     for (const display of displays) {
       const values = groups.get(display.deviceId) ?? [];
@@ -74,7 +106,16 @@
     }
     return [...groups].map(([deviceId, values], index) => ({
       deviceId,
-      label: names[deviceId] ?? (deviceId === localServiceInstanceId ? "这台 Mac" : index === 0 && !localServiceInstanceId ? "这台 Mac" : "远程电脑"),
+      label:
+        names[deviceId] ??
+        uiTranslate(
+          deviceId === localServiceInstanceId
+            ? "这台设备"
+            : index === 0 && !localServiceInstanceId
+              ? "这台设备"
+              : "远程电脑",
+          currentLanguage,
+        ),
       x: Math.min(...values.map((display) => display.deskRectUm.x)),
       y: Math.min(...values.map((display) => display.deskRectUm.y)),
       online: values.some((display) => availability[display.displayId] === "Ready"),
@@ -92,7 +133,13 @@
     }
     event.preventDefault();
     onSelectDisplay(display.displayId);
-    drag = { id: display.displayId, startX: event.clientX, startY: event.clientY, originalX: display.deskRectUm.x, originalY: display.deskRectUm.y };
+    drag = {
+      id: display.displayId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originalX: display.deskRectUm.x,
+      originalY: display.deskRectUm.y,
+    };
     window.addEventListener("pointermove", moveDrag);
     window.addEventListener("pointerup", endDrag, { once: true });
   }
@@ -100,8 +147,10 @@
   function moveDrag(event: PointerEvent) {
     if (!drag) return;
     const snap = 5_000;
-    const nextX = Math.round((drag.originalX + (event.clientX - drag.startX) / scale) / snap) * snap;
-    const nextY = Math.round((drag.originalY + (event.clientY - drag.startY) / scale) / snap) * snap;
+    const nextX =
+      Math.round((drag.originalX + (event.clientX - drag.startX) / scale) / snap) * snap;
+    const nextY =
+      Math.round((drag.originalY + (event.clientY - drag.startY) / scale) / snap) * snap;
     const visualSnapUm = Math.min(25_000, Math.max(5_000, 14 / Math.max(scale, Number.EPSILON)));
     const snapped = snapDisplayPosition(drag.id, nextX, nextY, layout.displays, visualSnapUm);
     onMoveDisplay(drag.id, snapped.x, snapped.y);
@@ -166,13 +215,24 @@
           <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" stroke-opacity=".08" />
         </pattern>
       </defs>
-      <rect width={width} height={height} fill="url(#grid)" />
+      <rect {width} {height} fill="url(#grid)" />
       {#each deviceGroups as group}
         {@const groupPoint = project(group.x, group.y)}
-        <DeviceGroup name={`${group.label}${group.online ? " · 在线" : " · 离线"}`} x={groupPoint.x} y={groupPoint.y - 18} width={180} />
+        <DeviceGroup
+          name={`${group.label} · ${uiTranslate(group.online ? "在线" : "离线", $uiLanguage)}`}
+          x={groupPoint.x}
+          y={groupPoint.y - 18}
+          width={180}
+        />
       {/each}
       {#each layout.portals as portal (portal.portalId)}
-        <PortalOverlay {portal} displays={layout.displays} {project} selected={selectedPortalId === portal.portalId} onselect={() => onSelectPortal(portal.portalId)} />
+        <PortalOverlay
+          {portal}
+          displays={layout.displays}
+          {project}
+          selected={selectedPortalId === portal.portalId}
+          onselect={() => onSelectPortal(portal.portalId)}
+        />
       {/each}
       {#each renderList as display (display.displayId)}
         {@const point = project(display.deskRectUm.x, display.deskRectUm.y)}
@@ -196,6 +256,19 @@
 </div>
 
 <style>
-  .canvas { position: relative; width: 100%; height: 100%; min-height: 470px; overflow: hidden; border-radius: 14px; color: var(--text-secondary, #344054); background: var(--surface-soft, #f8f9fc); }
-  svg { width: 100%; height: 100%; display: block; }
+  .canvas {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 470px;
+    overflow: hidden;
+    border-radius: 14px;
+    color: var(--text-secondary, #344054);
+    background: var(--surface-soft, #f8f9fc);
+  }
+  svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
 </style>

@@ -9,6 +9,9 @@ use image::ImageDecoder;
 static CLIPBOARD_ACTION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
+    if crate::clipboard_drag::is_dragging() {
+        return Err("clipboard drag already in progress".into());
+    }
     CLIPBOARD_ACTION
         .try_lock()
         .map_err(|_| "clipboard action already in progress".to_string())

@@ -7,6 +7,7 @@ mod application_runtime;
 mod arc_input;
 mod autostart;
 mod backend;
+mod clipboard_drag;
 mod clipboard_sync;
 mod commands;
 mod continuous_paste_trigger;
@@ -90,6 +91,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_update::AppUpdateState::default())
+        .manage(Arc::new(clipboard_drag::ClipboardDragService::default()))
         .manage(Arc::new(gesture_debug::GestureDebugState::default()))
         .invoke_handler(tauri::generate_handler![
             commands::list_system_folders,
@@ -272,6 +274,9 @@ fn main() {
             commands::open_sniptra_settings,
             commands::start_screenshot_capture,
             commands::clipboard_history,
+            commands::clipboard_prepare_drag,
+            commands::clipboard_start_drag,
+            commands::clipboard_cancel_drag,
             commands::clipboard_timeline,
             commands::clipboard_thumbnail,
             commands::clipboard_image_preview,
@@ -363,6 +368,7 @@ fn main() {
             }
 
             commands::prepare_clipboard_preview_cache(app.handle()).map_err(std::io::Error::other)?;
+            app.state::<Arc<clipboard_drag::ClipboardDragService>>().start_maintenance(app.handle());
             windowing::setup_tray(app)?;
             windowing::setup_main_window(app.handle())?;
             system_share.initialize().map_err(std::io::Error::other)?;
@@ -549,6 +555,7 @@ fn main() {
 
     app.run(|app_handle, event| match event {
         tauri::RunEvent::Exit => {
+            clipboard_drag::shutdown(app_handle);
             #[cfg(target_os = "windows")]
             windowing::clipboard_windows::shutdown();
             app_handle
@@ -598,7 +605,10 @@ fn main() {
             label,
             event: tauri::WindowEvent::Focused(false),
             ..
-        } if label == windowing::CLIPBOARD_WINDOW_LABEL && cfg!(target_os = "linux") => {
+        } if label == windowing::CLIPBOARD_WINDOW_LABEL
+            && cfg!(target_os = "linux")
+            && !clipboard_drag::is_dragging() =>
+        {
             let app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(120)).await;
