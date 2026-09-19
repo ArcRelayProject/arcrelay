@@ -30,6 +30,21 @@ native source receives its completion callback. Increase the delay for longer
 lease checks. JSON reports also appear in the terminal and `reports.jsonl` in
 the printed `FIXTURES` directory.
 
+For HTML drops, the report records the offered `text/html` MIME type and compares
+the complete HTML string with the generated fixture, including its `<strong>`
+markup. It displays and saves that string as data without parsing or rendering
+it. Browser-added document wrappers or equivalent HTML reserialization fail
+this exact check; inspect the raw report and use the separate manual
+contenteditable check below to verify rendered formatting in that browser.
+
+The browser regression test exercises this reporting boundary with synthetic
+DOM drops, including script and embedded-resource payloads. It verifies literal
+reporting without execution or resource requests, not native drag delivery:
+
+```sh
+npx playwright test --config playwright.visual.config.ts clipboard-drag-probe.spec.ts
+```
+
 Additional manual cases:
 
 - Drag a source, keep the mouse button held, press Escape, then release. Expect

@@ -67,11 +67,9 @@
       if (!files.length) {
         report.checks.push({kind: 'plainText', pass: report.text.replace(/\r\n/g, '\n') === expected.text});
         if (report.types.includes('text/html')) {
-          // Browsers may wrap HTML with a document prefix, so compare the
-          // parsed text plus the retained semantic <strong> element.
-          const actual = new DOMParser().parseFromString(report.html, 'text/html');
-          const wanted = new DOMParser().parseFromString(expected.html, 'text/html');
-          report.checks.push({kind: 'html', pass: actual.body.textContent === wanted.body.textContent && actual.querySelector('strong')?.textContent === wanted.querySelector('strong')?.textContent});
+          // Compare the generated markup as data. Never parse dropped HTML:
+          // even a detached document can load resources supplied by a source.
+          report.checks.push({kind: 'html', pass: report.html === expected.html});
         }
       }
       report.pass = report.trusted && report.checks.length > 0 && report.checks.every(check => check.pass);
