@@ -29,6 +29,10 @@ pub fn destroy_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    if crate::clipboard_drag::is_dragging() {
+        crate::clipboard_drag::invalidate(app);
+        return Ok(());
+    }
     #[cfg(target_os = "windows")]
     super::clipboard_windows::destroyed();
     CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst);
@@ -189,6 +193,17 @@ pub fn hide_clipboard_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn hide_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
+    if crate::clipboard_drag::is_dragging() {
+        let locked = app
+            .try_state::<crate::backend::DesktopState>()
+            .is_some_and(|state| {
+                crate::presence_access::clipboard_locked(&state)
+                    || !state.settings.snapshot().clipboard_enabled
+            });
+        if !locked {
+            return Ok(());
+        }
+    }
     #[cfg(target_os = "macos")]
     debug_assert!(objc2::MainThreadMarker::new().is_some());
     let Some(window) = app.get_webview_window(CLIPBOARD_WINDOW_LABEL) else {
@@ -687,7 +702,11 @@ fn start_clipboard_outside_click_monitor(app: AppHandle) {
                 let mouse_down = macos_left_mouse_button_down();
                 let pressed = mouse_down && !was_down;
                 was_down = mouse_down;
-                if !pressed || clipboard_window_pinned() || clipboard_context_menu_open() {
+                if !pressed
+                    || clipboard_window_pinned()
+                    || clipboard_context_menu_open()
+                    || crate::clipboard_drag::is_dragging()
+                {
                     continue;
                 }
 

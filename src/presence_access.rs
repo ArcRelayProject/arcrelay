@@ -87,10 +87,12 @@ pub async fn reconcile_clipboard_runtime(
         });
 
     if locked {
+        crate::clipboard_drag::invalidate(app);
         crate::commands::clipboard_stop_continuous_paste(app.clone()).await;
         crate::commands::clear_clipboard_thumbnail_cache();
         crate::windowing::hide_clipboard_window(app).map_err(|error| error.to_string())?;
     } else if !settings.clipboard_enabled {
+        crate::clipboard_drag::invalidate(app);
         crate::windowing::sync_clipboard_window(app, false).map_err(|error| error.to_string())?;
     }
     Ok(())

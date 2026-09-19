@@ -1,0 +1,130 @@
+name: Clipboard drag
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/clipboard-drag.yml
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - tauri*.json
+      - src/clipboard_drag/**
+      - src/commands/clipboard*.rs
+      - src/commands.rs
+      - src/windowing/clipboard*.rs
+      - src/windowing.rs
+      - src/presence_access.rs
+      - src/main.rs
+      - frontend/src/clipboard/**
+      - frontend/src/clipboardRenderPolicy*
+      - frontend/src/ipc/**
+      - frontend/clipboard.html
+      - frontend/vite.config.ts
+      - frontend/tsconfig.json
+      - tests/visual/clipboard-*.spec.ts
+      - playwright.visual.config.ts
+      - package.json
+      - package-lock.json
+  pull_request:
+    paths:
+      - .github/workflows/clipboard-drag.yml
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - tauri*.json
+      - src/clipboard_drag/**
+      - src/commands/clipboard*.rs
+      - src/commands.rs
+      - src/windowing/clipboard*.rs
+      - src/windowing.rs
+      - src/presence_access.rs
+      - src/main.rs
+      - frontend/src/clipboard/**
+      - frontend/src/clipboardRenderPolicy*
+      - frontend/src/ipc/**
+      - frontend/clipboard.html
+      - frontend/vite.config.ts
+      - frontend/tsconfig.json
+      - tests/visual/clipboard-*.spec.ts
+      - playwright.visual.config.ts
+      - package.json
+      - package-lock.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clipboard-drag-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest, ubuntu-24.04]
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential clang libclang-dev cmake ninja-build pkg-config protobuf-compiler \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libasound2-dev libdbus-1-dev libudev-dev libv4l-dev \
+            libx11-dev libxdo-dev libxi-dev libxtst-dev libxrandr-dev libxfixes-dev libxkbcommon-dev \
+            dbus-x11 xvfb xauth
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: clipboard-drag
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Compile every native target
+        run: cargo check --locked --all-targets
+      - name: Run clipboard drag tests
+        if: runner.os != 'Linux'
+        run: cargo test --locked --bin arcrelay-desktop clipboard_drag -- --nocapture
+      - name: Run clipboard drag tests with a Linux display
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a cargo test --locked --bin arcrelay-desktop clipboard_drag -- --nocapture
+
+  ui:
+    name: Clipboard UI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:clipboard
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Exercise drag gestures and existing clipboard interactions
+        run: >-
+          npx playwright test --config playwright.visual.config.ts
+          clipboard-drag.spec.ts clipboard-interactions.spec.ts clipboard-windows.spec.ts
+      - name: Preserve browser traces on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: clipboard-drag-browser-traces
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -34,6 +34,7 @@ use arcrelay_protocol::remote_files::{
 mod actions;
 mod automations;
 mod clipboard;
+mod clipboard_drag;
 mod devices;
 mod diagnostics;
 mod mcp;
@@ -46,6 +47,7 @@ mod transfer;
 pub use actions::*;
 pub use automations::*;
 pub use clipboard::*;
+pub use clipboard_drag::*;
 pub use devices::*;
 pub use diagnostics::*;
 pub use mcp::*;
@@ -60,6 +62,7 @@ pub(crate) fn register_ipc_contract(registry: &mut crate::ipc_contract::Registry
     actions::register_ipc_contract(registry);
     automations::register_ipc_contract(registry);
     clipboard::register_ipc_contract(registry);
+    clipboard_drag::register_ipc_contract(registry);
     devices::register_ipc_contract(registry);
     diagnostics::register_ipc_contract(registry);
     mcp::register_ipc_contract(registry);

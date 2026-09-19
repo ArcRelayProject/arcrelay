@@ -377,6 +377,9 @@ pub fn shutdown() {
 }
 
 fn pause_from_hook() {
+    if crate::clipboard_drag::is_dragging() {
+        return;
+    }
     let generation = if let Ok(mut state) = session().try_lock() {
         if !state.visible || (!state.selecting && !state.editing) {
             return;
@@ -402,6 +405,9 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARA
         if CONSUMED.with(|keys| keys.borrow_mut().remove(&event.vkCode)) {
             return LRESULT(1);
         }
+        return CallNextHookEx(None, code, wparam, lparam);
+    }
+    if crate::clipboard_drag::is_dragging() {
         return CallNextHookEx(None, code, wparam, lparam);
     }
     if !matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN) {
@@ -527,6 +533,9 @@ fn start_hooks(app: &AppHandle) -> Result<(), String> {
                         }
                     }
                     HookEvent::Pause(generation) => {
+                        if crate::clipboard_drag::is_dragging() {
+                            return;
+                        }
                         if session()
                             .lock()
                             .unwrap_or_else(|error| error.into_inner())

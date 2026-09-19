@@ -30,6 +30,13 @@
   import ClipboardRow from "./ClipboardRow.svelte";
   import ContentPreview from "./ContentPreview.svelte";
   import TextPreview from "./TextPreview.svelte";
+  import DragHandle from "./DragHandle.svelte";
+  import {
+    clipboardDragIds,
+    createClipboardDragSession,
+    type ClipboardDragMode,
+    type ClipboardDragPhase,
+  } from "./dragSession";
   import { clipboardBridge } from "./bridge";
   import { visibleQuickPasteIds } from "./quickPaste";
   import { HeightIndex } from "./heightIndex";
@@ -114,6 +121,26 @@
   let ocrPasting = false;
   let pasteInFlight = false;
   let pasteError = "";
+  let dragPhase: ClipboardDragPhase = "idle";
+  let dragCount = 0;
+  let dragMode: ClipboardDragMode = "auto";
+  let dragError = "";
+  $: dragBusy = dragPhase !== "idle";
+  const dragSession = createClipboardDragSession({
+    prepare: (request) => clipboardBridge.prepareDrag(request),
+    start: (token) => clipboardBridge.startDrag(token),
+    cancel: (token) => clipboardBridge.cancelDrag(token),
+    state: (phase, count) => {
+      const wasBusy = dragPhase !== "idle";
+      dragPhase = phase;
+      dragCount = count;
+      if (phase === "idle" && wasBusy && windowVisible && historyRefreshPending)
+        requestHistoryRefresh();
+    },
+    error: (reason) => {
+      dragError = reason === "Drag failed" ? uiTranslate("拖放失败", $uiLanguage) : String(reason);
+    },
+  });
   let historyRefreshPending = false;
   let interactionUntil = 0;
   let historyRefreshTimer: number | undefined;
@@ -201,7 +228,7 @@
   $: quickLabels = selectQuickLabels(labels, recentLabelIds, selectedLabelFilter);
   $: filteredLabels = filterClipboardLabels(labels, labelSearch);
   $: showAllLabelOption = !labelSearch.trim();
-  $: recalculateVisibleRange(history.entries, scrollTop, viewportHeight);
+  $: if (!dragBusy) recalculateVisibleRange(history.entries, scrollTop, viewportHeight);
   $: {
     window.clearTimeout(debounceTimer);
     const value = search;
@@ -289,6 +316,7 @@
   }
 
   function recalculateVisibleRange(entries: ClipboardItem[], top: number, height: number) {
+    if (dragBusy) return;
     if (entries.length === 0) {
       quickPasteIds = [];
       visibleStartIndex = 0;
@@ -391,6 +419,7 @@
 
     recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
+      await scope.add(clipboardBridge.onDragEnded((event) => dragSession.ended(event)));
       if (windowsClipboard) {
         await scope.add(
           clipboardBridge.onNavigation((key) => {
@@ -435,6 +464,7 @@
           },
           () => {
             windowVisible = false;
+            dragSession.cancel();
             focusRequest++;
             focusController?.pause();
             closeInlineContextMenu();
@@ -545,11 +575,17 @@
     });
 
     window.addEventListener("keydown", handleKeyDown);
+    const dragMove = (event: PointerEvent) => dragSession.move(event);
+    const dragRelease = (event: PointerEvent) => dragSession.release(event.pointerId);
+    window.addEventListener("pointermove", dragMove, true);
+    window.addEventListener("pointerup", dragRelease, true);
+    window.addEventListener("pointercancel", dragRelease, true);
     scrollResizeObserver = new ResizeObserver(() => scheduleListMetricsUpdate());
     if (scrollElement) scrollResizeObserver.observe(scrollElement);
     viewportHeight = scrollElement?.clientHeight ?? 0;
     return () => {
       disposed = true;
+      dragSession.destroy();
       focusController?.destroy();
       closeInlineContextMenu();
       if (windowsClipboard) void clipboardBridge.navigationReady(false).catch(() => {});
@@ -558,6 +594,9 @@
       window.clearTimeout(labelFilterCloseTimer);
       cancelAnimationFrame(scrollAnimationFrame);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pointermove", dragMove, true);
+      window.removeEventListener("pointerup", dragRelease, true);
+      window.removeEventListener("pointercancel", dragRelease, true);
       scrollResizeObserver?.disconnect();
       if (appearanceMedia && handleSystemThemeChange)
         appearanceMedia.removeEventListener("change", handleSystemThemeChange);
@@ -628,10 +667,10 @@
   function requestHistoryRefresh() {
     historyRefreshPending = true;
     window.clearTimeout(historyRefreshTimer);
-    if (!windowVisible || pasteInFlight) return;
+    if (!windowVisible || pasteInFlight || dragBusy) return;
     historyRefreshTimer = window.setTimeout(
       () => {
-        if (pasteInFlight) return;
+        if (pasteInFlight || dragBusy) return;
         historyRefreshPending = false;
         void load({ preservePosition: true });
       },
@@ -650,6 +689,10 @@
     preservePosition = false,
   }: { append?: boolean; cursor?: ClipboardCursor | null; preservePosition?: boolean } = {}) {
     if (!windowVisible) return;
+    if (dragBusy) {
+      historyRefreshPending = true;
+      return;
+    }
     if (nearby) return refreshNearby();
     const generation = append ? loadGeneration : ++loadGeneration;
     if (!append) {
@@ -668,7 +711,7 @@
         limit: FETCH_SIZE,
       });
       if (generation !== loadGeneration) return;
-      if (preservePosition && (pasteInFlight || Date.now() < interactionUntil)) {
+      if (dragBusy || (preservePosition && (pasteInFlight || Date.now() < interactionUntil))) {
         requestHistoryRefresh();
         return;
       }
@@ -755,6 +798,7 @@
   }
 
   async function viewNearby(item: ClipboardItem) {
+    if (dragBusy) return;
     const snapshot = nearby?.snapshot ?? searchSnapshot();
     const timelineSort = nearby?.sortBy ?? sortBy;
     const generation = ++loadGeneration;
@@ -766,6 +810,10 @@
     try {
       const page = await clipboardBridge.timeline({ type: "around", id: item.id }, timelineSort);
       if (generation !== loadGeneration || !windowVisible) return;
+      if (dragBusy) {
+        historyRefreshPending = true;
+        return;
+      }
       if (!page?.anchor) {
         navigationError = tr("这条记录已被删除或清理，无法查看附近记录。", language);
         return;
@@ -839,6 +887,10 @@
   }
 
   async function refreshNearby() {
+    if (dragBusy) {
+      historyRefreshPending = true;
+      return;
+    }
     const context = nearby;
     if (!context || locating) return;
     const anchor = viewportAnchor();
@@ -853,6 +905,10 @@
         context.sortBy,
       );
       if (generation !== loadGeneration || !nearby) return;
+      if (dragBusy) {
+        historyRefreshPending = true;
+        return;
+      }
       if (!page) {
         navigationError = tr("这条记录已被删除或清理，请返回搜索重新选择。", language);
         return;
@@ -883,6 +939,10 @@
   }
 
   async function loadTimelinePage(newer: boolean) {
+    if (dragBusy) {
+      historyRefreshPending = true;
+      return;
+    }
     const context = nearby;
     const cursor = newer ? context?.newerCursor : context?.olderCursor;
     if (!context || !cursor || loading || loadingMore || locating) return;
@@ -896,6 +956,10 @@
         FETCH_SIZE,
       );
       if (generation !== loadGeneration || !nearby) return;
+      if (dragBusy) {
+        historyRefreshPending = true;
+        return;
+      }
       if (!page) throw new Error(tr("没有找到剪贴板记录", language));
       const anchor = viewportAnchor();
       nearby = {
@@ -987,7 +1051,38 @@
     keyboardMode = "results";
   }
 
+  function beginRecordDrag(
+    event: PointerEvent,
+    item: ClipboardItem,
+    mode = dragMode,
+    includeSelection = true,
+  ) {
+    if (pasteInFlight || multiPasting || dragPhase === "dragging") return;
+    const ids = includeSelection ? clipboardDragIds(item.id, selectedIds) : [item.id];
+    dragError = "";
+    // A normal selection click must not load payloads or probe file availability.
+    // Resolve the immutable source only after the pointer crosses the drag threshold.
+    dragSession.begin({ ids, mode }, event);
+  }
+
+  function beginSelectedTextDrag(
+    event: PointerEvent,
+    item: ClipboardItem,
+    text: string,
+    mode: ClipboardDragMode = "plain_text",
+    nativeSelection = false,
+  ) {
+    if (!text || !item.available || pasteInFlight || dragPhase === "dragging") return;
+    dragError = "";
+    dragSession.begin(
+      { ids: [item.id], mode, selection: { id: item.id, text } },
+      event,
+      nativeSelection,
+    );
+  }
+
   function selectRow(event: MouseEvent | undefined, item: ClipboardItem) {
+    if (dragSession.suppressClick()) return;
     const toggleMulti = Boolean(event?.metaKey || event?.ctrlKey) || selectedIds.length > 0;
     if (!toggleMulti) {
       focusRow(item);
@@ -1006,7 +1101,7 @@
   }
 
   async function pasteSelectedItems() {
-    if (selectedIds.length === 0 || multiPasting || pasteInFlight) return;
+    if (selectedIds.length === 0 || multiPasting || pasteInFlight || dragBusy) return;
     if (!combinedPasteAvailable) {
       error = uiTranslate("合并粘贴仅支持文本内容", $uiLanguage);
       return;
@@ -1060,7 +1155,7 @@
   }
 
   async function pasteItem(item: ClipboardItem, mode: ClipboardPasteMode = "source") {
-    if (ocrPasting || pasteInFlight) return;
+    if (ocrPasting || pasteInFlight || dragBusy || dragSession.suppressClick()) return;
     if (mode === "plain_text" && item.kind === "files") {
       error = uiTranslate("文件条目不能粘贴为文本", $uiLanguage);
       return;
@@ -1192,6 +1287,14 @@
 
   function handleKeyDown(event: KeyboardEvent) {
     if (event.isComposing) return;
+    if (dragBusy) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        dragSession.cancel();
+      }
+      return;
+    }
     if (handleInlineMenuKey(event)) return;
     if (previewDialogOpen) {
       const interactive =
@@ -1834,6 +1937,34 @@
         >
       </div>
     {/if}
+    {#if dragError}
+      <div class="clipboard-drag-notice" role="alert">
+        <span>{dragError}</span>
+        <button type="button" aria-label={tr("关闭", language)} on:click={() => (dragError = "")}
+          ><X size={15} /></button
+        >
+      </div>
+    {/if}
+    {#if dragBusy}
+      <div
+        class="clipboard-drag-notice"
+        role="status"
+        aria-live="polite"
+        data-drag-phase={dragPhase}
+      >
+        <span
+          >{uiTranslate(
+            dragPhase === "preparing"
+              ? "正在准备拖放…"
+              : dragPhase === "ready"
+                ? "已准备好，请继续拖动"
+                : "正在拖放…",
+            $uiLanguage,
+          )}
+          {dragCount > 1 ? `(${dragCount})` : ""}</span
+        >
+      </div>
+    {/if}
     {#if pasteError}
       <div class="navigation-message navigation-error" role="alert">
         <span>{pasteError}</span>
@@ -1914,6 +2045,8 @@
               previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
                 entry.index < visibleEndIndex + 2}
               onSelect={(event) => selectRow(event, entry.item)}
+              onDragPress={(event) => beginRecordDrag(event, entry.item)}
+              suppressDragClick={dragSession.suppressClick}
               onFocus={() => selectedIds.length === 0 && focusRow(entry.item)}
               onPaste={(plainText) =>
                 selectedIds.length > 0
@@ -2012,12 +2145,32 @@
       {/if}
     </div>
     <div class="footer-actions">
+      <select
+        class="clipboard-drag-format"
+        aria-label={uiTranslate("拖出格式", $uiLanguage)}
+        bind:value={dragMode}
+        disabled={dragBusy}
+      >
+        <option value="auto">{uiTranslate("自动格式", $uiLanguage)}</option>
+        <option value="plain_text">{uiTranslate("纯文本", $uiLanguage)}</option>
+        <option value="rich_text">{uiTranslate("富文本", $uiLanguage)}</option>
+        <option value="text_file">TXT</option>
+      </select>
+      <DragHandle
+        label={uiTranslate("拖出", $uiLanguage)}
+        disabled={pasteInFlight || dragBusy || (!selectedItem && selectedItems.length === 0)}
+        onPress={(event) => {
+          const source = selectedItems[0] ?? selectedItem;
+          if (source) beginRecordDrag(event, source);
+        }}
+      />
       <button
         class:loading
         class="icon-button"
         type="button"
         aria-label={tr("刷新", language)}
         aria-busy={loading}
+        disabled={dragBusy}
         title={tr("刷新", language)}
         on:click={() => load()}><ClockCounterClockwise size={22} /></button
       >
@@ -2026,6 +2179,7 @@
         type="button"
         aria-label={tr("隐藏", language)}
         title={tr("隐藏", language)}
+        disabled={dragBusy}
         on:click={() => clipboardBridge.hide()}><X size={22} /></button
       >
     </div>
@@ -2110,6 +2264,10 @@
                 errorMessage={previewError}
                 onCopy={copySegment}
                 onPaste={pasteSegment}
+                onDragAll={(event, mode) => beginRecordDrag(event, previewingItem!, mode, false)}
+                onDragSelection={(event, text, mode, nativeSelection) =>
+                  beginSelectedTextDrag(event, previewingItem!, text, mode, nativeSelection)}
+                onNativeDragStart={() => dragSession.nativeDragStart()}
                 onPasteAll={async () => {
                   await pasteItem(previewingItem!);
                   if (pasteError) previewError = pasteError;
@@ -2129,6 +2287,7 @@
               imageSelectionBusy={previewActionBusy}
               onCopyImageText={copySegment}
               onPasteImageText={pasteSegment}
+              onDragImage={(event) => beginRecordDrag(event, previewingItem!, "auto", false)}
             />
           {/if}
         </div>

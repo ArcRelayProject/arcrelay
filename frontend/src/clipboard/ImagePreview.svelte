@@ -14,6 +14,7 @@
 
   import type { LanguagePreference } from "../types";
   import { clipboardBridge } from "./bridge";
+  import DragHandle from "./DragHandle.svelte";
   import { imagePreviewHeight, imagePreviewLayout } from "./imagePreviewGeometry";
   import {
     hitTestImageCharacter,
@@ -35,6 +36,7 @@
   export let busy = false;
   export let onCopy: (content: string) => Promise<void> | void = () => undefined;
   export let onPaste: (content: string) => Promise<void> | void = () => undefined;
+  export let onDragImage: (event: PointerEvent) => void = () => {};
 
   const MIN_SCALE = 0.25;
   const MAX_SCALE = 4;
@@ -100,18 +102,24 @@
   $: selectableCharacters = ocr ? selectableImageCharacters(ocr) : [];
   $: selectedText = selectedImageText(selectableCharacters, selectionAnchor, selectionFocus);
   $: selectedRange = imageTextSelectionRange(selectionAnchor, selectionFocus);
-  $: selectionBands = imageTextSelectionBands(selectableCharacters, selectionAnchor, selectionFocus);
+  $: selectionBands = imageTextSelectionBands(
+    selectableCharacters,
+    selectionAnchor,
+    selectionFocus,
+  );
   $: selectedCharacterCount = selectedRange ? selectedRange[1] - selectedRange[0] : 0;
 
   onMount(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void clipboardBridge.onOcrChanged((id) => {
-      if (id === loadedItemId) void loadOcr(id, request, true);
-    }).then((value) => {
-      if (disposed) value();
-      else unlisten = value;
-    });
+    void clipboardBridge
+      .onOcrChanged((id) => {
+        if (id === loadedItemId) void loadOcr(id, request, true);
+      })
+      .then((value) => {
+        if (disposed) value();
+        else unlisten = value;
+      });
     window.addEventListener("keydown", handleSelectionKeyDown, true);
     window.addEventListener("resize", scheduleSelectionPopover);
     return () => {
@@ -214,8 +222,14 @@
     window.cancelAnimationFrame(centerFrame);
     centerFrame = window.requestAnimationFrame(() => {
       if (!canvasElement) return;
-      canvasElement.scrollLeft = Math.max(0, (canvasElement.scrollWidth - canvasElement.clientWidth) / 2);
-      canvasElement.scrollTop = Math.max(0, (canvasElement.scrollHeight - canvasElement.clientHeight) / 2);
+      canvasElement.scrollLeft = Math.max(
+        0,
+        (canvasElement.scrollWidth - canvasElement.clientWidth) / 2,
+      );
+      canvasElement.scrollTop = Math.max(
+        0,
+        (canvasElement.scrollHeight - canvasElement.clientHeight) / 2,
+      );
     });
   }
 
@@ -301,6 +315,7 @@
     const index = characterIndexAt(event.clientX, event.clientY, false);
     if (index === null) {
       clearSelection();
+      onDragImage(event);
       return;
     }
     event.preventDefault();
@@ -311,11 +326,7 @@
       return;
     }
     if (event.detail === 2) {
-      selectRange(imageTextWordRange(
-        selectableCharacters,
-        index,
-        localeFor(language),
-      ));
+      selectRange(imageTextWordRange(selectableCharacters, index, localeFor(language)));
       return;
     }
 
@@ -374,11 +385,7 @@
     event.stopPropagation();
     const selected = selectedRange && index >= selectedRange[0] && index < selectedRange[1];
     if (!selected) {
-      const range = imageTextWordRange(
-        selectableCharacters,
-        index,
-        localeFor(language),
-      );
+      const range = imageTextWordRange(selectableCharacters, index, localeFor(language));
       selectionAnchor = range[0];
       selectionFocus = range[1];
     }
@@ -444,9 +451,12 @@
   function positionSelectionPopover() {
     selectionPopoverFrame = 0;
     const activeIndex = activeSelectionCharacterIndex();
-    const target = activeIndex === null
-      ? null
-      : selectionSvg?.querySelector<SVGGraphicsElement>(`[data-character-index="${activeIndex}"]`);
+    const target =
+      activeIndex === null
+        ? null
+        : selectionSvg?.querySelector<SVGGraphicsElement>(
+            `[data-character-index="${activeIndex}"]`,
+          );
     if (!target || !previewRoot || !selectionPopover || !canvasElement) return;
 
     const targetRect = target.getBoundingClientRect();
@@ -467,9 +477,9 @@
       canvasRect.top + popoverRect.height / 2 + 6,
       Math.min(canvasRect.bottom - popoverRect.height / 2 - 6, centerY),
     );
-    const textRects = [...selectionSvg.querySelectorAll<SVGGraphicsElement>(
-      ".image-text-hit-target",
-    )].map((element) => element.getBoundingClientRect());
+    const textRects = [
+      ...selectionSvg.querySelectorAll<SVGGraphicsElement>(".image-text-hit-target"),
+    ].map((element) => element.getBoundingClientRect());
     const candidates = [
       {
         placement: "above" as const,
@@ -503,10 +513,11 @@
     const placementScore = ({ left, top }: (typeof candidates)[number]) => {
       const right = left + popoverRect.width;
       const bottom = top + popoverRect.height;
-      const outside = Math.max(0, canvasRect.left + 6 - left)
-        + Math.max(0, right - canvasRect.right + 6)
-        + Math.max(0, canvasRect.top + 6 - top)
-        + Math.max(0, bottom - canvasRect.bottom + 6);
+      const outside =
+        Math.max(0, canvasRect.left + 6 - left) +
+        Math.max(0, right - canvasRect.right + 6) +
+        Math.max(0, canvasRect.top + 6 - top) +
+        Math.max(0, bottom - canvasRect.bottom + 6);
       const overlap = textRects.reduce((total, rect) => {
         const width = Math.max(0, Math.min(right, rect.right) - Math.max(left, rect.left));
         const height = Math.max(0, Math.min(bottom, rect.bottom) - Math.max(top, rect.top));
@@ -514,9 +525,9 @@
       }, 0);
       return outside * popoverRect.width * 4 + overlap;
     };
-    const best = candidates.reduce((current, candidate) => (
-      placementScore(candidate) < placementScore(current) ? candidate : current
-    ));
+    const best = candidates.reduce((current, candidate) =>
+      placementScore(candidate) < placementScore(current) ? candidate : current,
+    );
     selectionPopoverPlacement = best.placement;
     selectionPopoverLeft = best.cssLeft;
     selectionPopoverTop = best.cssTop;
@@ -537,17 +548,23 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!busy) void onCopy(selectedText);
-    } else if (!primaryModifier && !event.altKey && !event.shiftKey && event.key === "Enter" && selectedText) {
+    } else if (
+      !primaryModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key === "Enter" &&
+      selectedText
+    ) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!busy) void onPaste(selectedText);
     } else if (
-      !primaryModifier
-      && !event.altKey
-      && event.shiftKey
-      && selectionAnchor !== null
-      && selectionFocus !== null
-      && (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      !primaryModifier &&
+      !event.altKey &&
+      event.shiftKey &&
+      selectionAnchor !== null &&
+      selectionFocus !== null &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -621,21 +638,49 @@
   style:--image-preview-height={`${preferredPreviewHeight}px`}
 >
   <div class="image-preview-toolbar" aria-label={uiTranslate("图片操作", $uiLanguage)}>
-    <button type="button" disabled={scale <= MIN_SCALE} aria-label={uiTranslate("缩小", $uiLanguage)} title={uiTranslate("缩小", $uiLanguage)} on:click={() => setScale(scale - SCALE_STEP)}>
+    <button
+      type="button"
+      disabled={scale <= MIN_SCALE}
+      aria-label={uiTranslate("缩小", $uiLanguage)}
+      title={uiTranslate("缩小", $uiLanguage)}
+      on:click={() => setScale(scale - SCALE_STEP)}
+    >
       <MagnifyingGlassMinus size={17} />
     </button>
     <span class="image-preview-zoom" aria-live="polite">{zoomPercent}%</span>
-    <button type="button" disabled={scale >= MAX_SCALE} aria-label={uiTranslate("放大", $uiLanguage)} title={uiTranslate("放大", $uiLanguage)} on:click={() => setScale(scale + SCALE_STEP)}>
+    <button
+      type="button"
+      disabled={scale >= MAX_SCALE}
+      aria-label={uiTranslate("放大", $uiLanguage)}
+      title={uiTranslate("放大", $uiLanguage)}
+      on:click={() => setScale(scale + SCALE_STEP)}
+    >
       <MagnifyingGlassPlus size={17} />
     </button>
     <span class="image-preview-toolbar-separator"></span>
-    <button type="button" aria-label={uiTranslate("向左旋转", $uiLanguage)} title={uiTranslate("向左旋转", $uiLanguage)} on:click={() => rotate(-90)}>
+    <button
+      type="button"
+      aria-label={uiTranslate("向左旋转", $uiLanguage)}
+      title={uiTranslate("向左旋转", $uiLanguage)}
+      on:click={() => rotate(-90)}
+    >
       <ArrowCounterClockwise size={17} />
     </button>
-    <button type="button" aria-label={uiTranslate("向右旋转", $uiLanguage)} title={uiTranslate("向右旋转", $uiLanguage)} on:click={() => rotate(90)}>
+    <button
+      type="button"
+      aria-label={uiTranslate("向右旋转", $uiLanguage)}
+      title={uiTranslate("向右旋转", $uiLanguage)}
+      on:click={() => rotate(90)}
+    >
       <ArrowClockwise size={17} />
     </button>
-    <button type="button" disabled={scale === 1 && rotation === 0} aria-label={uiTranslate("复位图片", $uiLanguage)} title={uiTranslate("复位图片", $uiLanguage)} on:click={resetTransform}>
+    <button
+      type="button"
+      disabled={scale === 1 && rotation === 0}
+      aria-label={uiTranslate("复位图片", $uiLanguage)}
+      title={uiTranslate("复位图片", $uiLanguage)}
+      on:click={resetTransform}
+    >
       <ArrowsClockwise size={17} />
     </button>
     <span class="image-preview-load-announcement" aria-live="polite">
@@ -649,6 +694,11 @@
         {uiTranslate("文字识别不可用", $uiLanguage)}
       {/if}
     </span>
+    <DragHandle
+      label={uiTranslate("拖出原图", $uiLanguage)}
+      disabled={busy || !item.available}
+      onPress={onDragImage}
+    />
   </div>
 
   <div
@@ -677,6 +727,7 @@
             src={source}
             alt={tr("剪贴板图片预览", language)}
             draggable="false"
+            on:pointerdown={onDragImage}
             on:load={handleImageLoad}
             on:error={handleImageError}
           />
@@ -740,7 +791,7 @@
       </button>
       <span aria-hidden="true"></span>
       <button class="primary" type="button" disabled={busy} on:click={() => onPaste(selectedText)}>
-        {busy ? (uiTranslate("正在插入…", $uiLanguage)) : (uiTranslate("插入", $uiLanguage))}
+        {busy ? uiTranslate("正在插入…", $uiLanguage) : uiTranslate("插入", $uiLanguage)}
       </button>
     </div>
   {/if}

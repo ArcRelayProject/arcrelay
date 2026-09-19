@@ -72,6 +72,18 @@ export type ClipboardCursorInput = { sortAtMs: number, id: number, };
 
 export type ClipboardCursorView = { sortAtMs: number, id: number, };
 
+export type ClipboardDragEnded = { token: string, outcome: ClipboardDragOutcome, error: string | null, };
+
+export type ClipboardDragKind = "text" | "files";
+
+export type ClipboardDragMode = "auto" | "plain_text" | "rich_text" | "text_file";
+
+export type ClipboardDragOutcome = "dropped" | "cancelled" | "failed";
+
+export type ClipboardDragPrepared = { token: string, kind: ClipboardDragKind, count: number, };
+
+export type ClipboardDragSelection = { id: number, text: string, };
+
 export type ClipboardHistoryView = { revision: number, entries: Array<ClipboardItemView>, nextCursor: ClipboardCursorView | null, totalCount: number | null, };
 
 export type ClipboardImageOcr = { text: string, blocks: Array<ClipboardOcrBlock>, modelVersion: string, updatedAtMs: number, };
@@ -525,6 +537,7 @@ export interface CommandMap {
   clear_gaze_calibration: { args: { }; result: GazeStatusView };
   clear_gesture_debug: { args: { }; result: GestureDebugSnapshot };
   clear_presence_profile: { args: { }; result: GazeStatusView };
+  clipboard_cancel_drag: { args: { token: string; }; result: null };
   clipboard_clear_history: { args: { }; result: null };
   clipboard_copy_record: { args: { id: number; }; result: null };
   clipboard_copy_text: { args: { content: string; }; result: null };
@@ -544,11 +557,13 @@ export interface CommandMap {
   clipboard_paste_record_as: { args: { id: number; mode: ClipboardPasteMode; }; result: null };
   clipboard_paste_records: { args: { ids: Array<number>; }; result: number };
   clipboard_paste_text: { args: { content: string; }; result: null };
+  clipboard_prepare_drag: { args: { ids: Array<number>; mode: ClipboardDragMode; selection: ClipboardDragSelection | null; }; result: ClipboardDragPrepared };
   clipboard_send_files: { args: { id: number; peerId: string; }; result: string };
   clipboard_set_favorite: { args: { favorite: boolean; id: number; }; result: null };
   clipboard_set_label_membership: { args: { attached: boolean; id: number; labelId: string; }; result: null };
   clipboard_set_labels: { args: { id: number; labelIds: Array<string>; }; result: null };
   clipboard_start_continuous_paste: { args: { items: Array<ContinuousPasteItemInput>; }; result: ContinuousPasteProgress };
+  clipboard_start_drag: { args: { token: string; }; result: null };
   clipboard_text_content: { args: { id: number; }; result: string };
   clipboard_text_preview: { args: { format: ClipboardTextFormat | null; id: number; }; result: ClipboardTextPreview };
   clipboard_text_segments: { args: { id: number; }; result: TextSliceModel };
@@ -733,6 +748,7 @@ export interface EventMap {
   "automation-configuration": null;
   "clipboard-changed": null;
   "clipboard-continuous-paste-error": string;
+  "clipboard-drag-ended": ClipboardDragEnded;
   "clipboard-navigation-key": ClipboardNavigationKey;
   "clipboard-navigation-paused": null;
   "clipboard-ocr-changed": number;
