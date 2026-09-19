@@ -116,7 +116,7 @@ input:focus-visible {
   container-name: clipboard-window;
   container-type: inline-size;
   display: grid;
-  grid-template-rows: 60px 52px auto minmax(0, 1fr) 48px;
+  grid-template-rows: 60px 60px auto minmax(0, 1fr) 48px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -148,7 +148,10 @@ input:focus-visible {
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
 }
 
 .icon-button:hover {
@@ -211,7 +214,9 @@ input:focus-visible {
   border-radius: 10px;
   background: var(--surface-raised);
   box-shadow: inset 0 1px 1px rgba(20, 23, 33, 0.02);
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .clipboard-search:focus-within {
@@ -264,7 +269,7 @@ input:focus-visible {
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px 5px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-soft);
 }
@@ -277,37 +282,29 @@ input:focus-visible {
 
 .filter-group {
   flex: 0 0 auto;
-  gap: 2px;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
 }
 
 .filter-button {
   position: relative;
   display: grid;
-  width: 36px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   place-items: center;
-  border: 0;
-  border-radius: 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  transition: color 140ms ease, background-color 140ms ease, transform 120ms ease;
-}
-
-.filter-button::after {
-  position: absolute;
-  right: 7px;
-  bottom: -5px;
-  left: 7px;
-  height: 2px;
-  transform: scaleX(0.35);
-  transform-origin: center;
-  border-radius: 999px;
-  opacity: 0;
-  background: var(--accent);
-  content: "";
-  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 120ms ease;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 120ms ease;
 }
 
 .filter-button:hover {
@@ -320,12 +317,9 @@ input:focus-visible {
 
 .filter-button.active {
   color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
   background: var(--accent-soft);
-}
-
-.filter-button.active::after {
-  transform: scaleX(1);
-  opacity: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .filter-button svg {
@@ -391,7 +385,9 @@ input:focus-visible {
   box-shadow: 0 3px 10px color-mix(in srgb, var(--text-primary) 4%, transparent);
   text-align: left;
   cursor: default;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .clipboard-row,
@@ -415,7 +411,8 @@ input:focus-visible {
 
 .clipboard-row.multi-selected {
   border-color: color-mix(in srgb, var(--accent) 88%, var(--border-color));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent),
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent),
     0 4px 14px color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
@@ -866,7 +863,10 @@ input:focus-visible {
   color: var(--text-inverse);
   background: var(--accent);
   cursor: pointer;
-  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  transition:
+    filter 120ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .multi-select-actions button.continuous-action {
@@ -922,7 +922,9 @@ input:focus-visible {
   pointer-events: none;
   text-overflow: ellipsis;
   transform: translate(4px, -50%);
-  transition: opacity 100ms ease, transform 100ms ease;
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease;
   white-space: nowrap;
 }
 

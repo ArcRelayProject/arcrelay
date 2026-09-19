@@ -3,19 +3,6 @@
 @import "./styles/image-preview.css";
 @import "./styles/labels.css";
 @import "./styles/nearby.css";
-.clipboard-drag-format.app-select-trigger {
-  min-height: 30px;
-  min-width: 0;
-  max-width: 92px;
-  padding: 5px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 12px;
-}
-
 .clipboard-drag-notice {
   position: absolute;
   z-index: 25;
@@ -49,11 +36,12 @@
   cursor: default;
 }
 .clipboard-footer {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   column-gap: 8px;
 }
 .clipboard-footer .record-count {
-  grid-column: 1;
+  grid-column: 2;
+  justify-self: center;
   min-width: 0;
   overflow: hidden;
 }
@@ -62,6 +50,12 @@
   text-overflow: ellipsis;
 }
 .clipboard-footer .footer-actions {
-  grid-column: 2;
-  gap: 4px;
+  grid-column: 3;
+  justify-self: end;
+  gap: 6px;
+}
+.footer-action-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
 }

@@ -79,7 +79,9 @@
   border-radius: 8px;
   color: var(--text-primary);
   background: var(--surface-raised);
-  transition: border-color 100ms ease, background-color 100ms ease;
+  transition:
+    border-color 100ms ease,
+    background-color 100ms ease;
 }
 
 .label-option:hover {
@@ -279,95 +281,62 @@
   background: var(--surface-soft);
 }
 
-.label-filter-toolbar,
-.quick-label-list {
+.label-filter-toolbar {
   display: flex;
   min-width: 0;
   align-items: center;
-}
-
-.label-filter-toolbar {
-  flex: 1;
+  flex: 0 0 auto;
   justify-content: flex-end;
-  gap: 5px;
-  margin-left: 6px;
+  gap: 10px;
+  margin-left: 10px;
 }
 
 .label-filter-divider {
   flex: 0 0 auto;
   width: 1px;
-  height: 24px;
-  margin: 0 2px;
+  height: 32px;
   background: var(--border-color);
 }
 
-.quick-label-list {
-  flex: 1 1 auto;
-  justify-content: flex-start;
-  gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
-}
-
-.quick-label-list::-webkit-scrollbar {
-  display: none;
-}
-
-.quick-label-button,
 .label-filter-button {
   display: inline-flex;
   min-width: 0;
-  height: 32px;
+  width: 168px;
+  height: 44px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 9px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 9px 0 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 12px;
   color: var(--text-secondary);
   background: var(--surface-raised);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
-  font-weight: 590;
-  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
 }
 
-.quick-label-button {
-  flex: 0 0 auto;
-  max-width: 72px;
-}
-
-.quick-label-button > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-label-button:hover,
 .label-filter-button:hover {
   color: var(--text-primary);
   border-color: var(--border-color);
   background: var(--surface-hover);
 }
 
-.quick-label-button:active,
 .label-filter-button:active {
   transform: scale(0.96);
 }
 
-.quick-label-button.active,
-.label-filter-control.open .label-filter-button {
+.label-filter-control.open .label-filter-button,
+.label-filter-control.filtered .label-filter-button {
   color: var(--accent-strong);
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   background: var(--accent-soft);
-}
-
-.quick-label-button.all-labels {
-  flex: 0 0 auto;
 }
 
 .label-filter-control {
@@ -375,16 +344,55 @@
   flex: 0 0 auto;
 }
 
-.label-filter-button {
-  min-width: 58px;
+.label-filter-button-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.label-filter-button svg {
+.label-filter-caret {
+  flex: 0 0 auto;
   transition: transform 140ms ease;
 }
 
-.label-filter-control.open .label-filter-button svg {
+.label-filter-control.open .label-filter-caret {
   transform: rotate(180deg);
+}
+
+.label-filter-count {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.label-filter-control.open .label-filter-count,
+.label-filter-control.filtered .label-filter-count {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised));
+}
+
+@container clipboard-window (max-width: 460px) {
+  .label-filter-toolbar {
+    gap: 7px;
+    margin-left: 7px;
+  }
+
+  .label-filter-button {
+    width: 132px;
+  }
+
+  .label-filter-count {
+    display: none;
+  }
 }
 
 .label-filter-dot {
@@ -598,8 +606,12 @@
 }
 
 @keyframes clipboard-overlay-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes clipboard-dialog-in {
@@ -614,8 +626,12 @@
 }
 
 @keyframes clipboard-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes clipboard-pop {
@@ -630,12 +646,19 @@
 }
 
 @keyframes clipboard-busy-pulse {
-  0%, 100% { opacity: 0.62; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes clipboard-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

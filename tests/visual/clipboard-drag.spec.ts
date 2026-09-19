@@ -131,7 +131,7 @@ test("dragging selected records preserves selection order and does not toggle it
   await expect(page.locator(".clipboard-row.multi-selected")).toHaveCount(2);
 });
 
-test("TXT option is passed for full text while double click still inserts normally", async ({
+test("row drag uses automatic format while double click still inserts normally", async ({
   page,
 }) => {
   await open(page);
@@ -139,12 +139,10 @@ test("TXT option is passed for full text while double click still inserts normal
   await row.dblclick();
   await expect.poll(() => page.evaluate(() => (window as any).__dragTest.pasted)).toEqual([102]);
   expect(await page.evaluate(() => (window as any).__dragTest.started)).toEqual([]);
-  await page.locator(".clipboard-drag-format").click();
-  await page.getByRole("option", { name: "TXT", exact: true }).click();
   await pressAndMove(page, '[data-clipboard-id="102"] .clipboard-row');
   await expect
     .poll(() => page.evaluate(() => (window as any).__dragTest.prepared.at(-1)))
-    .toEqual({ ids: [102], mode: "text_file" });
+    .toEqual({ ids: [102], mode: "auto" });
   await page.mouse.up();
 });
 
@@ -237,13 +235,26 @@ test("dragging an existing browser selection with the mouse starts a plain text 
   await page.mouse.up();
 });
 
-test("drag controls remain contained at the minimum window width", async ({ page }) => {
+test("minimal footer stays centered and contained at the minimum window width", async ({
+  page,
+}) => {
   await open(page);
   await page.setViewportSize({ width: 420, height: 650 });
   const size = await page
     .locator(".clipboard-footer")
     .evaluate((node) => ({ width: node.clientWidth, scroll: node.scrollWidth }));
   expect(size.scroll).toBeLessThanOrEqual(size.width);
+  const footerAlignment = await page.locator(".clipboard-footer").evaluate((footer) => {
+    const count = footer.querySelector<HTMLElement>(".record-count")!;
+    const footerRect = footer.getBoundingClientRect();
+    const countRect = count.getBoundingClientRect();
+    return Math.abs(
+      countRect.left + countRect.width / 2 - (footerRect.left + footerRect.width / 2),
+    );
+  });
+  expect(footerAlignment).toBeLessThanOrEqual(0.5);
+  await expect(page.locator(".clipboard-footer .clipboard-drag-handle")).toHaveCount(0);
+  await expect(page.locator(".clipboard-drag-format")).toHaveCount(0);
   await page.screenshot({
     path: "/tmp/arcrelay-clipboard-drag-controls.png",
     animations: "disabled",

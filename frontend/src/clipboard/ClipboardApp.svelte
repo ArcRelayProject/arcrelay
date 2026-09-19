@@ -25,13 +25,11 @@
   } from "phosphor-svelte";
 
   import BrandLogo from "../BrandLogo.svelte";
-  import AppSelect from "../components/AppSelect.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
   import ClipboardRow from "./ClipboardRow.svelte";
   import ContentPreview from "./ContentPreview.svelte";
   import TextPreview from "./TextPreview.svelte";
-  import DragHandle from "./DragHandle.svelte";
   import {
     clipboardDragIds,
     createClipboardDragSession,
@@ -41,12 +39,7 @@
   import { clipboardBridge } from "./bridge";
   import { visibleQuickPasteIds } from "./quickPaste";
   import { HeightIndex } from "./heightIndex";
-  import {
-    filterClipboardLabels,
-    parseRecentLabelIds,
-    rememberRecentLabel,
-    selectQuickLabels,
-  } from "./labelFilters";
+  import { filterClipboardLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
   import { clearHtmlPreviewCache } from "./htmlPreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
@@ -81,7 +74,6 @@
   const FETCH_SIZE = 60;
   const VIRTUAL_OVERSCAN_ROWS = 4;
   const ROW_GAP = 8;
-  const RECENT_LABELS_STORAGE_KEY = "arcrelay.clipboard.recent-labels";
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
   const windowsClipboard =
     isWindowsClipboard(navigator.platform, "__TAURI_INTERNALS__" in window) ||
@@ -124,7 +116,6 @@
   let pasteError = "";
   let dragPhase: ClipboardDragPhase = "idle";
   let dragCount = 0;
-  let dragMode: ClipboardDragMode = "auto";
   let dragError = "";
   $: dragBusy = dragPhase !== "idle";
   const dragSession = createClipboardDragSession({
@@ -153,8 +144,6 @@
   let activeLabelOptionIndex = 0;
   let labelSearchInput: HTMLInputElement;
   let moreLabelsButton: HTMLButtonElement;
-  let quickLabelList: HTMLDivElement;
-  let recentLabelIds: string[] = [];
   let keyboardMode: ClipboardKeyboardMode = "search";
   let previewDialogOpen = false;
   let previewingItem: ClipboardItem | null = null;
@@ -226,7 +215,6 @@
   $: shortcutNumbers = new Map(quickPasteIds.map((id, index) => [id, index + 1]));
   $: rowShortcutModifier = primaryShortcutLabel;
   $: selectedLabel = labels.find((label) => label.id === selectedLabelFilter) ?? null;
-  $: quickLabels = selectQuickLabels(labels, recentLabelIds, selectedLabelFilter);
   $: filteredLabels = filterClipboardLabels(labels, labelSearch);
   $: showAllLabelOption = !labelSearch.trim();
   $: if (!dragBusy) recalculateVisibleRange(history.entries, scrollTop, viewportHeight);
@@ -418,7 +406,6 @@
       });
     }
 
-    recentLabelIds = parseRecentLabelIds(localStorage.getItem(RECENT_LABELS_STORAGE_KEY));
     void (async () => {
       await scope.add(clipboardBridge.onDragEnded((event) => dragSession.ended(event)));
       if (windowsClipboard) {
@@ -1055,7 +1042,7 @@
   function beginRecordDrag(
     event: PointerEvent,
     item: ClipboardItem,
-    mode = dragMode,
+    mode: ClipboardDragMode = "auto",
     includeSelection = true,
   ) {
     if (pasteInFlight || multiPasting || dragPhase === "dragging") return;
@@ -1652,16 +1639,7 @@
     abandonNearby();
     const nextLabelId = toggle && selectedLabelFilter === labelId ? null : labelId;
     selectedLabelFilter = nextLabelId;
-    if (nextLabelId) {
-      recentLabelIds = rememberRecentLabel(recentLabelIds, nextLabelId);
-      localStorage.setItem(RECENT_LABELS_STORAGE_KEY, JSON.stringify(recentLabelIds));
-    }
     closeLabelFilter();
-    void tick().then(() => {
-      quickLabelList
-        ?.querySelector<HTMLElement>('[aria-pressed="true"]')
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    });
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -1756,34 +1734,8 @@
     <div class="label-filter-toolbar" aria-label={uiTranslate("标签筛选", $uiLanguage)}>
       <span class="label-filter-divider" aria-hidden="true"></span>
       <div
-        bind:this={quickLabelList}
-        class="quick-label-list"
-        role="group"
-        aria-label={uiTranslate("标签筛选", $uiLanguage)}
-      >
-        <button
-          class:active={selectedLabelFilter === null}
-          class="quick-label-button all-labels"
-          type="button"
-          aria-pressed={selectedLabelFilter === null}
-          on:click={() => selectLabelFilter(null)}>{uiTranslate("全部", $uiLanguage)}</button
-        >
-        {#each quickLabels as label (label.id)}
-          <button
-            class:active={selectedLabelFilter === label.id}
-            class="quick-label-button"
-            type="button"
-            aria-pressed={selectedLabelFilter === label.id}
-            title={label.name}
-            on:click={() => selectLabelFilter(label.id, true)}
-          >
-            <span class="label-filter-dot" style:--label-color={label.color}></span>
-            <span>{label.name}</span>
-          </button>
-        {/each}
-      </div>
-      <div
         class:open={labelFilterOpen}
+        class:filtered={selectedLabelFilter !== null}
         class="label-filter-control"
         role="group"
         aria-label={uiTranslate("更多标签", $uiLanguage)}
@@ -1801,8 +1753,14 @@
           aria-expanded={labelFilterOpen}
           on:click={() => void toggleLabelFilter()}
         >
-          <span>{uiTranslate("更多", $uiLanguage)}</span>
-          <CaretDown size={13} weight="bold" />
+          <Tag size={18} weight={selectedLabelFilter ? "fill" : "regular"} />
+          <span class="label-filter-button-text">
+            {selectedLabel?.name ?? uiTranslate("全部标签", $uiLanguage)}
+          </span>
+          <CaretDown class="label-filter-caret" size={13} weight="bold" />
+          {#if labels.length > 0}
+            <span class="label-filter-count" aria-hidden="true">{labels.length}</span>
+          {/if}
         </button>
         {#if labelFilterOpen}
           <div
@@ -2146,26 +2104,6 @@
       {/if}
     </div>
     <div class="footer-actions">
-      <AppSelect
-        class="clipboard-drag-format"
-        aria-label={uiTranslate("拖出格式", $uiLanguage)}
-        bind:value={dragMode}
-        disabled={dragBusy}
-        options={[
-          { value: "auto", label: uiTranslate("自动格式", $uiLanguage) },
-          { value: "plain_text", label: uiTranslate("纯文本", $uiLanguage) },
-          { value: "rich_text", label: uiTranslate("富文本", $uiLanguage) },
-          { value: "text_file", label: "TXT" },
-        ]}
-      />
-      <DragHandle
-        label={uiTranslate("拖出", $uiLanguage)}
-        disabled={pasteInFlight || dragBusy || (!selectedItem && selectedItems.length === 0)}
-        onPress={(event) => {
-          const source = selectedItems[0] ?? selectedItem;
-          if (source) beginRecordDrag(event, source);
-        }}
-      />
       <button
         class:loading
         class="icon-button"
@@ -2176,6 +2114,7 @@
         title={tr("刷新", language)}
         on:click={() => load()}><ClockCounterClockwise size={22} /></button
       >
+      <span class="footer-action-divider" aria-hidden="true"></span>
       <button
         class="icon-button"
         type="button"
