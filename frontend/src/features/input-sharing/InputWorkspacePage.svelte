@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { diagnosticMessage } from "../../diagnosticMessages";
+  import { t, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import AppSelect from "../../components/AppSelect.svelte";
-  import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import {
     ArrowsOutCardinal,
     Crosshair,
@@ -44,7 +45,7 @@
   $: availableDisplays = Object.values(configuration.rememberedDisplays).filter((display) => !layout?.displays[display.displayId]);
   $: deviceNames = Object.fromEntries(
     [...new Set(Object.values(layout?.displays ?? {}).map((display) => display.deviceId))]
-      .map((deviceId) => [deviceId, friendlyDeviceName(deviceId, snapshot)]),
+      .map((deviceId) => [deviceId, friendlyDeviceName(deviceId, snapshot, $uiLanguage)]),
   );
 
   function moveDisplay(id: string, x: number, y: number) {
@@ -79,7 +80,7 @@
       try {
         const next = await bridge.previewWorkspace(configuration);
         if (generation === previewGeneration) configuration = next;
-      } catch (error) { if (generation === previewGeneration) notify(String(error), true); }
+      } catch (error) { if (generation === previewGeneration) notify(diagnosticMessage(error, $uiLanguage), true); }
     }, 80);
   }
 
@@ -105,7 +106,7 @@
     const generation = ++previewGeneration;
     clearTimeout(previewTimer);
     try { const next = await bridge.arrangeWorkspace(configuration); if (generation === previewGeneration) { configuration = next; dirty = true; } }
-    catch (error) { notify(String(error), true); }
+    catch (error) { notify(diagnosticMessage(error, $uiLanguage), true); }
   }
 
   async function save() {
@@ -118,36 +119,36 @@
       configuration = structuredClone(next.configuration);
       selectedPortalId = null;
       dirty = false;
-      notify("工作区布局已保存");
+      notify(uiTranslate("工作区布局已保存", $uiLanguage));
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     } finally {
       saving = false;
     }
   }
 
   async function testEdge(displayId = selectedDisplayId, portalId: string | null = null) {
-    if (!layout || !displayId) return notify("请先选择显示器或跨屏边缘", true);
+    if (!layout || !displayId) return notify(uiTranslate("请先选择显示器或跨屏边缘", $uiLanguage), true);
     const candidates = layout.portals.flatMap((portal) => {
       if (portal.status !== "Active" || (portalId && portal.portalId !== portalId)) return [];
       if (portal.sourceDisplay === displayId) return [{ portal, reverse: false }];
       if (portal.direction === "Bidirectional" && portal.targetDisplay === displayId) return [{ portal, reverse: true }];
       return [];
     });
-    if (!candidates.length) return notify("这块屏幕没有可测试的已启用边缘", true);
+    if (!candidates.length) return notify(uiTranslate("这块屏幕没有可测试的已启用边缘", $uiLanguage), true);
     try {
       for (const candidate of candidates) {
         const request = portalEdgeTestRequest(candidate.portal, layout.displays, candidate.reverse);
         if (!request) continue;
         const result = await bridge.testEdge(request, configuration);
         if (result.portalIds.includes(candidate.portal.portalId)) {
-          notify(`边缘测试成功，已进入 ${layout.displays[result.displayId]?.name ?? "目标屏幕"}`);
+          notify(t("边缘测试成功，已进入 {part0}", $uiLanguage, { part0: layout.displays[result.displayId]?.name ?? "目标屏幕" }));
           return;
         }
       }
-      notify("测试移动没有穿越边缘，请检查区段或激活策略", true);
+      notify(uiTranslate("测试移动没有穿越边缘，请检查区段或激活策略", $uiLanguage), true);
     } catch (error) {
-      notify(`边缘测试失败：${String(error)}`, true);
+      notify(t("边缘测试失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
     }
   }
 
@@ -169,7 +170,7 @@
         <AppSelect bind:value={addingDisplayId} disabled={!availableDisplays.length} aria-label={uiTranslate("添加屏幕", $uiLanguage)}
           options={[
             { value: "", label: uiTranslate(availableDisplays.length ? "选择要添加的屏幕" : "所有已知屏幕均已添加", $uiLanguage) },
-            ...availableDisplays.map((display) => ({ value: display.displayId, label: [(friendlyDeviceName(display.deviceId, snapshot)), " · ", (display.name)].join("") })),
+            ...availableDisplays.map((display) => ({ value: display.displayId, label: [(friendlyDeviceName(display.deviceId, snapshot, $uiLanguage)), " · ", (display.name)].join("") })),
           ]}
         />
       </label>

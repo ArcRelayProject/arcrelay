@@ -1,6 +1,6 @@
 <script lang="ts">
   import { translate as uiTranslate, language as uiLanguage } from "../../../i18n";
-  let last = "点击此处并按键";
+  let last = "";
   let active = false;
 
   function describe(event: KeyboardEvent) {
@@ -12,7 +12,7 @@
 
 <div class:active class="tester" role="textbox" tabindex="0" on:focus={() => active = true} on:blur={() => active = false} on:keydown={describe}>
   <span>{uiTranslate("键盘测试器", $uiLanguage)}</span>
-  <strong>{last}</strong>
+  <strong>{last || uiTranslate("点击此处并按键", $uiLanguage)}</strong>
   <small>{uiTranslate("这里只显示本地测试结果，不写入日志。", $uiLanguage)}</small>
 </div>
 

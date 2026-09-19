@@ -1,7 +1,8 @@
 use super::HudModel;
 use gtk::gdk;
+use gtk::glib::Propagation;
 use gtk::prelude::*;
-use gtk::{pango, Align, Inhibit, Orientation};
+use gtk::{pango, Align, Orientation};
 use tauri::{AppHandle, Theme, Window};
 
 struct NativeHud {
@@ -127,9 +128,9 @@ pub fn install(app: &AppHandle, window: &Window) -> Result<(), String> {
         if event.button() == 1 && x < 276.0 {
             let (root_x, root_y) = event.root();
             drag_window.begin_move_drag(1, root_x as i32, root_y as i32, event.time());
-            Inhibit(true)
+            Propagation::Stop
         } else {
-            Inhibit(false)
+            Propagation::Proceed
         }
     });
 

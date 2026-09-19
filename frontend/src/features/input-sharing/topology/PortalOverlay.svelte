@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { translate as uiTranslate, language as uiLanguage } from "../../../i18n";
+  import { t, translate as uiTranslate, language as uiLanguage } from "../../../i18n";
   import type { DisplaySurface, Portal } from "../../../types";
 
   export let portal: Portal;
@@ -25,7 +25,7 @@
 </script>
 
 {#if source && target && sourceSegment && targetSegment}
-  <g class:selected class:inactive={portal.status !== "Active"} role="button" tabindex="0" aria-label={uiTranslate((`${source.name} 与 ${target.name} 的自动跨屏边段`), $uiLanguage)} on:click|stopPropagation={onselect} on:keydown={(event) => (event.key === "Enter" || event.key === " ") && onselect()}>
+  <g class:selected class:inactive={portal.status !== "Active"} role="button" tabindex="0" aria-label={t("{source} 与 {target} 的自动跨屏边段", $uiLanguage, { source: source.name, target: target.name })} on:click|stopPropagation={onselect} on:keydown={(event) => (event.key === "Enter" || event.key === " ") && onselect()}>
     <line class="hit-area" x1={sourceSegment.start.x} y1={sourceSegment.start.y} x2={sourceSegment.end.x} y2={sourceSegment.end.y} />
     <line class="hit-area" x1={targetSegment.start.x} y1={targetSegment.start.y} x2={targetSegment.end.x} y2={targetSegment.end.y} />
     <line class="segment" x1={sourceSegment.start.x} y1={sourceSegment.start.y} x2={sourceSegment.end.x} y2={sourceSegment.end.y} />

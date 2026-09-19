@@ -1,3 +1,5 @@
+import { t } from "../../localization.ts";
+import type { LanguagePreference } from "../../types";
 import type {
   DiagnosticRecord,
   DisplaySurface,
@@ -16,6 +18,11 @@ export const DEFAULT_KEYBOARD_PROFILES: KeyboardProfile[] = [
   { name: "演示", kind: "Presentation", revision: 1, textStrategy: "UseTargetLayout", semanticOverrides: [] },
 ];
 
+export function keyboardProfileName(profile: KeyboardProfile, language: LanguagePreference) {
+  return DEFAULT_KEYBOARD_PROFILES.some(value => value.kind === profile.kind && value.name === profile.name)
+    ? t(profile.name, language) : profile.name;
+}
+
 export function canTakeInputControl(snapshot: RuntimeSnapshot) {
   return snapshot.capabilities.canCapturePointer
     && snapshot.capabilities.canCaptureKeyboard
@@ -26,28 +33,28 @@ export function isLocalDisplay(display: DisplaySurface, snapshot: RuntimeSnapsho
   return display.deviceId === snapshot.serviceInstanceId;
 }
 
-export function friendlyDeviceName(serviceInstanceId: string, snapshot: RuntimeSnapshot) {
-  if (serviceInstanceId === snapshot.serviceInstanceId) return "这台 Mac";
+export function friendlyDeviceName(serviceInstanceId: string, snapshot: RuntimeSnapshot, language: LanguagePreference = "zhCn") {
+  if (serviceInstanceId === snapshot.serviceInstanceId) return t("这台设备", language);
   const peer = snapshot.nearbyPeers.find((value) => value.serviceInstanceId === serviceInstanceId);
   if (peer?.displayName?.trim()) return peer.displayName.trim();
   const display = Object.values(snapshot.configuration.layout?.displays ?? {})
     .find((value) => value.deviceId === serviceInstanceId);
   if (display?.name && !/^Display\s*\d+$/i.test(display.name)) {
-    return display.name.includes("Mac") ? display.name : `${display.name} 所在电脑`;
+    return display.name.includes("Mac") ? display.name : t("{name} 所在电脑", language, { name: display.name });
   }
   const shortId = serviceInstanceId.length > 18 ? `${serviceInstanceId.slice(0, 8)}…` : serviceInstanceId;
-  return peer ? `附近设备 ${shortId}` : `远程设备 ${shortId}`;
+  return peer ? t("附近设备 {id}", language, { id: shortId }) : t("远程设备 {id}", language, { id: shortId });
 }
 
-export function friendlyPeerName(peer: NearbyInputPeer, snapshot: RuntimeSnapshot) {
-  return friendlyDeviceName(peer.serviceInstanceId, snapshot);
+export function friendlyPeerName(peer: NearbyInputPeer, snapshot: RuntimeSnapshot, language: LanguagePreference = "zhCn") {
+  return friendlyDeviceName(peer.serviceInstanceId, snapshot, language);
 }
 
-export function primaryAddress(peer: NearbyInputPeer) {
+export function primaryAddress(peer: NearbyInputPeer, language: LanguagePreference = "zhCn") {
   return peer.addresses.find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address))
     ?? peer.addresses.find((address) => !address.startsWith("fe80"))
     ?? peer.addresses[0]
-    ?? "本地网络";
+    ?? t("本地网络", language);
 }
 
 export function activePortalCount(snapshot: RuntimeSnapshot) {

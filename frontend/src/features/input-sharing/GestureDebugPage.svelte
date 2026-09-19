@@ -148,9 +148,9 @@
 
   <div class="lab-status">
     <span>macOS <strong>{snapshot?.osVersion || "—"}</strong></span>
-    <span>{uiTranslate("采集", $uiLanguage)} <strong>{snapshot?.capturing ? `${snapshot.suppressing ? "拦截" : "只读"} · ${Math.ceil(snapshot.remainingMs / 1000)}s` : "已停止"}</strong></span>
-    <span>{uiTranslate("合成", $uiLanguage)} <strong>{snapshot?.injecting ? "等待／执行中" : "空闲"}</strong></span>
-    <button class="button danger" disabled={!native || stopping} on:click={stop}>{stopping ? "正在停止…" : "立即停止全部实验"}</button>
+    <span>{uiTranslate("采集", $uiLanguage)} <strong>{snapshot?.capturing ? `${snapshot.suppressing ? uiTranslate("拦截", $uiLanguage) : uiTranslate("只读", $uiLanguage)} · ${Math.ceil(snapshot.remainingMs / 1000)}s` : uiTranslate("已停止", $uiLanguage)}</strong></span>
+    <span>{uiTranslate("合成", $uiLanguage)} <strong>{snapshot?.injecting ? uiTranslate("等待／执行中", $uiLanguage) : uiTranslate("空闲", $uiLanguage)}</strong></span>
+    <button class="button danger" disabled={!native || stopping} on:click={stop}>{stopping ? uiTranslate("正在停止…", $uiLanguage) : uiTranslate("立即停止全部实验", $uiLanguage)}</button>
   </div>
 
   <div class="lab-panels">
@@ -160,7 +160,7 @@
       <label class="lab-field">{uiTranslate("八动作快捷标签（人工指定）", $uiLanguage)}
         <AppSelect value={actionIndex} disabled={active || busy || stopping} onValueChange={(event) => selectAction(Number(event))} aria-label={uiTranslate("八动作快捷标签（人工指定）", $uiLanguage)}
           options={[
-            ...captureActions.map((label, index) => ({ value: index, label: [(index + 1), " · ", (label)].join("") })),
+            ...captureActions.map((label, index) => ({ value: index, label: [(index + 1), " · ", (uiTranslate(label, $uiLanguage))].join("") })),
           ]}
         />
       </label>
@@ -188,7 +188,7 @@
         <label class="lab-check"><input type="checkbox" bind:checked={cancelAtEnd} />{uiTranslate("结束时取消（测试回退）", $uiLanguage)}</label>
       </div>
       <div class="lab-action-grid">
-        {#each actions as item}<button class="button secondary" disabled={cannotStart || snapshot?.suppressing || (atBatchLimit && !snapshot?.capturing)} on:click={() => trigger(item.action)}>{item.label}</button>{/each}
+        {#each actions as item}<button class="button secondary" disabled={cannotStart || snapshot?.suppressing || (atBatchLimit && !snapshot?.capturing)} on:click={() => trigger(item.action)}>{uiTranslate(item.label, $uiLanguage)}</button>{/each}
       </div>
       <small>{uiTranslate("只实现 macOS ≤ 26 的 legacy 格式；方向和具体动作受系统设置影响。合成与拦截不能同时运行，可与只读观测并行。", $uiLanguage)}</small>
     </section>
@@ -207,19 +207,19 @@
         <thead><tr><th>{uiTranslate("试次 / 手动标签", $uiLanguage)}</th><th>{uiTranslate("模式", $uiLanguage)}</th><th>{uiTranslate("事件 / 标记", $uiLanguage)}</th><th>{uiTranslate("争锁丢失 / 容量拒收", $uiLanguage)}</th><th>{uiTranslate("状态", $uiLanguage)}</th></tr></thead>
         <tbody>
           {#each snapshot?.batches ?? [] as batch (batch.id)}
-            <tr><td>#{batch.id} · {batch.label}</td><td>{batch.mode === "intercept" ? "拦截" : batch.mode === "observe" ? "只读" : "合成"}</td><td>{batch.retainedSamples} / {batch.markerSamples}</td><td>{batch.droppedSamples} / {batch.capacityDroppedSamples}</td><td>{batch.finished ? "已结束" : "进行中"}<small>{batch.stopReason || "—"}</small></td></tr>
+            <tr><td>#{batch.id} · {batch.label}</td><td>{batch.mode === "intercept" ? uiTranslate("拦截", $uiLanguage) : batch.mode === "observe" ? uiTranslate("只读", $uiLanguage) : uiTranslate("合成", $uiLanguage)}</td><td>{batch.retainedSamples} / {batch.markerSamples}</td><td>{batch.droppedSamples} / {batch.capacityDroppedSamples}</td><td>{batch.finished ? uiTranslate("已结束", $uiLanguage) : uiTranslate("进行中", $uiLanguage)}<small>{batch.stopReason || "—"}</small></td></tr>
           {:else}<tr><td colspan="5" class="lab-empty">{uiTranslate("尚无试次。每次开始采集会自动编号，即使没有事件也会保留该试次。", $uiLanguage)}</td></tr>{/each}
         </tbody>
       </table>
     </div>
-    <p class="lab-message" role="status">{snapshot?.message || "尚未开始采集。"}</p>
+    <p class="lab-message" role="status">{snapshot?.message || uiTranslate("尚未开始采集。", $uiLanguage)}</p>
     <p><code>tap</code> {uiTranslate("= 已观测（可能包含合成）；", $uiLanguage)}<code>posted</code> {uiTranslate("= 仅已投递。后者不证明动作执行成功。", $uiLanguage)}</p>
     <div class="lab-table-wrap">
       <table>
         <thead><tr><th>{uiTranslate("试次 / # / ms", $uiLanguage)}</th><th>{uiTranslate("来源", $uiLanguage)}</th><th>{uiTranslate("手势 / 类型", $uiLanguage)}</th><th>{uiTranslate("阶段", $uiLanguage)}</th><th>{uiTranslate("进度", $uiLanguage)}</th><th>{uiTranslate("速度 X / Y", $uiLanguage)}</th><th>{uiTranslate("结果", $uiLanguage)}</th></tr></thead>
         <tbody>
           {#each latest as sample (`${sample.batchId}:${sample.id}`)}
-            <tr><td>{sample.batchId} / {sample.id}<small>{sample.elapsedMs} ms</small></td><td><code>{sample.source}</code></td><td>{gestureName(sample)}<small>{sample.eventType} / {sample.subtype}{isDockSwipe(sample) ? ` / axis ${sample.motion}` : " / 原始字段见报告"}</small></td><td>{isDockSwipe(sample) ? gesturePhase(sample.phase) : "未解码"}<small>f132: {sample.phase}</small></td><td>{isDockSwipe(sample) ? sample.progress.toFixed(4) : "—"}</td><td>{isDockSwipe(sample) ? `${sample.velocityX.toFixed(3)} / ${sample.velocityY.toFixed(3)}` : "—"}</td><td>{sample.suppressed ? "已拦截" : sample.source === "posted" ? "待人工确认" : "未拦截"}</td></tr>
+            <tr><td>{sample.batchId} / {sample.id}<small>{sample.elapsedMs} ms</small></td><td><code>{sample.source}</code></td><td>{uiTranslate(gestureName(sample), $uiLanguage)}<small>{sample.eventType} / {sample.subtype}{isDockSwipe(sample) ? ` / axis ${sample.motion}` : uiTranslate(" / 原始字段见报告", $uiLanguage)}</small></td><td>{isDockSwipe(sample) ? uiTranslate(gesturePhase(sample.phase), $uiLanguage) : uiTranslate("未解码", $uiLanguage)}<small>f132: {sample.phase}</small></td><td>{isDockSwipe(sample) ? sample.progress.toFixed(4) : "—"}</td><td>{isDockSwipe(sample) ? `${sample.velocityX.toFixed(3)} / ${sample.velocityY.toFixed(3)}` : "—"}</td><td>{sample.suppressed ? uiTranslate("已拦截", $uiLanguage) : sample.source === "posted" ? uiTranslate("待人工确认", $uiLanguage) : uiTranslate("未拦截", $uiLanguage)}</td></tr>
           {:else}<tr><td colspan="7" class="lab-empty">{uiTranslate("暂无事件。开始观测后，在触控板上做系统手势。", $uiLanguage)}</td></tr>{/each}
         </tbody>
       </table>
@@ -230,7 +230,7 @@
     <h2>{uiTranslate("测试结论与报告", $uiLanguage)}</h2>
     <label class="lab-field">{uiTranslate("实际观察", $uiLanguage)}<textarea bind:value={notes} maxlength="4000" rows="3" placeholder={uiTranslate("实际手指数／系统设置；是否采到；是否拦截；是否切换；方向是否正确；动画是否跟随；取消后是否恢复。", $uiLanguage)}></textarea></label>
     <div class="lab-buttons">
-      <button class="button secondary" disabled={!snapshot?.batches.length || active || busy || stopping || exporting} on:click={() => exportReport(false)}>{exporting ? "正在导出…" : copied ? "已复制（可再次复制）" : "复制 TXT 报告"}</button>
+      <button class="button secondary" disabled={!snapshot?.batches.length || active || busy || stopping || exporting} on:click={() => exportReport(false)}>{exporting ? uiTranslate("正在导出…", $uiLanguage) : copied ? uiTranslate("已复制（可再次复制）", $uiLanguage) : uiTranslate("复制 TXT 报告", $uiLanguage)}</button>
       <button class="button secondary" disabled={!snapshot?.batches.length || active || busy || stopping || exporting} on:click={() => exportReport(true)}>{uiTranslate("下载 .txt", $uiLanguage)}</button>
       <small>{uiTranslate("先停止实验再导出；包含全部编号试次和事件，表格使用紧凑 CSV，不再重复 JSON 字段名。仅在点击时复制／下载，不自动保存或上传。", $uiLanguage)}</small>
     </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
+  import { diagnosticMessage } from "../../diagnosticMessages";
+  import { t, locale, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import {
     ArrowCounterClockwise,
     ArrowRight,
@@ -64,14 +65,14 @@
   {#if offlinePeer}
     <div class="recovery-card">
       <div class="recovery-copy">
-        <div class="recovery-title"><span><WarningCircle size={27} weight="fill" /></span><div><h2>{friendlyPeerName(offlinePeer, snapshot)} {uiTranslate("已离线", $uiLanguage)}</h2><p>{uiTranslate("相关跨屏边缘已暂停，不会误将指针发送到其他设备。", $uiLanguage)}</p></div></div>
+        <div class="recovery-title"><span><WarningCircle size={27} weight="fill" /></span><div><h2>{friendlyPeerName(offlinePeer, snapshot, $uiLanguage)} {uiTranslate("已离线", $uiLanguage)}</h2><p>{uiTranslate("相关跨屏边缘已暂停，不会误将指针发送到其他设备。", $uiLanguage)}</p></div></div>
         <div class="reconnect-state"><ArrowCounterClockwise size={21} /><div><strong>{uiTranslate("可以重新连接", $uiLanguage)}</strong><small>{uiTranslate("布局和键盘设置已保留", $uiLanguage)}</small></div></div>
         <div class="recovery-actions"><button class="primary" on:click={onRetry}><ArrowCounterClockwise size={17} />{uiTranslate("立即重试", $uiLanguage)}</button><button class="secondary" on:click={() => onNavigate("diagnostics")}><WifiSlash size={17} />{uiTranslate("检查网络", $uiLanguage)}</button><button class="text-danger" on:click={onForget}>{uiTranslate("移除设备", $uiLanguage)}</button></div>
       </div>
       <div class="recovery-map">
-        <article><span class="online-dot"></span><Monitor size={62} weight="duotone" /><strong>{uiTranslate("这台 Mac", $uiLanguage)}</strong></article>
+        <article><span class="online-dot"></span><Monitor size={62} weight="duotone" /><strong>{uiTranslate("这台设备", $uiLanguage)}</strong></article>
         <div class="paused-link"><ArrowsLeftRight size={25} /><span>{uiTranslate("已暂停", $uiLanguage)}</span></div>
-        <article class="offline"><span></span><DesktopTower size={62} weight="duotone" /><strong>{friendlyPeerName(offlinePeer, snapshot)}</strong><small>{uiTranslate("离线", $uiLanguage)}</small></article>
+        <article class="offline"><span></span><DesktopTower size={62} weight="duotone" /><strong>{friendlyPeerName(offlinePeer, snapshot, $uiLanguage)}</strong><small>{uiTranslate("离线", $uiLanguage)}</small></article>
       </div>
     </div>
 
@@ -85,12 +86,12 @@
     <div class:ready={activeReady} class="readiness-card card">
       <div class="readiness-heading">
         <span class="readiness-icon">{#if activeReady}<Check size={30} weight="bold" />{:else}<WarningCircle size={30} weight="fill" />{/if}</span>
-        <div><h2>{uiTranslate(activeReady ? "自动互通已就绪" : ready ? "工作区已就绪，等待启用" : "完成设置后即可互通", $uiLanguage)}</h2><p>{displays.length} {uiTranslate("块屏幕 ·", $uiLanguage)} {activePortalCount(snapshot)} {uiTranslate("条跨屏边缘 ·", $uiLanguage)} {readyRemoteCount} {uiTranslate("台远程设备在线", $uiLanguage)}</p></div>
+        <div><h2>{uiTranslate(activeReady ? "自动互通已就绪" : ready ? "工作区已就绪，等待启用" : "完成设置后即可互通", $uiLanguage)}</h2><p>{t("{screens} 块屏幕 · {edges} 条跨屏边缘 · {devices} 台远程设备在线", $uiLanguage, { screens: displays.length, edges: activePortalCount(snapshot), devices: readyRemoteCount })}</p></div>
       </div>
 
       <div class="workspace-summary" aria-label={uiTranslate("跨屏工作区概览", $uiLanguage)}>
         <div class="device-cluster">
-          <header>{uiTranslate("这台 Mac", $uiLanguage)} <span class="online-dot"></span></header>
+          <header>{uiTranslate("这台设备", $uiLanguage)} <span class="online-dot"></span></header>
           <div class="screen-icons">
             {#each localDisplays as display, index}
               <article><svelte:component this={index === 1 ? Laptop : Monitor} size={62} weight="duotone" /><strong>{display.name}</strong><small>{uiTranslate(index === 0 ? "来源" : "本机", $uiLanguage)}</small></article>
@@ -98,9 +99,9 @@
             {#if localDisplays.length === 0}<article><Monitor size={62} weight="duotone" /><strong>{uiTranslate("本机显示器", $uiLanguage)}</strong></article>{/if}
           </div>
         </div>
-        <div class:active={activePortalCount(snapshot) > 0} class="portal-summary"><ArrowsLeftRight size={32} weight="bold" /><strong>{activePortalCount(snapshot)} {uiTranslate("个边段", $uiLanguage)}</strong><small>{uiTranslate(activePortalCount(snapshot) ? "可穿越" : "屏幕尚未相邻", $uiLanguage)}</small></div>
+        <div class:active={activePortalCount(snapshot) > 0} class="portal-summary"><ArrowsLeftRight size={32} weight="bold" /><strong>{t("边段数量：{count}", $uiLanguage, { count: activePortalCount(snapshot) })}</strong><small>{uiTranslate(activePortalCount(snapshot) ? "可穿越" : "屏幕尚未相邻", $uiLanguage)}</small></div>
         <div class="device-cluster remote">
-          <header>{uiTranslate(connectedPeer ? friendlyPeerName(connectedPeer, snapshot) : "目标设备", $uiLanguage)} <span class:offline={!connectedPeer} class="online-dot"></span></header>
+          <header>{connectedPeer ? friendlyPeerName(connectedPeer, snapshot, $uiLanguage) : uiTranslate("目标设备", $uiLanguage)} <span class:offline={!connectedPeer} class="online-dot"></span></header>
           <div class="screen-icons">
             {#each remoteDisplays as display}<article><Monitor size={62} weight="duotone" /><strong>{display.name}</strong><small>{uiTranslate(displayStatusLabel(snapshot.displayAvailability[display.displayId]), $uiLanguage)}</small></article>{/each}
             {#if remoteDisplays.length === 0}<article class="placeholder"><DesktopTower size={62} weight="duotone" /><strong>{uiTranslate("添加一台电脑", $uiLanguage)}</strong></article>{/if}
@@ -110,10 +111,10 @@
 
       <div class="readiness-footer">
         <div class="checks">
-          <span class:ok={snapshot.connectedPeers.length > 0}><CheckCircle size={18} weight="fill" />{uiTranslate("设备", $uiLanguage)}{uiTranslate(snapshot.connectedPeers.length ? "在线" : "未连接", $uiLanguage)}</span>
-          <span class:ok={activePortalCount(snapshot) > 0}><CheckCircle size={18} weight="fill" />{uiTranslate("自动通道", $uiLanguage)}{uiTranslate(activePortalCount(snapshot) ? "可用" : "待排列", $uiLanguage)}</span>
-          <span class:ok={canTakeInputControl(snapshot)}><CheckCircle size={18} weight="fill" />{uiTranslate("辅助功能", $uiLanguage)}{uiTranslate(canTakeInputControl(snapshot) ? "已开启" : "未开启", $uiLanguage)}</span>
-          <span class:ok={enabled}><CheckCircle size={18} weight="fill" />{uiTranslate("跨屏输入", $uiLanguage)}{uiTranslate(enabled ? "持续待命" : "已关闭", $uiLanguage)}</span>
+          <span class:ok={snapshot.connectedPeers.length > 0}><CheckCircle size={18} weight="fill" />{uiTranslate(snapshot.connectedPeers.length ? "设备在线" : "设备未连接", $uiLanguage)}</span>
+          <span class:ok={activePortalCount(snapshot) > 0}><CheckCircle size={18} weight="fill" />{uiTranslate(activePortalCount(snapshot) ? "自动通道可用" : "自动通道待排列", $uiLanguage)}</span>
+          <span class:ok={canTakeInputControl(snapshot)}><CheckCircle size={18} weight="fill" />{uiTranslate(canTakeInputControl(snapshot) ? "辅助功能已开启" : "辅助功能未开启", $uiLanguage)}</span>
+          <span class:ok={enabled}><CheckCircle size={18} weight="fill" />{uiTranslate(enabled ? "跨屏输入持续待命" : "跨屏输入已关闭", $uiLanguage)}</span>
         </div>
         <div class="readiness-actions">
           {#if !snapshot.connectedPeers.length}<button class="primary" on:click={() => onSetup(2)}><PlugsConnected size={17} />{uiTranslate("添加设备", $uiLanguage)}</button>
@@ -126,7 +127,7 @@
 
     {#if snapshot.controller}
       <div class="session-metrics">
-        <article><Pulse size={24} /><span><small>{uiTranslate("输入", $uiLanguage)}</small><strong>{formatInputRate(eventRate)}</strong></span></article>
+        <article><Pulse size={24} /><span><small>{uiTranslate("输入", $uiLanguage)}</small><strong>{uiTranslate(formatInputRate(eventRate), $uiLanguage)}</strong></span></article>
         <article><Gauge size={24} /><span><small>{uiTranslate("延迟", $uiLanguage)}</small><strong>{uiTranslate(p95 == null ? "等待样本" : `${p95.toFixed(1)} ms`, $uiLanguage)}</strong></span></article>
         <article><WifiHigh size={24} /><span><small>{uiTranslate("丢包", $uiLanguage)}</small><strong>{uiTranslate("未采样", $uiLanguage)}</strong></span></article>
         <div><ShieldCheck size={20} /><span>{uiTranslate("随时按", $uiLanguage)} <kbd>⌘⌥⇧ Esc</kbd> {uiTranslate("释放所有按键并返回本机", $uiLanguage)}</span></div>
@@ -136,19 +137,19 @@
     <div class="overview-grid">
       <div class="card devices-card">
         <div class="card-title"><h3>{uiTranslate("设备", $uiLanguage)}</h3><button on:click={() => onSetup(2)}>{uiTranslate("管理设备", $uiLanguage)}<ArrowRight size={15} /></button></div>
-        <div class="device-row"><span class="device-row-icon"><Monitor size={20} /></span><span><strong>{uiTranslate("这台 Mac", $uiLanguage)}</strong><small>{uiTranslate("可作为输入源和目标 ·", $uiLanguage)} {localDisplays.length || 1} {uiTranslate("块屏幕", $uiLanguage)}</small></span><em><i></i>{uiTranslate("在线", $uiLanguage)}</em></div>
+        <div class="device-row"><span class="device-row-icon"><Monitor size={20} /></span><span><strong>{uiTranslate("这台设备", $uiLanguage)}</strong><small>{uiTranslate("可作为输入源和目标 ·", $uiLanguage)} {localDisplays.length || 1} {uiTranslate("块屏幕", $uiLanguage)}</small></span><em><i></i>{uiTranslate("在线", $uiLanguage)}</em></div>
         {#each snapshot.nearbyPeers as peer}
-          <div class="device-row"><span class="device-row-icon"><DesktopTower size={20} /></span><span><strong>{friendlyPeerName(peer, snapshot)}</strong><small>{uiTranslate(peer.connected ? p95 == null ? "加密连接 · 等待延迟样本" : `加密连接 · ${p95.toFixed(0)} ms` : peer.paired ? "已配对 · 等待连接" : "尚未配对", $uiLanguage)}</small></span><em class:offline={!peer.connected}><i></i>{uiTranslate(peer.connected ? "在线" : "离线", $uiLanguage)}</em></div>
+          <div class="device-row"><span class="device-row-icon"><DesktopTower size={20} /></span><span><strong>{friendlyPeerName(peer, snapshot, $uiLanguage)}</strong><small>{uiTranslate(peer.connected ? p95 == null ? "加密连接 · 等待延迟样本" : t("加密连接 · {latency} ms", $uiLanguage, { latency: p95.toFixed(0) }) : peer.paired ? "已配对 · 等待连接" : "尚未配对", $uiLanguage)}</small></span><em class:offline={!peer.connected}><i></i>{uiTranslate(peer.connected ? "在线" : "离线", $uiLanguage)}</em></div>
         {/each}
       </div>
 
       <div class="card activity-card">
         <div class="card-title"><h3>{uiTranslate("最近活动", $uiLanguage)}</h3><button on:click={() => onNavigate("diagnostics")}>{uiTranslate("查看诊断", $uiLanguage)}<ArrowRight size={15} /></button></div>
         {#if recentEvents.length === 0}
-          <div class="activity-row"><i class="accent"></i><time>{new Date(lastConnection).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span>{uiTranslate("工作区已加载", $uiLanguage)}</span></div>
+          <div class="activity-row"><i class="accent"></i><time>{new Date(lastConnection).toLocaleTimeString($locale, { hour: "2-digit", minute: "2-digit" })}</time><span>{uiTranslate("工作区已加载", $uiLanguage)}</span></div>
           <div class="activity-row"><i></i><time>{uiTranslate("刚刚", $uiLanguage)}</time><span>{uiTranslate("等待新的跨屏活动", $uiLanguage)}</span></div>
         {:else}
-          {#each recentEvents as event, index}<div class="activity-row"><i class:accent={index === 0}></i><time>{new Date(event.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span>{event.message}</span></div>{/each}
+          {#each recentEvents as event, index}<div class="activity-row"><i class:accent={index === 0}></i><time>{new Date(event.timestampMs).toLocaleTimeString($locale, { hour: "2-digit", minute: "2-digit" })}</time><span>{diagnosticMessage(event.message, $uiLanguage)}</span></div>{/each}
         {/if}
       </div>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { translate as uiTranslate, language as uiLanguage } from "../../../i18n";
+  import { t, translate as uiTranslate, language as uiLanguage } from "../../../i18n";
   import { ArrowsLeftRight, ArrowRight, CaretRight, Clock, Command, Monitor, TestTube } from "phosphor-svelte";
   import type { WorkspaceLayout } from "../../../types";
 
@@ -52,7 +52,7 @@
       </div>
     {/if}
 
-    <div class="portal-hint">{uiTranslate("从", $uiLanguage)} {source?.name} {uiTranslate("的", $uiLanguage)}{uiTranslate(portal.sourceEdge === "Right" ? "右" : portal.sourceEdge === "Left" ? "左" : portal.sourceEdge === "Top" ? "上" : "下", $uiLanguage)}{uiTranslate("侧高亮边段穿越，即可按对应位置进入", $uiLanguage)} {target?.name}。</div>
+    <div class="portal-hint">{t("从 {source} 的{edge}侧高亮边段穿越，即可按对应位置进入 {target}。", $uiLanguage, { source: source?.name ?? uiTranslate("来源屏幕", $uiLanguage), target: target?.name ?? uiTranslate("目标屏幕", $uiLanguage), edge: uiTranslate(portal.sourceEdge === "Right" ? "右" : portal.sourceEdge === "Left" ? "左" : portal.sourceEdge === "Top" ? "上" : "下", $uiLanguage) })}</div>
     <button class="primary-action" on:click={onFinish}>{uiTranslate("完成", $uiLanguage)}</button>
     <button class="test-action" on:click={onTest}><TestTube size={17} />{uiTranslate("测试这个边段", $uiLanguage)}</button>
   {:else}

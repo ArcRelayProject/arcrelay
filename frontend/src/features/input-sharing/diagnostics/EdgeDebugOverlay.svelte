@@ -8,7 +8,7 @@
   <h3>{uiTranslate("边缘状态", $uiLanguage)}</h3>
   {#if !layout || layout.portals.length === 0}<p class="muted">{uiTranslate("尚未创建 Portal。", $uiLanguage)}</p>{/if}
   {#each layout?.portals ?? [] as portal}
-    <div class="portal"><span class:active={portal.status === "Active"}></span><div><strong>{portal.portalId}</strong><small>{portal.sourceDisplay} → {portal.targetDisplay}</small></div><em>{portal.status}</em></div>
+    <div class="portal"><span class:active={portal.status === "Active"}></span><div><strong>{portal.portalId}</strong><small>{portal.sourceDisplay} → {portal.targetDisplay}</small></div><em>{uiTranslate(portal.status === "Active" ? "可用" : "已暂停", $uiLanguage)}</em></div>
   {/each}
 </div>
 

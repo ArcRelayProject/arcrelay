@@ -130,6 +130,7 @@ fn ipc_contract_matches_rust() {
     registry.event::<usize>("notification-count");
     registry.event::<()>("notifications-changed");
     registry.event::<()>("clipboard-changed");
+    registry.event::<crate::clipboard_drag::ClipboardDragEnded>("clipboard-drag-ended");
     registry.event::<u64>("clipboard-ocr-changed");
     registry.event::<()>("clipboard-window-shown");
     registry.event::<()>("clipboard-window-hidden");

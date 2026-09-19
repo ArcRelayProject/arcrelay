@@ -16,15 +16,17 @@
   export let imageSelectionBusy = false;
   export let onCopyImageText: (content: string) => Promise<void> | void = () => undefined;
   export let onPasteImageText: (content: string) => Promise<void> | void = () => undefined;
+  export let onDragImage: (event: PointerEvent) => void = () => {};
 
   let html: string | null = item.kind === "html" ? (cachedHtmlPreview(item) ?? null) : null;
   let htmlItemVersion: string | null = null;
   let request = 0;
 
   $: {
-    const nextVersion = active && item.kind === "html"
-      ? `${item.id}:${item.updatedAtMs}:${item.sizeBytes}:${item.preview}`
-      : null;
+    const nextVersion =
+      active && item.kind === "html"
+        ? `${item.id}:${item.updatedAtMs}:${item.sizeBytes}:${item.preview}`
+        : null;
     if (nextVersion !== htmlItemVersion) {
       htmlItemVersion = nextVersion;
       if (nextVersion) void loadHtml(item, nextVersion);
@@ -66,6 +68,7 @@
       busy={imageSelectionBusy}
       onCopy={onCopyImageText}
       onPaste={onPasteImageText}
+      {onDragImage}
     />
   {:else}
     <Thumbnail {item} {language} {active} />
@@ -81,7 +84,11 @@
     <FileText size={23} />
     <div>
       <strong>{item.preview}</strong>
-      <span>{item.itemCount > 1 ? (t("{count} 个文件", language, { count: item.itemCount })) : tr("文件", language)}</span>
+      <span
+        >{item.itemCount > 1
+          ? t("{count} 个文件", language, { count: item.itemCount })
+          : tr("文件", language)}</span
+      >
     </div>
   </div>
 {:else if looksLikeCode(item.preview)}

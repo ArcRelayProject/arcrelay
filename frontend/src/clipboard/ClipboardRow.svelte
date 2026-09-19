@@ -23,6 +23,8 @@
   export let previewActive = true;
   export let timelineTarget = false;
   export let exactTime = false;
+  export let onDragPress: (event: PointerEvent) => void = () => {};
+  export let suppressDragClick: () => boolean = () => false;
 
   function handleContextMenu(event: MouseEvent) {
     event.preventDefault();
@@ -33,6 +35,7 @@
   function handleDoubleClick(event: MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
+    if (suppressDragClick()) return;
     onPaste(event.shiftKey);
   }
 
@@ -51,19 +54,34 @@
   }
 
   function formatTime(timestamp: number, useExactTime: boolean) {
-    if (useExactTime) return new Intl.DateTimeFormat(localeFor(language), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
+    if (useExactTime)
+      return new Intl.DateTimeFormat(localeFor(language), {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(timestamp);
     const delta = Date.now() - timestamp;
     if (delta < 60_000) return tr("刚刚", language);
     if (delta < 60 * 60_000) {
       const count = Math.floor(delta / 60_000);
-      return new Intl.RelativeTimeFormat(localeFor(language), { numeric: "auto" }).format(-count, "minute");
+      return new Intl.RelativeTimeFormat(localeFor(language), { numeric: "auto" }).format(
+        -count,
+        "minute",
+      );
     }
     if (delta < 24 * 60 * 60_000) {
       const count = Math.floor(delta / 60 / 60_000);
-      return new Intl.RelativeTimeFormat(localeFor(language), { numeric: "auto" }).format(-count, "hour");
+      return new Intl.RelativeTimeFormat(localeFor(language), { numeric: "auto" }).format(
+        -count,
+        "hour",
+      );
     }
     if (delta < 48 * 60 * 60_000) return tr("昨天", language);
-    return new Intl.DateTimeFormat(localeFor(language), { month: "numeric", day: "numeric" }).format(timestamp);
+    return new Intl.DateTimeFormat(localeFor(language), {
+      month: "numeric",
+      day: "numeric",
+    }).format(timestamp);
   }
 </script>
 
@@ -74,7 +92,15 @@
   class="clipboard-row"
   role="button"
   tabindex="0"
-  onclick={(event) => onSelect(event)}
+  draggable="false"
+  onpointerdown={onDragPress}
+  ondragstart={(event) => event.preventDefault()}
+  onclick={(event) => {
+    if (suppressDragClick()) {
+      event.preventDefault();
+      event.stopPropagation();
+    } else onSelect(event);
+  }}
   onfocus={onFocus}
   onkeydown={handleKeyDown}
   oncontextmenu={handleContextMenu}
@@ -83,7 +109,11 @@
   aria-label={t("{name}，双击插入", language, { name: item.sourceApp ?? "剪贴板" })}
 >
   {#if selectionOrder !== null}
-    <span class="selection-order" aria-label={t("第 {count} 个选择", language, { count: selectionOrder })}>{selectionOrder}</span>
+    <span
+      class="selection-order"
+      aria-label={t("第 {count} 个选择", language, { count: selectionOrder })}
+      >{selectionOrder}</span
+    >
   {/if}
   <div class="clipboard-content">
     <ContentPreview {item} {language} active={previewActive} />
@@ -92,7 +122,12 @@
     {#if timelineTarget}<span class="timeline-target-badge">{tr("定位记录", language)}</span>{/if}
     {#if !multiSelectActive}
       {#if shortcutIndex !== null}
-        <span class="item-number" title={t("按 {shortcut} 快速插入", language, { shortcut: `${shortcutModifier}${shortcutIndex}` })}>{shortcutIndex}</span>
+        <span
+          class="item-number"
+          title={t("按 {shortcut} 快速插入", language, {
+            shortcut: `${shortcutModifier}${shortcutIndex}`,
+          })}>{shortcutIndex}</span
+        >
       {:else}
         <span class="item-number placeholder" aria-hidden="true"></span>
       {/if}
@@ -103,7 +138,8 @@
         class="remote-device-indicator"
         title={t("来自其他设备：{name}", language, { name: item.sourceDeviceName })}
         aria-label={t("来自其他设备：{name}", language, { name: item.sourceDeviceName })}
-      ><DevicesIcon size={15} weight="bold" /></span>
+        ><DevicesIcon size={15} weight="bold" /></span
+      >
     {/if}
     {#if item.favorite}<Star size={14} weight="fill" class="meta-pin" />{/if}
     {#each item.labels.slice(0, 2) as label (label.id)}

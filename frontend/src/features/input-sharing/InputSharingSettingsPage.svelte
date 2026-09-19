@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { diagnosticMessage } from "../../diagnosticMessages";
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { CheckCircle, Link } from "phosphor-svelte";
   import { bridge } from "../../bridge";
@@ -21,8 +22,8 @@
     busyPeer = serviceInstanceId;
     try {
       await bridge.connectDesktopDevice(serviceInstanceId);
-      notify("已发起统一设备配对，请核对六位配对码");
-    } catch (error) { notify(String(error), true); }
+      notify(uiTranslate("已发起统一设备配对，请核对六位配对码", $uiLanguage));
+    } catch (error) { notify(diagnosticMessage(error, $uiLanguage), true); }
     finally { busyPeer = ""; }
   }
 
@@ -30,8 +31,8 @@
     busyPeer = peer.serviceInstanceId;
     try {
       onSnapshot(await bridge.connectInputPeer(peer));
-      notify("正在重新连接已配对设备");
-    } catch (error) { notify(String(error), true); }
+      notify(uiTranslate("正在重新连接已配对设备", $uiLanguage));
+    } catch (error) { notify(diagnosticMessage(error, $uiLanguage), true); }
     finally { busyPeer = ""; }
   }
 

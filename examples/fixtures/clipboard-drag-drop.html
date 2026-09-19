@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ArcRelay native drag probe</title>
+<style>
+  body { font: 16px system-ui; margin: 32px; max-width: 1100px; background: #f4f6fa; color: #192337; }
+  h1 { margin-bottom: 8px; }
+  #drop { margin: 24px 0; padding: 70px 30px; border: 3px dashed #5278c9; border-radius: 12px; background: white; text-align: center; }
+  #drop.active { background: #dce8ff; }
+  label { display: block; margin-top: 12px; }
+  input { width: 90px; padding: 5px; }
+  textarea, [contenteditable] { display: block; width: 95%; min-height: 60px; padding: 12px; background: white; border: 1px solid #aab8d0; }
+  pre { background: #152036; color: #e7efff; padding: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pass { color: #13672c; } .fail { color: #b32828; }
+</style>
+<h1>Native drag → browser</h1>
+<p>Local generated fixtures only. No remote requests and no clipboard reads.</p>
+<label>Delay before reading dropped file bytes (milliseconds): <input id="delay" type="number" min="0" max="60000" value="3000"></label>
+<div id="drop" tabindex="0">Drop a generated PNG, file, Unicode text or HTML here</div>
+<p id="status" role="status">Waiting for a real native drop</p>
+<label>Ordinary textarea (manual insertion check)<textarea id="plain"></textarea></label>
+<label>Ordinary contenteditable (manual rich text check)<div id="rich" contenteditable="true"></div></label>
+<pre id="results">[]</pre>
+<script>
+  const results = [];
+  const drop = document.querySelector('#drop');
+  const expectedPromise = fetch('/expected.json').then(response => response.json());
+  const display = () => document.querySelector('#results').textContent = JSON.stringify(results, null, 2);
+  const hash = async buffer => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)), byte => byte.toString(16).padStart(2, '0')).join('');
+  for (const name of ['dragenter', 'dragover']) drop.addEventListener(name, event => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    drop.classList.add('active');
+  });
+  drop.addEventListener('dragleave', () => drop.classList.remove('active'));
+  drop.addEventListener('drop', async event => {
+    event.preventDefault();
+    drop.classList.remove('active');
+    // Read string representations synchronously; DataTransfer becomes protected
+    // after this event. File objects are intentionally read later.
+    const files = Array.from(event.dataTransfer.files);
+    const report = {
+      trusted: event.isTrusted,
+      types: Array.from(event.dataTransfer.types),
+      text: event.dataTransfer.getData('text/plain'),
+      html: event.dataTransfer.getData('text/html'),
+      fileCount: files.length,
+      delayMs: Math.max(0, Math.min(60000, Number(document.querySelector('#delay').value) || 0)),
+      files: [],
+      checks: [],
+      pass: false,
+    };
+    const status = document.querySelector('#status');
+    status.textContent = `Received native drop; reading bytes after ${report.delayMs} ms…`;
+    results.push(report);
+    display();
+    try {
+      const expected = await expectedPromise;
+      await new Promise(resolve => setTimeout(resolve, report.delayMs));
+      for (const file of files) {
+        const result = {name: file.name, type: file.type, size: file.size, sha256: await hash(await file.arrayBuffer())};
+        report.files.push(result);
+        const wanted = expected.files.find(item => item.name === result.name);
+        report.checks.push({kind: 'file', name: result.name, pass: Boolean(wanted && ['type', 'size', 'sha256'].every(key => wanted[key] === result[key]))});
+      }
+      if (!files.length) {
+        report.checks.push({kind: 'plainText', pass: report.text.replace(/\r\n/g, '\n') === expected.text});
+        if (report.types.includes('text/html')) {
+          // Browsers may wrap HTML with a document prefix, so compare the
+          // parsed text plus the retained semantic <strong> element.
+          const actual = new DOMParser().parseFromString(report.html, 'text/html');
+          const wanted = new DOMParser().parseFromString(expected.html, 'text/html');
+          report.checks.push({kind: 'html', pass: actual.body.textContent === wanted.body.textContent && actual.querySelector('strong')?.textContent === wanted.querySelector('strong')?.textContent});
+        }
+      }
+      report.pass = report.trusted && report.checks.length > 0 && report.checks.every(check => check.pass);
+    } catch (error) {
+      report.error = String(error);
+    }
+    status.textContent = report.pass ? `PASS · ${report.fileCount || 'text'} · delayed read ${report.delayMs} ms` : 'FAIL · inspect report below';
+    status.className = report.pass ? 'pass' : 'fail';
+    display();
+    await fetch('/report', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(report)});
+  });
+</script>
+</html>

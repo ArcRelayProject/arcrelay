@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { diagnosticMessage } from "../../diagnosticMessages";
   import AppSelect from "../../components/AppSelect.svelte";
   import { translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import {
@@ -18,7 +19,7 @@
   } from "phosphor-svelte";
   import type { InputOsFamily, KeyboardProfile, RuntimeSnapshot, WorkspaceConfiguration } from "../../types";
   import { bridge } from "../../bridge";
-  import { DEFAULT_KEYBOARD_PROFILES, friendlyDeviceName } from "./inputSharingUi";
+  import { DEFAULT_KEYBOARD_PROFILES, keyboardProfileName, friendlyDeviceName } from "./inputSharingUi";
   import KeyboardTester from "./keyboard/KeyboardTester.svelte";
   import ConsumerKeysSection from "./ConsumerKeysSection.svelte";
 
@@ -33,14 +34,14 @@
   let showAdvanced = false;
 
   const profileIcons = { Productivity: Briefcase, Terminal: TerminalWindow, Ide: Code, RemoteDesktop: DesktopTower, GameRaw: GameController, Presentation };
-  function osLabel(system: InputOsFamily | undefined) {
+  function osLabel(system: InputOsFamily | undefined, currentLanguage: typeof $uiLanguage) {
     if (system === "MacOs") return "macOS";
     if (system === "Windows") return "Windows";
     if (system === "Android") return "Android";
     if (system === "Ios") return "iOS / iPadOS";
     if (system === "LinuxX11") return "Linux · X11";
     if (system === "LinuxWayland") return "Linux · Wayland";
-    return "等待设备信息";
+    return uiTranslate("等待设备信息", currentLanguage);
   }
   function primaryModifier(system: string) { return system === "macOS" ? "⌘" : "Ctrl"; }
   function applicationSwitchModifier(system: string) { return system === "macOS" ? "⌘" : "Alt"; }
@@ -53,8 +54,8 @@
 
   $: profile = configuration.keyboardProfiles.find((value) => value.kind === selectedKind) ?? configuration.keyboardProfiles[0];
   $: remoteDeviceId = Object.values(configuration.layout?.displays ?? {}).find((display) => display.deviceId !== snapshot.serviceInstanceId)?.deviceId;
-  $: sourceSystem = osLabel(snapshot.localOperatingSystem);
-  $: targetSystem = osLabel(remoteDeviceId ? snapshot.remoteOperatingSystems[remoteDeviceId] : undefined);
+  $: sourceSystem = osLabel(snapshot.localOperatingSystem, $uiLanguage);
+  $: targetSystem = osLabel(remoteDeviceId ? snapshot.remoteOperatingSystems[remoteDeviceId] : undefined, $uiLanguage);
   $: targetCapabilities = remoteDeviceId ? snapshot.nearbyPeers.find((peer) => peer.serviceInstanceId === remoteDeviceId)?.capabilities : undefined;
   $: appPointerOnly = targetCapabilities?.canInjectAppPointer && !targetCapabilities.canInjectKeyboard;
 
@@ -64,9 +65,9 @@
       onSnapshot(next);
       configuration = structuredClone(next.configuration);
       dirty = false;
-      notify("键盘行为已保存");
+      notify(uiTranslate("键盘行为已保存", $uiLanguage));
     } catch (error) {
-      notify(String(error), true);
+      notify(diagnosticMessage(error, $uiLanguage), true);
     }
   }
 
@@ -78,7 +79,7 @@
     configuration.consumerShortcuts = [];
     selectedKind = "Productivity";
     dirty = true;
-    notify("已恢复推荐键盘行为，保存后生效");
+    notify(uiTranslate("已恢复推荐键盘行为，保存后生效", $uiLanguage));
   }
 
   function addRule() {
@@ -118,7 +119,7 @@
           {@const Icon = profileIcons[item.kind]}
           <button class:active={profile?.kind === item.kind} on:click={() => selectProfile(item.kind)}>
             <span><Icon size={18} weight={profile?.kind === item.kind ? "fill" : "regular"} /></span>
-            <strong>{item.name}</strong>
+            <strong>{keyboardProfileName(item, $uiLanguage)}</strong>
             {#if item.kind === "Productivity"}<em>{uiTranslate("推荐", $uiLanguage)}</em>{/if}
             <i></i>
           </button>
@@ -126,12 +127,12 @@
       </div>
       <div class="device-pair card">
         <h3>{uiTranslate("当前设备对", $uiLanguage)}</h3>
-        <div><span><Laptop size={20} /></span><p><strong>{uiTranslate("这台 Mac", $uiLanguage)}</strong><small>{sourceSystem} {uiTranslate("· 来源", $uiLanguage)}</small></p></div>
+        <div><span><Laptop size={20} /></span><p><strong>{uiTranslate("这台设备", $uiLanguage)}</strong><small>{sourceSystem} {uiTranslate("· 来源", $uiLanguage)}</small></p></div>
         <i>↓</i>
-        <div><span><DesktopTower size={20} /></span><p><strong>{uiTranslate(remoteDeviceId ? friendlyDeviceName(remoteDeviceId, snapshot) : "目标设备", $uiLanguage)}</strong><small>{targetSystem} {uiTranslate("· 目标", $uiLanguage)}</small></p></div>
+        <div><span><DesktopTower size={20} /></span><p><strong>{remoteDeviceId ? friendlyDeviceName(remoteDeviceId, snapshot, $uiLanguage) : uiTranslate("目标设备", $uiLanguage)}</strong><small>{targetSystem} {uiTranslate("· 目标", $uiLanguage)}</small></p></div>
         <label class="device-profile"><Briefcase size={16} /><AppSelect bind:value={selectedKind} onValueChange={() => selectProfile(selectedKind)} aria-label={uiTranslate("当前设备对键盘配置", $uiLanguage)}
           options={[
-            ...configuration.keyboardProfiles.map((item) => ({ value: item.kind, label: item.name })),
+            ...configuration.keyboardProfiles.map((item) => ({ value: item.kind, label: keyboardProfileName(item, $uiLanguage) })),
           ]}
         /></label>
       </div>
@@ -141,7 +142,7 @@
       <div class="editor card"><div class="editor-heading"><div><h2>{targetSystem}</h2><p>{uiTranslate("仅应用内鼠标；键盘输入返回电脑", $uiLanguage)}</p></div></div></div>
     {:else if profile}
       <div class="editor card">
-        <div class="editor-heading"><div><h2>{profile.name}</h2><p>{uiTranslate("复制、粘贴、撤销和切换应用会自动适配目标系统。", $uiLanguage)}</p></div><span><CheckCircle size={17} weight="fill" />{uiTranslate("正在使用", $uiLanguage)}</span></div>
+        <div class="editor-heading"><div><h2>{keyboardProfileName(profile, $uiLanguage)}</h2><p>{uiTranslate("复制、粘贴、撤销和切换应用会自动适配目标系统。", $uiLanguage)}</p></div><span><CheckCircle size={17} weight="fill" />{uiTranslate("正在使用", $uiLanguage)}</span></div>
 
         <div class="system-pair">
           <div><span>{uiTranslate("来源键盘", $uiLanguage)}</span><strong class="os-value">{sourceSystem}</strong></div>
@@ -154,7 +155,7 @@
           <div class="shortcut-table">
             <header><span>{uiTranslate("操作", $uiLanguage)}</span><span>{uiTranslate("来源", $uiLanguage)}</span><span>{uiTranslate("目标", $uiLanguage)}</span><span>{uiTranslate("状态", $uiLanguage)}</span></header>
             {#each presetRows as row}
-              <div><strong>{row.action}</strong><span class="key-group">{#each row.source as key}<kbd>{key}</kbd>{/each}</span><span class="key-group">{#each row.target as key}<kbd class:text={key.length > 3}>{key}</kbd>{/each}</span><em class:local={row.status === "本机"}><i></i>{row.status}</em></div>
+              <div><strong>{uiTranslate(row.action, $uiLanguage)}</strong><span class="key-group">{#each row.source as key}<kbd>{key}</kbd>{/each}</span><span class="key-group">{#each row.target as key}<kbd class:text={key.length > 3}>{key}</kbd>{/each}</span><em class:local={row.status === "本机"}><i></i>{uiTranslate(row.status, $uiLanguage)}</em></div>
             {/each}
           </div>
           <button class="add-rule" on:click={addRule}><Plus size={16} />{uiTranslate("添加自定义规则", $uiLanguage)}</button>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { diagnosticMessage } from "../../diagnosticMessages";
+  import { translate as uiTranslate, language as uiLanguage, t } from "../../i18n";
   import { onMount } from "svelte";
   import {
     ArrowLeft, Camera, CheckCircle, Eye, LockKey, Monitor, Play, Stop, WarningCircle,
@@ -64,12 +66,12 @@
       if (disposed) cleanup();
       else unlisten = cleanup;
     }).catch((error) => {
-      previewError = String(error);
-      notify(`无法订阅摄像头预览：${previewError}`, true);
+      previewError = diagnosticMessage(error, $uiLanguage);
+      notify(t("无法订阅摄像头预览：{part0}", $uiLanguage, { part0: previewError }), true);
     });
     void bridge.setGazePreviewEnabled(true).catch((error) => {
-      previewError = String(error);
-      notify(`无法启用摄像头预览：${previewError}`, true);
+      previewError = diagnosticMessage(error, $uiLanguage);
+      notify(t("无法启用摄像头预览：{part0}", $uiLanguage, { part0: previewError }), true);
     });
     return () => {
       disposed = true;
@@ -79,83 +81,83 @@
   });
 </script>
 
-<section class="diagnostics-page" aria-label="本机视觉诊断">
+<section class="diagnostics-page" aria-label={uiTranslate("本机视觉诊断", $uiLanguage)}>
   <header>
-    <button class="back-button" on:click={onClose}><ArrowLeft size={16} />返回眼动设置</button>
-    <div><span>本机视觉诊断</span><h2>摄像头与人脸识别</h2><p>实时确认摄像头画面、检测区域和本机用户匹配结果。</p></div>
-    <span class:active={running} class="runtime-state"><i></i>{running ? "正在采集" : "未启动"}</span>
+    <button class="back-button" on:click={onClose}><ArrowLeft size={16} />{uiTranslate("返回眼动设置", $uiLanguage)}</button>
+    <div><span>{uiTranslate("本机视觉诊断", $uiLanguage)}</span><h2>{uiTranslate("摄像头与人脸识别", $uiLanguage)}</h2><p>{uiTranslate("实时确认摄像头画面、检测区域和本机用户匹配结果。", $uiLanguage)}</p></div>
+    <span class:active={running} class="runtime-state"><i></i>{uiTranslate((running ? "正在采集" : "未启动"), $uiLanguage)}</span>
   </header>
 
   <div class="toolbar">
-    <label><span>摄像头</span><AppSelect bind:value={cameraId} options={cameraOptions} disabled={running || busy} placeholder="未发现摄像头" aria-label="诊断摄像头" /></label>
+    <label><span>{uiTranslate("摄像头", $uiLanguage)}</span><AppSelect bind:value={cameraId} options={cameraOptions} disabled={running || busy} placeholder={uiTranslate("未发现摄像头", $uiLanguage)} aria-label={uiTranslate("诊断摄像头", $uiLanguage)} /></label>
     {#if running}
-      <button class="stop-button" disabled={busy} on:click={onStop}><Stop size={15} />停止摄像头</button>
+      <button class="stop-button" disabled={busy} on:click={onStop}><Stop size={15} />{uiTranslate("停止摄像头", $uiLanguage)}</button>
     {:else}
-      <button class="start-button" disabled={busy || !cameraId} on:click={start}><Play size={16} weight="fill" />{busy ? "正在启动…" : "启动摄像头"}</button>
+      <button class="start-button" disabled={busy || !cameraId} on:click={start}><Play size={16} weight="fill" />{uiTranslate((busy ? "正在启动…" : "启动摄像头"), $uiLanguage)}</button>
     {/if}
-    <div class="privacy"><LockKey size={15} weight="fill" /><span>预览仅在本机内存中传递，关闭此页后立即停止生成，不保存、不上传。</span></div>
+    <div class="privacy"><LockKey size={15} weight="fill" /><span>{uiTranslate("预览仅在本机内存中传递，关闭此页后立即停止生成，不保存、不上传。", $uiLanguage)}</span></div>
   </div>
 
   <div class="diagnostics-grid">
     <article class="camera-card">
-      <div class="card-heading"><div><span>实时画面</span><strong>{status?.cameraName ?? "等待选择摄像头"}</strong></div><b>{preview ? `${preview.width} × ${preview.height}` : "—"}</b></div>
+      <div class="card-heading"><div><span>{uiTranslate("实时画面", $uiLanguage)}</span><strong>{status?.cameraName ?? uiTranslate("等待选择摄像头", $uiLanguage)}</strong></div><b>{preview ? `${preview.width} × ${preview.height}` : "—"}</b></div>
       <div class:empty={!preview} class="camera-stage" style={`aspect-ratio:${preview?.width ?? 16}/${preview?.height ?? 9}`}>
         {#if preview}
-          <img src={preview.imageDataUrl} alt="摄像头实时诊断预览" />
-          {#if preview.face}<span class="face-box" style={rectStyle(preview.face)}><i>人脸</i></span>{/if}
+          <img src={preview.imageDataUrl} alt={uiTranslate("摄像头实时诊断预览", $uiLanguage)} />
+          {#if preview.face}<span class="face-box" style={rectStyle(preview.face)}><i>{uiTranslate("人脸", $uiLanguage)}</i></span>{/if}
           {#if preview.leftEye}<span class="eye-box" style={rectStyle(preview.leftEye)}></span>{/if}
           {#if preview.rightEye}<span class="eye-box" style={rectStyle(preview.rightEye)}></span>{/if}
         {:else}
           <Camera size={38} weight="duotone" />
-          <strong>{running ? "等待第一帧…" : "启动摄像头以查看实时画面"}</strong>
-          <span>{previewError || "绿色框表示人脸，蓝色框表示双眼检测区域。"}</span>
+          <strong>{uiTranslate((running ? "等待第一帧…" : "启动摄像头以查看实时画面"), $uiLanguage)}</strong>
+          <span>{uiTranslate((previewError || "绿色框表示人脸，蓝色框表示双眼检测区域。"), $uiLanguage)}</span>
         {/if}
       </div>
-      <div class="legend"><span><i class="face-dot"></i>人脸区域</span><span><i class="eye-dot"></i>双眼区域</span><b>帧 #{preview?.sequence ?? "—"}</b></div>
+      <div class="legend"><span><i class="face-dot"></i>{uiTranslate("人脸区域", $uiLanguage)}</span><span><i class="eye-dot"></i>{uiTranslate("双眼区域", $uiLanguage)}</span><b>{uiTranslate("帧 #", $uiLanguage)}{preview?.sequence ?? "—"}</b></div>
     </article>
 
     <aside class="results">
       <article class:good={Boolean(status?.observation)} class="result-card primary">
         <div class="result-icon"><Eye size={22} weight="duotone" /></div>
-        <div><span>视觉检测</span><strong>{status?.observation ? "人脸与眼睛可用" : running ? "没有检测到有效人脸" : "等待摄像头"}</strong></div>
+        <div><span>{uiTranslate("视觉检测", $uiLanguage)}</span><strong>{uiTranslate((status?.observation ? "人脸与眼睛可用" : running ? "没有检测到有效人脸" : "等待摄像头"), $uiLanguage)}</strong></div>
         <em>{status?.faceConfidence?.toFixed(2) ?? "—"}</em>
       </article>
 
       <article class:good={status?.presenceState === "ownerPresent"} class="result-card">
         <div class="result-icon"><LockKey size={21} weight="duotone" /></div>
-        <div><span>本机用户识别</span><strong>{presenceLabel}</strong><small>{status?.presenceProfileEnrolled ? status.presenceProfileName ?? "已录入用户" : "尚未录入本机用户"}</small></div>
+        <div><span>{uiTranslate("本机用户识别", $uiLanguage)}</span><strong>{uiTranslate(presenceLabel, $uiLanguage)}</strong><small>{status?.presenceProfileEnrolled ? status.presenceProfileName ?? uiTranslate("已录入用户", $uiLanguage) : uiTranslate("尚未录入本机用户", $uiLanguage)}</small></div>
         <em>{status?.presenceOwnerSimilarity?.toFixed(2) ?? "—"}</em>
       </article>
 
       <article class:good={Boolean(status?.target)} class="result-card">
         <div class="result-icon"><Monitor size={21} weight="duotone" /></div>
-        <div><span>屏幕判断</span><strong>{status?.target ? activeDisplay?.name ?? status.target.displayId : "尚无稳定目标"}</strong><small>{status?.target?.source === "eye" ? "注视映射" : status?.target ? "头部区域" : "等待标定结果"}</small></div>
+        <div><span>{uiTranslate("屏幕判断", $uiLanguage)}</span><strong>{status?.target ? activeDisplay?.name ?? status.target.displayId : uiTranslate("尚无稳定目标", $uiLanguage)}</strong><small>{uiTranslate((status?.target?.source === "eye" ? "注视映射" : status?.target ? "头部区域" : "等待标定结果"), $uiLanguage)}</small></div>
         <em>{status?.target?.confidence.toFixed(2) ?? "—"}</em>
       </article>
 
       <article class="metrics-card">
-        <div><span>人脸数量</span><strong>{status?.presenceFaceCount ?? 0}</strong></div>
-        <div><span>推理延迟</span><strong>{status?.inferenceMs?.toFixed(0) ?? "—"}<small> ms</small></strong></div>
-        <div><span>完整检测</span><strong>{status?.detectedFrames ?? 0}</strong></div>
-        <div><span>轨迹复用</span><strong>{status?.trackedFrames ?? 0}</strong></div>
-        <div><span>身份复核</span><strong>{status?.identityFrames ?? 0}</strong></div>
-        <div><span>推理帧</span><strong>{status?.inferredFrames ?? 0}</strong></div>
+        <div><span>{uiTranslate("人脸数量", $uiLanguage)}</span><strong>{status?.presenceFaceCount ?? 0}</strong></div>
+        <div><span>{uiTranslate("推理延迟", $uiLanguage)}</span><strong>{status?.inferenceMs?.toFixed(0) ?? "—"}<small> ms</small></strong></div>
+        <div><span>{uiTranslate("完整检测", $uiLanguage)}</span><strong>{status?.detectedFrames ?? 0}</strong></div>
+        <div><span>{uiTranslate("轨迹复用", $uiLanguage)}</span><strong>{status?.trackedFrames ?? 0}</strong></div>
+        <div><span>{uiTranslate("身份复核", $uiLanguage)}</span><strong>{status?.identityFrames ?? 0}</strong></div>
+        <div><span>{uiTranslate("推理帧", $uiLanguage)}</span><strong>{status?.inferredFrames ?? 0}</strong></div>
       </article>
 
       <article class="vectors-card">
-        <div class="card-heading"><div><span>姿态与注视向量</span><strong>用于分析上下屏误判</strong></div></div>
+        <div class="card-heading"><div><span>{uiTranslate("姿态与注视向量", $uiLanguage)}</span><strong>{uiTranslate("用于分析上下屏误判", $uiLanguage)}</strong></div></div>
         <dl>
-          <div><dt>头部 yaw</dt><dd>{status?.observation?.headYaw.toFixed(2) ?? "—"}°</dd></div>
-          <div><dt>头部 pitch</dt><dd>{status?.observation?.headPitch.toFixed(2) ?? "—"}°</dd></div>
-          <div><dt>注视 X</dt><dd>{status?.observation?.gazeX.toFixed(3) ?? "—"}</dd></div>
-          <div><dt>注视 Y</dt><dd>{status?.observation?.gazeY.toFixed(3) ?? "—"}</dd></div>
+          <div><dt>{uiTranslate("头部 yaw", $uiLanguage)}</dt><dd>{status?.observation?.headYaw.toFixed(2) ?? "—"}°</dd></div>
+          <div><dt>{uiTranslate("头部 pitch", $uiLanguage)}</dt><dd>{status?.observation?.headPitch.toFixed(2) ?? "—"}°</dd></div>
+          <div><dt>{uiTranslate("注视 X", $uiLanguage)}</dt><dd>{status?.observation?.gazeX.toFixed(3) ?? "—"}</dd></div>
+          <div><dt>{uiTranslate("注视 Y", $uiLanguage)}</dt><dd>{status?.observation?.gazeY.toFixed(3) ?? "—"}</dd></div>
         </dl>
-        <p><CheckCircle size={14} />双眼状态：{status?.observation ? `${status.observation.leftEyeOpen ? "左眼睁开" : "左眼闭合"} · ${status.observation.rightEyeOpen ? "右眼睁开" : "右眼闭合"}` : "无有效观测"}</p>
+        <p><CheckCircle size={14} />{uiTranslate("双眼状态：", $uiLanguage)}{status?.observation ? `${uiTranslate(status.observation.leftEyeOpen ? "左眼睁开" : "左眼闭合", $uiLanguage)} · ${uiTranslate(status.observation.rightEyeOpen ? "右眼睁开" : "右眼闭合", $uiLanguage)}` : uiTranslate("无有效观测", $uiLanguage)}</p>
       </article>
     </aside>
   </div>
 
-  {#if status?.error}<div class="error-banner"><WarningCircle size={17} /><span>{status.error}</span></div>{/if}
+  {#if status?.error}<div class="error-banner"><WarningCircle size={17} /><span>{diagnosticMessage(status.error, $uiLanguage)}</span></div>{/if}
 </section>
 
 <style>
