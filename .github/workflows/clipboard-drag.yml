@@ -104,6 +104,20 @@ jobs:
           Split-Path $nasmExecutable | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $nasmExecutable -v
           if ($LASTEXITCODE -ne 0) { throw "NASM verification failed: $LASTEXITCODE" }
+          # VS 2026 requires CMake >= 4.2; select the executable explicitly so an
+          # older runner/Visual Studio copy earlier on PATH cannot shadow it.
+          python -m pip install --disable-pip-version-check --only-binary=:all: cmake==4.2.3
+          if ($LASTEXITCODE -ne 0) { throw "CMake installation failed: $LASTEXITCODE" }
+          $cmakeDirectory = python -c "import cmake; print(cmake.CMAKE_BIN_DIR)"
+          if ($LASTEXITCODE -ne 0) { throw "CMake directory lookup failed: $LASTEXITCODE" }
+          $env:CMAKE = Join-Path $cmakeDirectory 'cmake.exe'
+          $cmakeCapabilities = & $env:CMAKE -E capabilities | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or 'Visual Studio 18 2026' -notin $cmakeCapabilities.generators.name) {
+            throw 'Installed CMake does not support the Visual Studio 2026 generator'
+          }
+          $cmakeDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CMAKE=$env:CMAKE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $env:CMAKE --version
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: rustfmt
