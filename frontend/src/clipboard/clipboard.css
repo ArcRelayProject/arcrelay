@@ -43,10 +43,7 @@
   color: inherit;
 }
 .clipboard-row {
-  cursor: grab;
-}
-.clipboard-row:active {
-  cursor: grabbing;
+  cursor: default;
 }
 .clipboard-row.unavailable {
   cursor: default;

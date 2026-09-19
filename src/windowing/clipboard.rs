@@ -553,6 +553,12 @@ fn show_platform_clipboard_window(
         // A clipboard chooser must not activate ArcRelay or steal the
         // insertion target from the application that invoked it.
         panel.show_and_make_key();
+        // Converting the already-created NSWindow to a non-activating panel
+        // does not make its WKWebView the first responder. Without this, the
+        // first mouse gesture merely establishes the responder and a drag can
+        // only start after an extra click.
+        let webview: &tauri::Webview = window.as_ref();
+        webview.set_focus()?;
         start_clipboard_outside_click_monitor(app.clone());
         return Ok(());
     }

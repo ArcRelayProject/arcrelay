@@ -68,6 +68,23 @@ pub enum ClipboardDragOutcome {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PostDragWindowAction {
+    KeepVisible,
+    Hide,
+    Destroy,
+}
+
+fn post_drag_window_action(disabled: bool, locked: bool) -> PostDragWindowAction {
+    if disabled {
+        PostDragWindowAction::Destroy
+    } else if locked {
+        PostDragWindowAction::Hide
+    } else {
+        PostDragWindowAction::KeepVisible
+    }
+}
+
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ClipboardDragEnded {
     pub token: String,
@@ -518,13 +535,14 @@ impl ClipboardDragService {
                 let locked = handle
                     .try_state::<DesktopState>()
                     .is_some_and(|state| crate::presence_access::clipboard_locked(&state));
-                if disabled {
-                    let _ = crate::windowing::sync_clipboard_window(&handle, false);
-                } else if locked
-                    || (outcome == ClipboardDragOutcome::Dropped
-                        && !crate::windowing::clipboard_window_pinned())
-                {
-                    let _ = crate::windowing::hide_clipboard_window(&handle);
+                match post_drag_window_action(disabled, locked) {
+                    PostDragWindowAction::KeepVisible => {}
+                    PostDragWindowAction::Hide => {
+                        let _ = crate::windowing::hide_clipboard_window(&handle);
+                    }
+                    PostDragWindowAction::Destroy => {
+                        let _ = crate::windowing::sync_clipboard_window(&handle, false);
+                    }
                 }
             });
         });
@@ -828,6 +846,22 @@ fn image_preview(png: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_drag_keeps_an_available_unlocked_clipboard_window_visible() {
+        assert_eq!(
+            post_drag_window_action(false, false),
+            PostDragWindowAction::KeepVisible
+        );
+        assert_eq!(
+            post_drag_window_action(false, true),
+            PostDragWindowAction::Hide
+        );
+        assert_eq!(
+            post_drag_window_action(true, false),
+            PostDragWindowAction::Destroy
+        );
+    }
     fn record(id: u64, payload: ClipboardPayload) -> ClipboardExportRecord {
         ClipboardExportRecord {
             id,
