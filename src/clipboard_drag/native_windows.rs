@@ -374,8 +374,10 @@ mod encoding {
             assert_eq!(&encoded[4..16], &[0; 12]);
             assert_eq!(u32::from_le_bytes(encoded[16..20].try_into().unwrap()), 1);
             let units = encoded[20..]
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes(pair.try_into().unwrap()))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect::<Vec<_>>();
             assert_eq!(&units[units.len() - 2..], &[0, 0]);
             let decoded = units[..units.len() - 1]
@@ -396,8 +398,10 @@ mod encoding {
         fn unicode_text_retains_full_content_with_windows_newlines_and_one_terminator() {
             let encoded = text("中文🖼\nsecond\r\nthird\rlast\n").unwrap();
             let units = encoded
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes(pair.try_into().unwrap()))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect::<Vec<_>>();
             assert_eq!(units.last(), Some(&0));
             assert_eq!(
