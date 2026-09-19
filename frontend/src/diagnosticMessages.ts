@@ -21,7 +21,8 @@ const templates = Object.entries(catalogs.enUs)
   });
 export function diagnosticMessage(value: unknown, language: LanguagePreference | ResolvedLanguage) {
   const message = value instanceof Error ? value.message : String(value);
-  if (message === "capture/router/enqueue sample") return t("输入采集、路由与发送队列样本", language);
+  if (message === "capture/router/enqueue sample")
+    return t("输入采集、路由与发送队列样本", language);
   for (const [pattern, source] of [
     [/^穿越到 (.+)$/, "穿越到 {name}"],
     [/^(.+) 自动重连$/, "{name} 自动重连"],

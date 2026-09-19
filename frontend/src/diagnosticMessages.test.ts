@@ -17,8 +17,14 @@ void test("English diagnostics localize at the UI boundary while preserving embe
 });
 
 void test("input activity localizes known events and keeps display names intact", () => {
-  assert.equal(diagnosticMessage("capture/router/enqueue sample", "zhCn"), "输入采集、路由与发送队列样本");
+  assert.equal(
+    diagnosticMessage("capture/router/enqueue sample", "zhCn"),
+    "输入采集、路由与发送队列样本",
+  );
   assert.equal(diagnosticMessage("控制会话开始", "enUs"), "Control session started");
   assert.equal(diagnosticMessage("穿越到 我的屏幕 {name}", "enUs"), "Crossed to 我的屏幕 {name}");
-  assert.equal(diagnosticMessage("书房 Mac mini 自动重连", "deDe"), "书房 Mac mini automatisch wieder verbunden");
+  assert.equal(
+    diagnosticMessage("书房 Mac mini 自动重连", "deDe"),
+    "书房 Mac mini automatisch wieder verbunden",
+  );
 });

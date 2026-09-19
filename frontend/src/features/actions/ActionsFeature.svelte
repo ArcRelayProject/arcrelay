@@ -108,10 +108,17 @@
   $: actions = snapshot?.actions ?? [];
   $: filteredActions = actions.filter((action) => {
     const query = search.trim().toLocaleLowerCase();
-    return !query || [action.name, action.group, action.actionTypeLabel,
-      actionDisplayName(action, $uiLanguage), actionDisplayGroup(action, $uiLanguage),
-      uiTranslate(action.actionTypeLabel, $uiLanguage),
-    ].some(value => value.toLocaleLowerCase().includes(query));
+    return (
+      !query ||
+      [
+        action.name,
+        action.group,
+        action.actionTypeLabel,
+        actionDisplayName(action, $uiLanguage),
+        actionDisplayGroup(action, $uiLanguage),
+        uiTranslate(action.actionTypeLabel, $uiLanguage),
+      ].some((value) => value.toLocaleLowerCase().includes(query))
+    );
   });
   $: selectedAction = actions.find((action) => action.id === selectedActionId);
   $: shortcutError = shortcutCaptureError || shortcutConflict;
@@ -119,10 +126,17 @@
   $: groups = [...new Set(actions.map((action) => action.group))];
   $: filteredPresets = actionPresets.filter((preset) => {
     const query = presetSearch.trim().toLocaleLowerCase();
-    return !query || [preset.name, preset.group, preset.description,
-      uiTranslate(preset.name, $uiLanguage), uiTranslate(preset.group, $uiLanguage),
-      uiTranslate(preset.description, $uiLanguage),
-    ].some(value => value.toLocaleLowerCase().includes(query));
+    return (
+      !query ||
+      [
+        preset.name,
+        preset.group,
+        preset.description,
+        uiTranslate(preset.name, $uiLanguage),
+        uiTranslate(preset.group, $uiLanguage),
+        uiTranslate(preset.description, $uiLanguage),
+      ].some((value) => value.toLocaleLowerCase().includes(query))
+    );
   });
   $: selectedInstalledApp = installedApps.find((app) => app.path === actionDraft.appPath);
   $: filteredInstalledApps = installedApps.filter((app) => {
@@ -384,7 +398,9 @@
     const action = selectedAction;
     confirm({
       title: tr("删除动作？"),
-      description: t("“{name}”将被永久删除，此操作无法撤销。", language, { name: actionDisplayName(action, $uiLanguage) }),
+      description: t("“{name}”将被永久删除，此操作无法撤销。", language, {
+        name: actionDisplayName(action, $uiLanguage),
+      }),
       confirmLabel: tr("确认删除"),
       kind: "danger",
       onConfirm: async () => {
@@ -566,7 +582,9 @@
                   <button
                     class="run-icon-button"
                     class:running={action.isRunning}
-                    aria-label={t("运行 {name}", $uiLanguage, { name: actionDisplayName(action, $uiLanguage) })}
+                    aria-label={t("运行 {name}", $uiLanguage, {
+                      name: actionDisplayName(action, $uiLanguage),
+                    })}
                     disabled={busyActionId === action.id}
                     on:click|stopPropagation={() => runAction(action)}
                   >
@@ -671,7 +689,10 @@
               class="action-content-well"
               class:code-content={actionContentIsCode(selectedAction)}
             >
-              <pre>{actionContentIsCode(selectedAction) || ["OpenPath", "LaunchApp", "Hotkey"].includes(selectedAction.action_type.type) ? actionSummary(selectedAction) : uiTranslate(actionSummary(selectedAction), $uiLanguage)}</pre>
+              <pre>{actionContentIsCode(selectedAction) ||
+                ["OpenPath", "LaunchApp", "Hotkey"].includes(selectedAction.action_type.type)
+                  ? actionSummary(selectedAction)
+                  : uiTranslate(actionSummary(selectedAction), $uiLanguage)}</pre>
               <p>{uiTranslate(actionContentDescription(selectedAction), $uiLanguage)}</p>
             </div>
           </section>
@@ -1226,7 +1247,12 @@
               </span>
               <div>
                 <strong>{uiTranslate(preset.name, $uiLanguage)}</strong>
-                <small>{uiTranslate(preset.group, $uiLanguage)} · {uiTranslate(preset.description, $uiLanguage)}</small>
+                <small
+                  >{uiTranslate(preset.group, $uiLanguage)} · {uiTranslate(
+                    preset.description,
+                    $uiLanguage,
+                  )}</small
+                >
               </div>
               <button
                 class={preset.installed ? "secondary-button" : "primary-button"}

@@ -109,7 +109,9 @@
     ? Math.round(((Math.max(0, targetIndex) + dwellProgress) / targets.length) * 100)
     : 0;
   $: faceReady = observationCanHeadCalibrate(status?.observation, status?.faceConfidence);
-  $: samplingMode = t("头部与眼动融合采样 · 每点 {part0} 帧", $uiLanguage, { part0: SAMPLES_PER_TARGET });
+  $: samplingMode = t("头部与眼动融合采样 · 每点 {part0} 帧", $uiLanguage, {
+    part0: SAMPLES_PER_TARGET,
+  });
   $: liveTargetName = allDisplays.find(
     (display) => display.displayId === status?.target?.displayId,
   )?.name;
@@ -206,9 +208,13 @@
         selectedCamera = savedCamera;
       else if (!selectedCamera || !cameras.some((camera) => camera.id === selectedCamera))
         selectedCamera = cameras[0]?.id ?? "";
-      if (!cameras.length) notify(uiTranslate("没有检测到摄像头，请检查系统摄像头权限。", $uiLanguage), true);
+      if (!cameras.length)
+        notify(uiTranslate("没有检测到摄像头，请检查系统摄像头权限。", $uiLanguage), true);
     } catch (error) {
-      notify(t("摄像头枚举失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("摄像头枚举失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }),
+        true,
+      );
     } finally {
       busy = false;
     }
@@ -220,14 +226,24 @@
       ingestStatus(await bridge.installGazeModels());
       notify(uiTranslate("眼动模型已安装并完成校验。", $uiLanguage));
     } catch (error) {
-      notify(t("安装眼动模型失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("安装眼动模型失败：{part0}", $uiLanguage, {
+          part0: diagnosticMessage(error, $uiLanguage),
+        }),
+        true,
+      );
     } finally {
       busy = false;
     }
   }
 
   async function removeModels() {
-    if (!window.confirm(uiTranslate("移除眼动模型组件？标定资料会保留，下次使用时需要重新下载。", $uiLanguage))) return;
+    if (
+      !window.confirm(
+        uiTranslate("移除眼动模型组件？标定资料会保留，下次使用时需要重新下载。", $uiLanguage),
+      )
+    )
+      return;
     busy = true;
     try {
       ingestStatus(await bridge.removeGazeModels());
@@ -235,7 +251,12 @@
       camerasLoaded = false;
       notify(uiTranslate("眼动模型已移除，标定资料仍然保留。", $uiLanguage));
     } catch (error) {
-      notify(t("移除眼动模型失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("移除眼动模型失败：{part0}", $uiLanguage, {
+          part0: diagnosticMessage(error, $uiLanguage),
+        }),
+        true,
+      );
     } finally {
       busy = false;
     }
@@ -248,7 +269,12 @@
       ingestStatus(await bridge.startGazeTracking(selectedCamera));
       return true;
     } catch (error) {
-      notify(t("启动眼动追踪失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("启动眼动追踪失败：{part0}", $uiLanguage, {
+          part0: diagnosticMessage(error, $uiLanguage),
+        }),
+        true,
+      );
       return false;
     } finally {
       busy = false;
@@ -273,7 +299,8 @@
   }
 
   async function resumeTracking() {
-    if (await start()) notify(uiTranslate("头部与眼动融合识别已启动，原有标定已恢复。", $uiLanguage));
+    if (await start())
+      notify(uiTranslate("头部与眼动融合识别已启动，原有标定已恢复。", $uiLanguage));
   }
 
   async function beginCalibration(displayId: string | null = null) {
@@ -302,7 +329,10 @@
     } catch (error) {
       await bridge.cancelGazeCalibration().catch(() => {});
       phase = "ready";
-      notify(t("无法开始标定：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("无法开始标定：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }),
+        true,
+      );
     } finally {
       launchBusy = false;
     }
@@ -348,7 +378,10 @@
       await bridge.sendGazeCalibrationOverlay(event);
     } catch (error) {
       notify(
-        t("无法在 {part0} 显示标定圆点：{part1}", $uiLanguage, { part0: active.display.name, part1: diagnosticMessage(error, $uiLanguage) }),
+        t("无法在 {part0} 显示标定圆点：{part1}", $uiLanguage, {
+          part0: active.display.name,
+          part1: diagnosticMessage(error, $uiLanguage),
+        }),
         true,
       );
       await cancelCalibration(false);
@@ -412,7 +445,10 @@
         notify(
           refineDisplayId
             ? t("{part0} 的头部与眼动标定已优化。", $uiLanguage, { part0: completedScreens[0] })
-            : uiTranslate("头部与眼动融合标定已完成。稳定看向另一块屏幕后会自动移动鼠标。", $uiLanguage),
+            : uiTranslate(
+                "头部与眼动融合标定已完成。稳定看向另一块屏幕后会自动移动鼠标。",
+                $uiLanguage,
+              ),
         );
         refineDisplayId = null;
         return;
@@ -443,7 +479,10 @@
       lastCapturedInferenceFrame = -1;
       stableSince = 0;
       dwellProgress = 0;
-      notify(t("自动采样失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("自动采样失败：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }),
+        true,
+      );
       if (target) await sendFlow("paused", target);
     } finally {
       captureBusy = false;
@@ -484,7 +523,10 @@
       ingestStatus(await bridge.beginPresenceEnrollment(presenceName.trim()));
       notify(uiTranslate("请按提示依次完成正脸、左右转头和上下角度录入。", $uiLanguage));
     } catch (error) {
-      notify(t("无法开始录入：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }), true);
+      notify(
+        t("无法开始录入：{part0}", $uiLanguage, { part0: diagnosticMessage(error, $uiLanguage) }),
+        true,
+      );
     } finally {
       busy = false;
     }
@@ -583,15 +625,23 @@
         <div>
           <span class="eyebrow">{uiTranslate("可选组件", $uiLanguage)}</span>
           <h2>
-            {uiTranslate((modelsBusy
-              ? status?.modelPack.state === "verifying"
-                ? "正在校验眼动模型"
-                : "正在下载眼动模型"
-              : status?.modelPack.state === "damaged"
-                ? "眼动模型需要修复"
-                : "下载眼动模型后启用"), $uiLanguage)}
+            {uiTranslate(
+              modelsBusy
+                ? status?.modelPack.state === "verifying"
+                  ? "正在校验眼动模型"
+                  : "正在下载眼动模型"
+                : status?.modelPack.state === "damaged"
+                  ? "眼动模型需要修复"
+                  : "下载眼动模型后启用",
+              $uiLanguage,
+            )}
           </h2>
-          <p>{uiTranslate("约 36 MB，只下载一份且不随 CPU 架构重复；模型和摄像头画面均只在本机处理。", $uiLanguage)}</p>
+          <p>
+            {uiTranslate(
+              "约 36 MB，只下载一份且不随 CPU 架构重复；模型和摄像头画面均只在本机处理。",
+              $uiLanguage,
+            )}
+          </p>
           {#if modelsBusy}
             <div class="model-download">
               <div class="bar"><span style={`width:${modelProgress}%`}></span></div>
@@ -599,7 +649,10 @@
             </div>
           {:else}
             <button class="start-button" disabled={busy} on:click={installModels}
-              >{uiTranslate((status?.modelPack.state === "damaged" ? "重新下载" : "下载并启用"), $uiLanguage)}</button
+              >{uiTranslate(
+                status?.modelPack.state === "damaged" ? "重新下载" : "下载并启用",
+                $uiLanguage,
+              )}</button
             >
           {/if}
           {#if status?.modelPack.error}<small
@@ -612,11 +665,15 @@
       <span
         class:active={phase === "ready" || phase === "checking"}
         class:done={phase !== "ready" && phase !== "checking"}
-        ><i>{phase === "ready" || phase === "checking" ? "1" : "✓"}</i>{uiTranslate("准备", $uiLanguage)}</span
+        ><i>{phase === "ready" || phase === "checking" ? "1" : "✓"}</i>{uiTranslate(
+          "准备",
+          $uiLanguage,
+        )}</span
       ><b></b>
       <span
         class:active={phase === "calibrating" || phase === "transition"}
-        class:done={phase === "complete"}><i>{phase === "complete" ? "✓" : "2"}</i>{uiTranslate("标定", $uiLanguage)}</span
+        class:done={phase === "complete"}
+        ><i>{phase === "complete" ? "✓" : "2"}</i>{uiTranslate("标定", $uiLanguage)}</span
       ><b></b>
       <span class:active={phase === "complete"}><i>3</i>{uiTranslate("完成", $uiLanguage)}</span>
     </div>
@@ -624,24 +681,37 @@
     {#if phase === "ready"}
       <article class="hero-card">
         <div class="hero-copy">
-          <span class="eyebrow"><Crosshair size={15} weight="bold" />{uiTranslate("多设备头部与眼动融合标定", $uiLanguage)}</span>
+          <span class="eyebrow"
+            ><Crosshair size={15} weight="bold" />{uiTranslate(
+              "多设备头部与眼动融合标定",
+              $uiLanguage,
+            )}</span
+          >
           <h2>{uiTranslate("依次注视每块屏幕上的九个位置", $uiLanguage)}</h2>
           <p>
-            {uiTranslate("ArcRelay 会同时学习头部方向和个人眼动偏差；每个点采集多帧，并在不确定时保持当前屏幕，避免误切。", $uiLanguage)}
+            {uiTranslate(
+              "ArcRelay 会同时学习头部方向和个人眼动偏差；每个点采集多帧，并在不确定时保持当前屏幕，避免误切。",
+              $uiLanguage,
+            )}
           </p>
           <label class="camera-field"
             ><span>{uiTranslate("用于标定的摄像头", $uiLanguage)}</span><AppSelect
               bind:value={selectedCamera}
               options={cameraOptions}
               disabled={!modelsReady || running || busy}
-              placeholder={uiTranslate((modelsReady ? "未发现摄像头" : "请先下载眼动模型"), $uiLanguage)}
+              placeholder={uiTranslate(
+                modelsReady ? "未发现摄像头" : "请先下载眼动模型",
+                $uiLanguage,
+              )}
               aria-label={uiTranslate("用于标定的摄像头", $uiLanguage)}
             /></label
           >
           <div class="privacy-line">
             <LockKey size={15} weight="fill" /><span
-              ><strong>{uiTranslate("完全本机处理", $uiLanguage)}</strong
-              >　{uiTranslate("只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。", $uiLanguage)}</span
+              ><strong>{uiTranslate("完全本机处理", $uiLanguage)}</strong>　{uiTranslate(
+                "只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。",
+                $uiLanguage,
+              )}</span
             >
           </div>
           <div class="hero-actions">
@@ -650,7 +720,10 @@
                 class="start-button"
                 disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout}
                 on:click={resumeTracking}
-                ><Play size={17} weight="fill" />{uiTranslate((busy ? "正在启动…" : "启动识别"), $uiLanguage)}</button
+                ><Play size={17} weight="fill" />{uiTranslate(
+                  busy ? "正在启动…" : "启动识别",
+                  $uiLanguage,
+                )}</button
               >
               <button class="text-button" disabled={busy} on:click={() => beginCalibration()}
                 ><ArrowClockwise size={15} />{uiTranslate("全部重新标定", $uiLanguage)}</button
@@ -660,7 +733,10 @@
                 class="start-button"
                 disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout}
                 on:click={() => beginCalibration()}
-                ><Play size={17} weight="fill" />{uiTranslate((busy ? "正在启动…" : "开始标定"), $uiLanguage)}</button
+                ><Play size={17} weight="fill" />{uiTranslate(
+                  busy ? "正在启动…" : "开始标定",
+                  $uiLanguage,
+                )}</button
               >
             {:else}
               <button class="text-button" disabled={busy} on:click={() => beginCalibration()}
@@ -670,7 +746,8 @@
             <button
               class="text-button"
               disabled={!modelsReady || busy}
-              on:click={() => (diagnosticsOpen = true)}><Camera size={15} />{uiTranslate("视觉诊断", $uiLanguage)}</button
+              on:click={() => (diagnosticsOpen = true)}
+              ><Camera size={15} />{uiTranslate("视觉诊断", $uiLanguage)}</button
             >
             <button class="text-button" disabled={!modelsReady || busy} on:click={refreshCameras}
               ><ArrowClockwise size={15} />{uiTranslate("重新检测摄像头", $uiLanguage)}</button
@@ -678,16 +755,19 @@
             {#if modelsReady}<button
                 class="text-button"
                 disabled={busy || running}
-                on:click={removeModels}><Trash size={15} />{uiTranslate("移除模型", $uiLanguage)}</button
+                on:click={removeModels}
+                ><Trash size={15} />{uiTranslate("移除模型", $uiLanguage)}</button
               >{/if}
           </div>
         </div>
         <div class="preview-panel" aria-hidden="true">
           <img src={calibrationMonitor} alt="" />
           <div class="preview-meta">
-            <span><Monitor size={15} />{allDisplays.length} {uiTranslate("块屏幕", $uiLanguage)}</span><span
-              >{deviceCount} {uiTranslate("台设备", $uiLanguage)}</span
-            ><span><Eye size={15} />{uiTranslate("头部 + 眼动", $uiLanguage)}</span>
+            <span
+              ><Monitor size={15} />{allDisplays.length} {uiTranslate("块屏幕", $uiLanguage)}</span
+            ><span>{deviceCount} {uiTranslate("台设备", $uiLanguage)}</span><span
+              ><Eye size={15} />{uiTranslate("头部 + 眼动", $uiLanguage)}</span
+            >
           </div>
         </div>
       </article>
@@ -700,7 +780,11 @@
           >
           <div>
             <strong>{uiTranslate("摄像头", $uiLanguage)}</strong>
-            <p>{cameras.length ? t("{part0} 个设备可用", $uiLanguage, { part0: cameras.length }) : uiTranslate("等待摄像头权限", $uiLanguage)}</p>
+            <p>
+              {cameras.length
+                ? t("{part0} 个设备可用", $uiLanguage, { part0: cameras.length })
+                : uiTranslate("等待摄像头权限", $uiLanguage)}
+            </p>
           </div>
         </section>
         <section>
@@ -711,7 +795,12 @@
           >
           <div>
             <strong>{uiTranslate("标定范围", $uiLanguage)}</strong>
-            <p>{allDisplays.length} {uiTranslate("块屏幕 ·", $uiLanguage)} {deviceCount} {uiTranslate("台设备", $uiLanguage)}</p>
+            <p>
+              {allDisplays.length}
+              {uiTranslate("块屏幕 ·", $uiLanguage)}
+              {deviceCount}
+              {uiTranslate("台设备", $uiLanguage)}
+            </p>
           </div>
         </section>
         <section>
@@ -720,7 +809,11 @@
           >
           <div>
             <strong>{uiTranslate("眼动服务", $uiLanguage)}</strong>
-            <p>{running ? t("{part0} 正在运行", $uiLanguage, { part0: status?.cameraName ?? "摄像头" }) : uiTranslate("开始标定时自动启动", $uiLanguage)}</p>
+            <p>
+              {running
+                ? t("{part0} 正在运行", $uiLanguage, { part0: status?.cameraName ?? "摄像头" })
+                : uiTranslate("开始标定时自动启动", $uiLanguage)}
+            </p>
           </div>
         </section>
       </div>
@@ -729,7 +822,9 @@
           <CheckCircle size={18} weight="fill" />
           <div class="profile-copy">
             <strong>{uiTranslate("标定已保存，重启后可直接恢复", $uiLanguage)}</strong>
-            <p>{uiTranslate("某块屏幕识别不准时，只优化这一块即可保留其他屏幕的数据。", $uiLanguage)}</p>
+            <p>
+              {uiTranslate("某块屏幕识别不准时，只优化这一块即可保留其他屏幕的数据。", $uiLanguage)}
+            </p>
           </div>
           <div class="profile-screens">
             {#each allDisplays as display}
@@ -738,7 +833,10 @@
                 <button
                   disabled={busy || !selectedCamera}
                   on:click={() => beginCalibration(display.displayId)}
-                  >{uiTranslate((calibratedDisplayIds.has(display.displayId) ? "优化标定" : "补充标定"), $uiLanguage)}</button
+                  >{uiTranslate(
+                    calibratedDisplayIds.has(display.displayId) ? "优化标定" : "补充标定",
+                    $uiLanguage,
+                  )}</button
                 >
               </span>
             {/each}
@@ -753,9 +851,12 @@
         <div class="profile-copy">
           <strong>{uiTranslate("本机用户在场识别", $uiLanguage)}</strong>
           <p>
-            {uiTranslate((status?.presenceProfileEnrolled
-              ? `${status.presenceProfileName ?? uiTranslate("本机用户", $uiLanguage)} · ${uiTranslate(presenceLabel, $uiLanguage)}`
-              : "录入后可保护隐私遮罩、通知预览并触发自动化。"), $uiLanguage)}
+            {uiTranslate(
+              status?.presenceProfileEnrolled
+                ? `${status.presenceProfileName ?? uiTranslate("本机用户", $uiLanguage)} · ${uiTranslate(presenceLabel, $uiLanguage)}`
+                : "录入后可保护隐私遮罩、通知预览并触发自动化。",
+              $uiLanguage,
+            )}
           </p>
         </div>
         {#if status?.presenceEnrollmentActive}
@@ -769,13 +870,18 @@
               ></span>
             </div>
           </div>
-          <button class="text-button" on:click={cancelPresenceEnrollment}>{uiTranslate("取消", $uiLanguage)}</button>
+          <button class="text-button" on:click={cancelPresenceEnrollment}
+            >{uiTranslate("取消", $uiLanguage)}</button
+          >
         {:else if status?.presenceProfileEnrolled}
           <div class="presence-state">
             <b>{uiTranslate(presenceLabel, $uiLanguage)}</b><span
-              >{status.presenceFaceCount} {uiTranslate("张人脸", $uiLanguage)}{status.presenceOwnerSimilarity == null
+              >{status.presenceFaceCount}
+              {uiTranslate("张人脸", $uiLanguage)}{status.presenceOwnerSimilarity == null
                 ? ""
-                : t(" · 相似度 {part0}", $uiLanguage, { part0: status.presenceOwnerSimilarity.toFixed(2) })}</span
+                : t(" · 相似度 {part0}", $uiLanguage, {
+                    part0: status.presenceOwnerSimilarity.toFixed(2),
+                  })}</span
             >
           </div>
           <button class="delete-profile" on:click={clearPresenceProfile}
@@ -783,7 +889,10 @@
           >
         {:else}
           <label class="presence-name"
-            ><span>{uiTranslate("显示名称", $uiLanguage)}</span><input bind:value={presenceName} maxlength="80" /></label
+            ><span>{uiTranslate("显示名称", $uiLanguage)}</span><input
+              bind:value={presenceName}
+              maxlength="80"
+            /></label
           >
           <button
             class="start-button"
@@ -798,18 +907,21 @@
           <Eye size={34} weight="duotone" />
         </div>
         <span class="eyebrow">{uiTranslate("自动环境检查", $uiLanguage)}</span>
-        <h2>{uiTranslate((faceReady ? "很好，请保持这个姿势" : "请面向摄像头"), $uiLanguage)}</h2>
+        <h2>{uiTranslate(faceReady ? "很好，请保持这个姿势" : "请面向摄像头", $uiLanguage)}</h2>
         <p>
-          {uiTranslate((faceReady
-            ? "正在确认滤波后的头部方向稳定，完成后会自动进入跨设备全屏标定。"
-            : "让面部保持在画面中，坐姿自然，允许较大角度偏转。"), $uiLanguage)}
+          {uiTranslate(
+            faceReady
+              ? "正在确认滤波后的头部方向稳定，完成后会自动进入跨设备全屏标定。"
+              : "让面部保持在画面中，坐姿自然，允许较大角度偏转。",
+            $uiLanguage,
+          )}
         </p>
         <div class="check-list">
           <span class:ok={Boolean(status?.faceConfidence && status.faceConfidence >= 0.6)}
             ><i></i>{uiTranslate("面部清晰", $uiLanguage)}</span
-          ><span class:ok={Boolean(status?.observation)}><i></i>{uiTranslate("头部方向有效", $uiLanguage)}</span><span
-            class:ok={faceReady}><i></i>{uiTranslate("姿态稳定", $uiLanguage)}</span
-          >
+          ><span class:ok={Boolean(status?.observation)}
+            ><i></i>{uiTranslate("头部方向有效", $uiLanguage)}</span
+          ><span class:ok={faceReady}><i></i>{uiTranslate("姿态稳定", $uiLanguage)}</span>
         </div>
         <div class="bar"><span style={`width:${preflightProgress * 100}%`}></span></div>
         <button class="cancel-button" on:click={() => cancelCalibration()}
@@ -823,12 +935,16 @@
         <h2>
           {phase === "transition"
             ? uiTranslate("正在切换到下一块屏幕", $uiLanguage)
-            : t("请看向 {part0} 上的圆点", $uiLanguage, { part0: target?.display.name ?? uiTranslate("屏幕", $uiLanguage) })}
+            : t("请看向 {part0} 上的圆点", $uiLanguage, {
+                part0: target?.display.name ?? uiTranslate("屏幕", $uiLanguage),
+              })}
         </h2>
         <p>
           {phase === "transition"
             ? uiTranslate("下一台设备会自动显示引导，不需要移动或点击窗口。", $uiLanguage)
-            : t("{part0} · 自然注视圆点并保持坐姿；面部或眼动不稳定时会自动暂停。", $uiLanguage, { part0: samplingMode })}
+            : t("{part0} · 自然注视圆点并保持坐姿；面部或眼动不稳定时会自动暂停。", $uiLanguage, {
+                part0: samplingMode,
+              })}
         </p>
         <div class="bar"><span style={`width:${overallProgress}%`}></span></div>
         <strong class="progress-label"
@@ -844,7 +960,10 @@
         <span class="eyebrow">{uiTranslate("标定完成", $uiLanguage)}</span>
         <h2>{uiTranslate("看向屏幕即可移动鼠标", $uiLanguage)}</h2>
         <p>
-          {uiTranslate("ArcRelay 会融合头部方向与眼动选择屏幕；只有结果明确且持续稳定时才会切换，不确定时保持当前屏幕。", $uiLanguage)}
+          {uiTranslate(
+            "ArcRelay 会融合头部方向与眼动选择屏幕；只有结果明确且持续稳定时才会切换，不确定时保持当前屏幕。",
+            $uiLanguage,
+          )}
         </p>
         <div class="screen-results">
           {#each completedScreens as name}<span
@@ -853,7 +972,8 @@
             >{/each}
         </div>
         <div class="hero-actions">
-          <button class="start-button" on:click={() => (phase = "ready")}>{uiTranslate("返回眼动设置", $uiLanguage)}</button
+          <button class="start-button" on:click={() => (phase = "ready")}
+            >{uiTranslate("返回眼动设置", $uiLanguage)}</button
           ><button class="text-button" on:click={() => beginCalibration()}
             ><ArrowClockwise size={15} />{uiTranslate("全部重新标定", $uiLanguage)}</button
           >
@@ -871,10 +991,17 @@
           <Eye size={22} weight={status?.target ? "fill" : "duotone"} />
         </div>
         <div class="recognition-copy">
-          <span>{uiTranslate((running ? "实时识别结果" : status?.calibrated ? "标定已就绪" : "等待标定"), $uiLanguage)}</span>
+          <span
+            >{uiTranslate(
+              running ? "实时识别结果" : status?.calibrated ? "标定已就绪" : "等待标定",
+              $uiLanguage,
+            )}</span
+          >
           <strong
             >{status?.target
-              ? t("正在看向 {part0}", $uiLanguage, { part0: liveTargetName ?? uiTranslate("已标定屏幕", $uiLanguage) })
+              ? t("正在看向 {part0}", $uiLanguage, {
+                  part0: liveTargetName ?? uiTranslate("已标定屏幕", $uiLanguage),
+                })
               : running
                 ? uiTranslate("正在确认头部方向…", $uiLanguage)
                 : status?.calibrated
@@ -886,7 +1013,9 @@
           {#each allDisplays as display}
             <span class:active={status?.target?.displayId === display.displayId}
               ><Monitor size={15} /><b>{display.name}</b
-              >{#if status?.target?.displayId === display.displayId}<i>{uiTranslate("正在看", $uiLanguage)}</i>{/if}</span
+              >{#if status?.target?.displayId === display.displayId}<i
+                  >{uiTranslate("正在看", $uiLanguage)}</i
+                >{/if}</span
             >
           {/each}
         </div>
@@ -909,7 +1038,10 @@
         <WarningCircle size={17} /><span>{diagnosticMessage(status.error, $uiLanguage)}</span>
       </div>{/if}
     <div class="safety-note">
-      <strong>{uiTranslate("自动切屏：", $uiLanguage)}</strong>{uiTranslate("稳定看向另一块屏幕后，ArcRelay 会移动鼠标到屏幕中央；按 ⌘⌥⇧ Esc 可随时紧急释放，不会自动点击或输入。", $uiLanguage)}
+      <strong>{uiTranslate("自动切屏：", $uiLanguage)}</strong>{uiTranslate(
+        "稳定看向另一块屏幕后，ArcRelay 会移动鼠标到屏幕中央；按 ⌘⌥⇧ Esc 可随时紧急释放，不会自动点击或输入。",
+        $uiLanguage,
+      )}
     </div>
   {/if}
 </section>

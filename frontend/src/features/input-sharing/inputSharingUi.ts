@@ -10,67 +10,135 @@ import type {
 } from "../../types";
 
 export const DEFAULT_KEYBOARD_PROFILES: KeyboardProfile[] = [
-  { name: "日常办公", kind: "Productivity", revision: 1, textStrategy: "UseTargetLayout", semanticOverrides: [] },
-  { name: "终端", kind: "Terminal", revision: 1, textStrategy: "UseTargetLayout", semanticOverrides: [] },
-  { name: "开发工具", kind: "Ide", revision: 1, textStrategy: "UseTargetLayout", semanticOverrides: [] },
-  { name: "远程桌面", kind: "RemoteDesktop", revision: 1, textStrategy: "FollowSourceText", semanticOverrides: [] },
-  { name: "游戏 · 原始按键", kind: "GameRaw", revision: 1, textStrategy: "FollowSourceText", semanticOverrides: [] },
-  { name: "演示", kind: "Presentation", revision: 1, textStrategy: "UseTargetLayout", semanticOverrides: [] },
+  {
+    name: "日常办公",
+    kind: "Productivity",
+    revision: 1,
+    textStrategy: "UseTargetLayout",
+    semanticOverrides: [],
+  },
+  {
+    name: "终端",
+    kind: "Terminal",
+    revision: 1,
+    textStrategy: "UseTargetLayout",
+    semanticOverrides: [],
+  },
+  {
+    name: "开发工具",
+    kind: "Ide",
+    revision: 1,
+    textStrategy: "UseTargetLayout",
+    semanticOverrides: [],
+  },
+  {
+    name: "远程桌面",
+    kind: "RemoteDesktop",
+    revision: 1,
+    textStrategy: "FollowSourceText",
+    semanticOverrides: [],
+  },
+  {
+    name: "游戏 · 原始按键",
+    kind: "GameRaw",
+    revision: 1,
+    textStrategy: "FollowSourceText",
+    semanticOverrides: [],
+  },
+  {
+    name: "演示",
+    kind: "Presentation",
+    revision: 1,
+    textStrategy: "UseTargetLayout",
+    semanticOverrides: [],
+  },
 ];
 
 export function keyboardProfileName(profile: KeyboardProfile, language: LanguagePreference) {
-  return DEFAULT_KEYBOARD_PROFILES.some(value => value.kind === profile.kind && value.name === profile.name)
-    ? t(profile.name, language) : profile.name;
+  return DEFAULT_KEYBOARD_PROFILES.some(
+    (value) => value.kind === profile.kind && value.name === profile.name,
+  )
+    ? t(profile.name, language)
+    : profile.name;
 }
 
 export function canTakeInputControl(snapshot: RuntimeSnapshot) {
-  return snapshot.capabilities.canCapturePointer
-    && snapshot.capabilities.canCaptureKeyboard
-    && snapshot.capabilities.canSuppressLocalInput;
+  return (
+    snapshot.capabilities.canCapturePointer &&
+    snapshot.capabilities.canCaptureKeyboard &&
+    snapshot.capabilities.canSuppressLocalInput
+  );
 }
 
 export function isLocalDisplay(display: DisplaySurface, snapshot: RuntimeSnapshot) {
   return display.deviceId === snapshot.serviceInstanceId;
 }
 
-export function friendlyDeviceName(serviceInstanceId: string, snapshot: RuntimeSnapshot, language: LanguagePreference = "zhCn") {
+export function friendlyDeviceName(
+  serviceInstanceId: string,
+  snapshot: RuntimeSnapshot,
+  language: LanguagePreference = "zhCn",
+) {
   if (serviceInstanceId === snapshot.serviceInstanceId) return t("这台设备", language);
   const peer = snapshot.nearbyPeers.find((value) => value.serviceInstanceId === serviceInstanceId);
   if (peer?.displayName?.trim()) return peer.displayName.trim();
-  const display = Object.values(snapshot.configuration.layout?.displays ?? {})
-    .find((value) => value.deviceId === serviceInstanceId);
+  const display = Object.values(snapshot.configuration.layout?.displays ?? {}).find(
+    (value) => value.deviceId === serviceInstanceId,
+  );
   if (display?.name && !/^Display\s*\d+$/i.test(display.name)) {
-    return display.name.includes("Mac") ? display.name : t("{name} 所在电脑", language, { name: display.name });
+    return display.name.includes("Mac")
+      ? display.name
+      : t("{name} 所在电脑", language, { name: display.name });
   }
-  const shortId = serviceInstanceId.length > 18 ? `${serviceInstanceId.slice(0, 8)}…` : serviceInstanceId;
-  return peer ? t("附近设备 {id}", language, { id: shortId }) : t("远程设备 {id}", language, { id: shortId });
+  const shortId =
+    serviceInstanceId.length > 18 ? `${serviceInstanceId.slice(0, 8)}…` : serviceInstanceId;
+  return peer
+    ? t("附近设备 {id}", language, { id: shortId })
+    : t("远程设备 {id}", language, { id: shortId });
 }
 
-export function friendlyPeerName(peer: NearbyInputPeer, snapshot: RuntimeSnapshot, language: LanguagePreference = "zhCn") {
+export function friendlyPeerName(
+  peer: NearbyInputPeer,
+  snapshot: RuntimeSnapshot,
+  language: LanguagePreference = "zhCn",
+) {
   return friendlyDeviceName(peer.serviceInstanceId, snapshot, language);
 }
 
 export function primaryAddress(peer: NearbyInputPeer, language: LanguagePreference = "zhCn") {
-  return peer.addresses.find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address))
-    ?? peer.addresses.find((address) => !address.startsWith("fe80"))
-    ?? peer.addresses[0]
-    ?? t("本地网络", language);
+  return (
+    peer.addresses.find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address)) ??
+    peer.addresses.find((address) => !address.startsWith("fe80")) ??
+    peer.addresses[0] ??
+    t("本地网络", language)
+  );
 }
 
 export function activePortalCount(snapshot: RuntimeSnapshot) {
-  return snapshot.configuration.layout?.portals.filter((portal) => portal.status === "Active").length ?? 0;
+  return (
+    snapshot.configuration.layout?.portals.filter((portal) => portal.status === "Active").length ??
+    0
+  );
 }
 
 export function remoteDisplayCount(snapshot: RuntimeSnapshot) {
-  return Object.values(snapshot.configuration.layout?.displays ?? {})
-    .filter((display) => !isLocalDisplay(display, snapshot)).length;
+  return Object.values(snapshot.configuration.layout?.displays ?? {}).filter(
+    (display) => !isLocalDisplay(display, snapshot),
+  ).length;
 }
 
 export function connectedRemotePeer(snapshot: RuntimeSnapshot) {
-  return snapshot.nearbyPeers.find((peer) => snapshot.connectedPeers.includes(peer.serviceInstanceId)
-    && Object.values(snapshot.configuration.layout?.displays ?? {}).some((display) =>
-      display.deviceId === peer.serviceInstanceId && snapshot.displayAvailability[display.displayId] === "Ready"))
-    ?? null;
+  return (
+    snapshot.nearbyPeers.find(
+      (peer) =>
+        snapshot.connectedPeers.includes(peer.serviceInstanceId) &&
+        Object.values(snapshot.configuration.layout?.displays ?? {}).some(
+          (display) =>
+            display.deviceId === peer.serviceInstanceId &&
+            snapshot.displayAvailability[display.displayId] === "Ready",
+        ),
+    ) ?? null
+  );
 }
 
 export function recoverableOfflinePeer(snapshot: RuntimeSnapshot) {
@@ -82,22 +150,28 @@ export function recoverableOfflinePeer(snapshot: RuntimeSnapshot) {
       .filter((display) => !isLocalDisplay(display, snapshot))
       .map((display) => display.deviceId),
   );
-  return snapshot.nearbyPeers.find((peer) =>
-    peer.paired
-      && !peer.connected
-      && remoteDeviceIds.has(peer.serviceInstanceId)) ?? null;
+  return (
+    snapshot.nearbyPeers.find(
+      (peer) => peer.paired && !peer.connected && remoteDeviceIds.has(peer.serviceInstanceId),
+    ) ?? null
+  );
 }
 
 export function inputLatencyValues(records: DiagnosticRecord[]) {
   const endToEnd = records.filter((record) => record.category === "input-e2e");
-  const source = endToEnd.length ? endToEnd : records.filter((record) => record.category === "input-latency");
-  return source.flatMap((record) => record.latencyMicros == null ? [] : [record.latencyMicros / 1000]);
+  const source = endToEnd.length
+    ? endToEnd
+    : records.filter((record) => record.category === "input-latency");
+  return source.flatMap((record) =>
+    record.latencyMicros == null ? [] : [record.latencyMicros / 1000],
+  );
 }
 
 export function inputEventRate(records: DiagnosticRecord[]) {
   const endToEnd = records.filter((record) => record.category === "input-e2e");
-  const samples = (endToEnd.length ? endToEnd : records.filter((record) => record.category === "input-latency"))
-    .slice(-256);
+  const samples = (
+    endToEnd.length ? endToEnd : records.filter((record) => record.category === "input-latency")
+  ).slice(-256);
   if (samples.length < 2) return null;
   const elapsedSeconds = (samples[samples.length - 1].timestampMs - samples[0].timestampMs) / 1000;
   return elapsedSeconds > 0 ? (samples.length - 1) / elapsedSeconds : null;
@@ -124,8 +198,12 @@ export function portalEdgeTestRequest(
   const direction = edge === "Left" || edge === "Top" ? -1 : 1;
   return {
     displayId,
-    pointXUm: horizontal ? display.deskRectUm.x + Math.round(display.deskRectUm.width / 2) : display.deskRectUm.x + segmentCenter,
-    pointYUm: horizontal ? display.deskRectUm.y + segmentCenter : display.deskRectUm.y + Math.round(display.deskRectUm.height / 2),
+    pointXUm: horizontal
+      ? display.deskRectUm.x + Math.round(display.deskRectUm.width / 2)
+      : display.deskRectUm.x + segmentCenter,
+    pointYUm: horizontal
+      ? display.deskRectUm.y + segmentCenter
+      : display.deskRectUm.y + Math.round(display.deskRectUm.height / 2),
     deltaXUm: horizontal ? direction * display.deskRectUm.width : 0,
     deltaYUm: horizontal ? 0 : direction * display.deskRectUm.height,
   };
@@ -148,13 +226,22 @@ export function displayStatusLabel(display: DisplaySurface, snapshot: RuntimeSna
 
 export function workspaceIsReady(snapshot: RuntimeSnapshot) {
   const layout = snapshot.configuration.layout;
-  return Boolean(layout && canTakeInputControl(snapshot) && layout.portals.some((portal) => {
-    const source = layout.displays[portal.sourceDisplay];
-    const target = layout.displays[portal.targetDisplay];
-    return portal.status === "Active" && source && target
-      && source.deviceId !== target.deviceId
-      && (source.deviceId === snapshot.serviceInstanceId || target.deviceId === snapshot.serviceInstanceId)
-      && snapshot.displayAvailability[source.displayId] === "Ready"
-      && snapshot.displayAvailability[target.displayId] === "Ready";
-  }));
+  return Boolean(
+    layout &&
+    canTakeInputControl(snapshot) &&
+    layout.portals.some((portal) => {
+      const source = layout.displays[portal.sourceDisplay];
+      const target = layout.displays[portal.targetDisplay];
+      return (
+        portal.status === "Active" &&
+        source &&
+        target &&
+        source.deviceId !== target.deviceId &&
+        (source.deviceId === snapshot.serviceInstanceId ||
+          target.deviceId === snapshot.serviceInstanceId) &&
+        snapshot.displayAvailability[source.displayId] === "Ready" &&
+        snapshot.displayAvailability[target.displayId] === "Ready"
+      );
+    }),
+  );
 }
