@@ -1708,7 +1708,7 @@
   "已拒绝来自 {name} 的传输": "Rejected transfer from {name}",
   "已选择 {count} 项": "Selected: {count}",
   "连续粘贴 {current}/{total}": "Sequence {current}/{total}",
-  "共 {count} 条": "Total: {count}",
+  "共 {count} 条": "{count} items",
   "，已选第 {count} 项": ", selection {count}",
   "双击插入此{unit}": "Double-click to insert this {unit}",
   "已选 {count} {unit}": "Selected: {count} ({unit})",
