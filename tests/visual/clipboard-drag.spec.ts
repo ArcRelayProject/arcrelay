@@ -48,6 +48,10 @@ test("card drag starts once and stays active until the native completion event",
   page,
 }) => {
   await open(page);
+  await expect(page.locator('[data-clipboard-id="101"] .clipboard-row')).toHaveCSS(
+    "cursor",
+    "default",
+  );
   await pressAndMove(page, '[data-clipboard-id="101"] .clipboard-row');
   await expect
     .poll(() => page.evaluate(() => (window as any).__dragTest.started))
