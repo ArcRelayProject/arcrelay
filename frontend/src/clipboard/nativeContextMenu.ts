@@ -17,6 +17,7 @@ interface ContextMenuCallbacks {
   segment: () => Promise<void> | void;
   manageLabels: () => Promise<void> | void;
   paste: (mode: ClipboardPasteMode) => Promise<void> | void;
+  typeAsKeys: () => Promise<void> | void;
   sendFiles: (peerId: string) => Promise<void> | void;
 }
 
@@ -47,6 +48,14 @@ export async function showClipboardContextMenu(
       item.available && item.kind !== "files",
     ),
   ];
+  if (item.kind === "text" || item.kind === "html") {
+    pasteItems.push({ item: "Separator" });
+    pasteItems.push({
+      text: translate("模拟键盘输入", language),
+      enabled: item.available,
+      action: action(callbacks.typeAsKeys),
+    });
+  }
   if (item.kind === "image") {
     pasteItems.push({ item: "Separator" });
     pasteItems.push(pasteItem("JPG", "image_jpg", item.available));

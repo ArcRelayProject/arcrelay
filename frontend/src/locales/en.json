@@ -1757,6 +1757,7 @@
   "格式化 JSON": "Formatted JSON",
   "新建或管理标签…": "New or manage labels…",
   "粘贴为": "Paste as",
+  "模拟键盘输入": "Simulate keyboard typing",
   "分段选择…": "Select text slice…",
   "开启辅助功能": "Enable Accessibility",
   "允许 ArcRelay 将剪贴板内容插入当前应用，并让已授权设备控制键盘和指针。": "Let ArcRelay paste into the active app and let approved devices control the keyboard and pointer.",

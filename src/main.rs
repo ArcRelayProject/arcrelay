@@ -288,6 +288,7 @@ fn main() {
             commands::clipboard_paste_text,
             commands::clipboard_paste_record,
             commands::clipboard_paste_record_as,
+            commands::clipboard_type_record_as_keys,
             commands::clipboard_paste_records,
             commands::clipboard_start_continuous_paste,
             commands::clipboard_delete_record,

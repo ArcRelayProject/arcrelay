@@ -208,7 +208,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=8bfca608654bac5e04b0a3e52ed665e1c9afd7dd#8bfca608654bac5e04b0a3e52ed665e1c9afd7dd"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=21ba975d6c83802499d377a3b066924d1478d8f2#21ba975d6c83802499d377a3b066924d1478d8f2"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -395,7 +395,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=9d771717620d4e59a0266bda5480f5504b5c869d#9d771717620d4e59a0266bda5480f5504b5c869d"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=55e7d5fecfced2ca012027ed852608f6c0168c88#55e7d5fecfced2ca012027ed852608f6c0168c88"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",

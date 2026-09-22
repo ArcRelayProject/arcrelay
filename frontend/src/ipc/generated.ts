@@ -569,6 +569,7 @@ export interface CommandMap {
   clipboard_text_segments: { args: { id: number; }; result: TextSliceModel };
   clipboard_thumbnail: { args: { id: number; }; result: string | null };
   clipboard_timeline: { args: { limit: number | null; position: ClipboardTimelinePositionInput; sortBy: ClipboardSortPreference; }; result: ClipboardTimelineView | null };
+  clipboard_type_record_as_keys: { args: { id: number; }; result: null };
   clipboard_update_label: { args: { color: string; labelId: string; name: string; }; result: null };
   close_gaze_calibration_windows: { args: { }; result: null };
   close_input_permission_guide: { args: { }; result: null };

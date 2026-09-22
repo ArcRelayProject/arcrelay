@@ -360,6 +360,7 @@ export const clipboardBridge = {
   pasteText: (content: string) => navigator.clipboard?.writeText(content) ?? Promise.resolve(),
   paste: (id: number) => Promise.resolve(),
   pasteAs: (id: number, mode: ClipboardPasteMode) => Promise.resolve(),
+  typeAsKeys: (id: number) => Promise.resolve(),
   remove: (id: number) => Promise.resolve(),
   removeMany: (ids: number[]) => Promise.resolve(ids.length),
   setFavorite: (id: number, favorite: boolean) => Promise.resolve(),
