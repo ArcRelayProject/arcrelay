@@ -64,6 +64,7 @@ export const clipboardBridge = {
   paste: (id: number) => invoke("clipboard_paste_record", { id }),
   pasteAs: (id: number, mode: ClipboardPasteMode) =>
     invoke("clipboard_paste_record_as", { id, mode }),
+  typeAsKeys: (id: number) => invoke("clipboard_type_record_as_keys", { id }),
   remove: (id: number) => invoke("clipboard_delete_record", { id }),
   removeMany: (ids: number[]) => invoke("clipboard_delete_records", { ids }),
   setFavorite: (id: number, favorite: boolean) =>

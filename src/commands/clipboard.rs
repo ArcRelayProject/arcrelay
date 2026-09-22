@@ -2,6 +2,7 @@ use super::*;
 use arcrelay_core::domain::clipboard::{
     ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition, ClipboardTimelineQuery,
 };
+use arcrelay_core::domain::input_control::simulated_key_strokes;
 use image::ImageDecoder;
 
 // Reject overlapping clipboard actions instead of queueing a stale paste to
@@ -840,6 +841,52 @@ pub async fn clipboard_paste_record_as(
     mode: arcrelay_core::domain::clipboard::ClipboardPasteMode,
 ) -> Result<(), String> {
     paste_clipboard_record(&state, &app, id, mode).await
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn clipboard_type_record_as_keys(
+    state: State<'_, DesktopState>,
+    app: AppHandle,
+    id: u64,
+) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    let _action = begin_clipboard_action()?;
+    tracing::debug!(
+        event = "clipboard.keyboard_type.requested",
+        id,
+        "simulated keyboard input requested"
+    );
+    require_input_permission(&state, &app)
+        .await
+        .map_err(|error| paste_failure("permission", error))?;
+    let target = capture_paste_target(&app).map_err(|error| paste_failure("target", error))?;
+    let text = state
+        .clipboard
+        .text_content(id)
+        .await
+        .map_err(|error| paste_failure("read", error))?;
+    simulated_key_strokes(&text).map_err(|error| paste_failure("validate", error))?;
+
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target)
+        .await
+        .map_err(|error| paste_failure("focus", error))?;
+    let type_result = state
+        .clipboard
+        .type_text_as_keys(&text)
+        .await
+        .map_err(|error| paste_failure("keyboard", error));
+    let restore_result =
+        crate::windowing::restore_clipboard_window_after_paste(&app, restore_pinned_panel)
+            .map_err(|error| paste_failure("focus_restore", error));
+    if let Err(error) = type_result {
+        if let Err(restore_error) = restore_result {
+            tracing::warn!(%restore_error, "failed to restore pinned clipboard panel");
+        }
+        return Err(error);
+    }
+    restore_result?;
+    crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
+    Ok(())
 }
 
 async fn paste_clipboard_record(

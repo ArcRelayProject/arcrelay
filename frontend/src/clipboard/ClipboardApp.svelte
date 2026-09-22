@@ -1165,6 +1165,19 @@
     }
   }
 
+  async function typeItemAsKeys(item: ClipboardItem) {
+    if (ocrPasting || pasteInFlight || dragBusy || dragSession.suppressClick()) return;
+    pasteInFlight = true;
+    pasteError = "";
+    try {
+      await clipboardBridge.typeAsKeys(item.id);
+    } catch (reason) {
+      pasteError = reason instanceof Error ? reason.message : String(reason);
+    } finally {
+      finishPaste();
+    }
+  }
+
   async function copyItem(item: ClipboardItem) {
     try {
       await clipboardBridge.copy(item.id);
@@ -1495,6 +1508,7 @@
         segment: () => beginSegments(item),
         manageLabels: () => beginLabels(item),
         paste: (mode) => pasteItem(item, mode),
+        typeAsKeys: () => typeItemAsKeys(item),
         sendFiles: async (peerId) => {
           await clipboardBridge.sendFiles(item.id, peerId);
         },
