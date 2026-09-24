@@ -258,7 +258,7 @@ dependencies = [
  "arcrelay-content",
  "arcrelay-core",
  "arcrelay-desktop-ipc",
- "arcrelay-files",
+ "arcrelay-files 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=f92b0559c7ccd8182609c34fd6badf6137ae9104)",
  "arcrelay-gaze",
  "arcrelay-input",
  "arcrelay-network",
@@ -268,7 +268,7 @@ dependencies = [
  "arcrelay-transfer",
  "arcrelay-transport",
  "arcrelay-web-gateway",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7)",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -354,6 +354,29 @@ dependencies = [
 [[package]]
 name = "arcrelay-files"
 version = "0.1.0"
+source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=ad56df3ca640042dd3d4419b915a820c6db89abe#ad56df3ca640042dd3d4419b915a820c6db89abe"
+dependencies = [
+ "arcrelay-content",
+ "argon2",
+ "fs2",
+ "image",
+ "infer",
+ "mime_guess",
+ "rand_core 0.6.4",
+ "rustix 1.1.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "ts-rs",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "arcrelay-files"
+version = "0.1.0"
 source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=f92b0559c7ccd8182609c34fd6badf6137ae9104#f92b0559c7ccd8182609c34fd6badf6137ae9104"
 dependencies = [
  "arcrelay-content",
@@ -362,6 +385,7 @@ dependencies = [
  "image",
  "infer",
  "mime_guess",
+ "notify",
  "rand_core 0.6.4",
  "rustix 1.1.4",
  "serde",
@@ -400,7 +424,7 @@ dependencies = [
  "arc-swap",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625)",
  "prost",
  "prost-build",
  "protoc-bin-vendored",
@@ -418,7 +442,7 @@ source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=2d5308
 dependencies = [
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625)",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -462,7 +486,7 @@ dependencies = [
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625)",
  "async-trait",
  "axum",
  "http-body-util",
@@ -492,7 +516,7 @@ dependencies = [
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7)",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -519,7 +543,7 @@ dependencies = [
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire",
+ "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625)",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -555,7 +579,7 @@ name = "arcrelay-web-gateway"
 version = "0.1.0"
 source = "git+https://github.com/ArcRelayProject/arcrelay-web-gateway.git?rev=a59581ec3892f73555147fce69c504056e7e279c#a59581ec3892f73555147fce69c504056e7e279c"
 dependencies = [
- "arcrelay-files",
+ "arcrelay-files 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=ad56df3ca640042dd3d4419b915a820c6db89abe)",
  "axum",
  "futures-util",
  "httpdate",
@@ -579,6 +603,17 @@ dependencies = [
 name = "arcrelay-wire"
 version = "0.1.0"
 source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7#1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7"
+dependencies = [
+ "bytes",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+]
+
+[[package]]
+name = "arcrelay-wire"
+version = "0.1.0"
+source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625#f27e8db31c222bc478f22fabd6c3effe09655625"
 dependencies = [
  "bytes",
  "prost",
