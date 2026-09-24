@@ -14,6 +14,8 @@ pub(super) struct Store {
     persisted: Mutex<(u64, usize)>,
 }
 
+type StoreDelta = (u64, Vec<Change>, Vec<String>, Option<Vec<Item>>);
+
 fn database_error(error: impl std::fmt::Display) -> Error {
     Error::unavailable(format!("file index database: {error}"))
 }
@@ -132,10 +134,7 @@ impl Store {
         Ok((Self { pool, persisted }, index))
     }
 
-    pub fn delta(
-        &self,
-        index: &Index,
-    ) -> Option<(u64, Vec<Change>, Vec<String>, Option<Vec<Item>>)> {
+    pub fn delta(&self, index: &Index) -> Option<StoreDelta> {
         let (sequence, count) = *self.persisted.lock().unwrap();
         if sequence == index.sequence && count == index.enumerated.len() {
             return None;
