@@ -46,9 +46,10 @@ final class ProviderItem: NSObject, NSFileProviderItem {
 
 private struct BridgeConnection: Decodable { let port: Int; let token: String }
 private struct BridgeFailure: Decodable { let code: String; let message: String }
-private struct Listing: Decodable { let items: [RemoteItem]; let anchor: UInt64? }
+private struct Listing: Decodable { let items: [RemoteItem]; let nextPage: String? }
+private struct Anchor: Decodable { let anchor: UInt64 }
 private struct RemoteChange: Decodable { let sequence: UInt64; let item: RemoteItem; let deleted: Bool }
-private struct Changes: Decodable { let changes: [RemoteChange]; let anchor: UInt64 }
+private struct Changes: Decodable { let changes: [RemoteChange]; let anchor: UInt64; let moreComing: Bool }
 
 private func providerError(_ error: Error) -> Error {
     if error is CancellationError { return NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError) }
@@ -91,6 +92,7 @@ private final class Bridge {
             switch failure?.code {
             case "notFound": code = .noSuchItem
             case "anchorExpired": code = .syncAnchorExpired
+            case "pageExpired": code = .pageExpired
             case "quota": code = .insufficientQuota
             case "conflict": code = .cannotSynchronize
             case "forbidden":
@@ -256,38 +258,33 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 private final class ProviderEnumerator: NSObject, NSFileProviderEnumerator {
     let bridge: Bridge
     let container: NSFileProviderItemIdentifier
-    private let lock = NSLock()
-    private var snapshot: [RemoteItem]?
     init(bridge: Bridge, container: NSFileProviderItemIdentifier) { self.bridge = bridge; self.container = container }
-    func invalidate() { lock.lock(); snapshot = nil; lock.unlock() }
-    private func saveSnapshot(_ value: [RemoteItem]) { lock.lock(); snapshot = value; lock.unlock() }
-    private func getSnapshot() -> [RemoteItem]? { lock.lock(); defer { lock.unlock() }; return snapshot }
+    func invalidate() {}
 
     func enumerateItems(for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage) {
         Task {
             do {
-                let offset: Int
-                if page.rawValue == NSFileProviderPage.initialPageSortedByName as Data || page.rawValue == NSFileProviderPage.initialPageSortedByDate as Data {
-                    let listing: Listing = try await bridge.operation(container == .workingSet ? "workingSet" : "list",
-                        fields: ["item": ProviderItem.key(container)], as: Listing.self)
-                    saveSnapshot(listing.items)
-                    offset = 0
+                var fields: [String: Any] = ["item": ProviderItem.key(container)]
+                if page.rawValue == NSFileProviderPage.initialPageSortedByDate as Data {
+                    fields["sort"] = "date"
+                } else if page.rawValue == NSFileProviderPage.initialPageSortedByName as Data {
+                    fields["sort"] = "name"
                 } else {
-                    guard let text = String(data: page.rawValue, encoding: .utf8), let parsed = Int(text), parsed >= 0 else { throw NSFileProviderError(.pageExpired) }
-                    offset = parsed
+                    guard let text = String(data: page.rawValue, encoding: .utf8) else { throw NSFileProviderError(.pageExpired) }
+                    fields["page"] = text
                 }
-                guard let items = getSnapshot(), offset <= items.count else { throw NSFileProviderError(.pageExpired) }
-                let end = min(offset + 200, items.count)
-                observer.didEnumerate(items[offset..<end].map(ProviderItem.init))
-                observer.finishEnumerating(upTo: end == items.count ? nil : NSFileProviderPage(Data(String(end).utf8)))
+                let listing: Listing = try await bridge.operation(container == .workingSet ? "workingSet" : "list",
+                    fields: fields, as: Listing.self)
+                observer.didEnumerate(listing.items.map(ProviderItem.init))
+                observer.finishEnumerating(upTo: listing.nextPage.map { NSFileProviderPage(Data($0.utf8)) })
             } catch { observer.finishEnumeratingWithError(providerError(error)) }
         }
     }
 
     func currentSyncAnchor(completionHandler: @escaping (NSFileProviderSyncAnchor?) -> Void) {
         Task {
-            let listing = try? await bridge.operation("workingSet", as: Listing.self)
-            completionHandler(listing?.anchor.map { NSFileProviderSyncAnchor(Data(String($0).utf8)) })
+            let anchor = try? await bridge.operation("anchor", as: Anchor.self)
+            completionHandler(anchor.map { NSFileProviderSyncAnchor(Data(String($0.anchor).utf8)) })
         }
     }
 
@@ -303,7 +300,7 @@ private final class ProviderEnumerator: NSObject, NSFileProviderEnumerator {
                 let relevant = latest.values
                 observer.didDeleteItems(withIdentifiers: relevant.filter(\.deleted).map { ProviderItem.identifier($0.item.id) })
                 observer.didUpdate(relevant.filter { !$0.deleted }.map { ProviderItem($0.item) })
-                observer.finishEnumeratingChanges(upTo: NSFileProviderSyncAnchor(Data(String(response.anchor).utf8)), moreComing: false)
+                observer.finishEnumeratingChanges(upTo: NSFileProviderSyncAnchor(Data(String(response.anchor).utf8)), moreComing: response.moreComing)
             } catch { observer.finishEnumeratingWithError(providerError(error)) }
         }
     }

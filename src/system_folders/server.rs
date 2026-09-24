@@ -120,7 +120,7 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let status = match self.code.as_str() {
             "notFound" => StatusCode::NOT_FOUND,
-            "conflict" | "anchorExpired" => StatusCode::CONFLICT,
+            "conflict" | "anchorExpired" | "pageExpired" => StatusCode::CONFLICT,
             "invalid" => StatusCode::BAD_REQUEST,
             "forbidden" => StatusCode::FORBIDDEN,
             "quota" => StatusCode::INSUFFICIENT_STORAGE,
@@ -147,6 +147,10 @@ struct Operation {
     #[serde(default)]
     anchor: u64,
     #[serde(default)]
+    page: Option<String>,
+    #[serde(default)]
+    sort: Option<String>,
+    #[serde(default)]
     recursive: bool,
 }
 fn root_id() -> String {
@@ -159,23 +163,54 @@ async fn operation(
 ) -> Result<Json<serde_json::Value>, Error> {
     let service = &bridge.service;
     let result = match op.action.as_str() {
-        "stat" => serde_json::to_value(service.stat(&op.domain, &op.item).await?).unwrap(),
-        "list" => serde_json::json!({ "items": service.enumerate(&op.domain, &op.item).await? }),
+        "stat" => {
+            let domain = service.domain(&op.domain).await?;
+            let item = domain.index.lock().await.item(&op.item)?;
+            serde_json::to_value(item).unwrap()
+        }
+        "list" => {
+            if op.page.is_none() {
+                let domain = service.domain(&op.domain).await?;
+                let online = domain.view.lock().await.online;
+                if online {
+                    match service.enumerate(&op.domain, &op.item).await {
+                        Ok(_) => (),
+                        Err(error) if error.code == "unavailable" => (),
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+            let domain = service.domain(&op.domain).await?;
+            let mut index = domain.index.lock().await;
+            let (items, next_page) = index.page(
+                &op.item,
+                op.page.as_deref(),
+                200,
+                op.sort.as_deref() == Some("date"),
+            )?;
+            serde_json::json!({ "items": items, "anchor": index.sequence, "nextPage": next_page })
+        }
         "workingSet" => {
             let domain = service.domain(&op.domain).await?;
-            let index = domain.index.lock().await;
-            serde_json::json!({ "items": index.items.values().filter(|i| i.id != "root").collect::<Vec<_>>(), "anchor": index.sequence })
+            let mut index = domain.index.lock().await;
+            let (items, next_page) = index.page(
+                "workingSet",
+                op.page.as_deref(),
+                200,
+                op.sort.as_deref() == Some("date"),
+            )?;
+            serde_json::json!({ "items": items, "anchor": index.sequence, "nextPage": next_page })
+        }
+        "anchor" => {
+            let domain = service.domain(&op.domain).await?;
+            let anchor = domain.index.lock().await.sequence;
+            serde_json::json!({ "anchor": anchor })
         }
         "changes" => {
             let domain = service.domain(&op.domain).await?;
-            let view = domain.view.lock().await.clone();
-            if !view.online {
-                return Err(Error::unavailable(
-                    view.error.unwrap_or_else(|| "device is offline".into()),
-                ));
-            }
             let index = domain.index.lock().await;
-            serde_json::json!({ "changes": index.since(op.anchor)?, "anchor": index.sequence })
+            let (changes, anchor, more_coming) = index.changes_page(op.anchor, 200)?;
+            serde_json::json!({ "changes": changes, "anchor": anchor, "moreComing": more_coming })
         }
         "mkdir" => {
             serde_json::to_value(service.mkdir(&op.domain, &op.parent, &op.name).await?).unwrap()

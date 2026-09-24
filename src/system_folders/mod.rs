@@ -5,6 +5,7 @@ mod index;
 #[cfg(target_os = "macos")]
 mod macos;
 mod server;
+mod store;
 #[cfg(any(target_os = "windows", test))]
 mod webdav;
 #[cfg(target_os = "windows")]
@@ -14,7 +15,6 @@ use crate::clipboard_sync::ClipboardSyncManager;
 use arcrelay_protocol::remote_files::{
     RemoteFileErrorCode, RemoteFileKind, RemoteFileRequest as Request, RemoteFileResponse,
 };
-use futures_util::StreamExt;
 use index::{Index, Item};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -99,19 +99,17 @@ pub(super) struct Domain {
     index: Mutex<Index>,
     operations: Mutex<()>,
     persistence: Mutex<()>,
-    path: PathBuf,
+    store: store::Store,
 }
 impl Domain {
     async fn persist(&self) -> Result<(), Error> {
         let _guard = self.persistence.lock().await;
-        let index = self.index.lock().await.clone();
-        let path = self.path.clone();
-        tokio::task::spawn_blocking(move || {
-            let bytes = serde_json::to_vec(&index).map_err(std::io::Error::other)?;
-            crate::infrastructure::durable_file::replace_private(&path, &bytes)
-        })
-        .await
-        .map_err(|e| Error::unavailable(e.to_string()))??;
+        let delta = self.store.delta(&*self.index.lock().await);
+        if let Some((sequence, changes, enumerated, snapshot)) = delta {
+            self.store
+                .save(sequence, changes, enumerated, snapshot)
+                .await?;
+        }
         Ok(())
     }
 }
@@ -213,9 +211,18 @@ impl SystemFolders {
         for mut view in views {
             uuid::Uuid::parse_str(&view.id)
                 .map_err(|_| Error::unavailable("invalid saved folder identity"))?;
-            let path = service.root.join(format!("{}.json", view.id));
-            let index: Index = serde_json::from_slice(&tokio::fs::read(&path).await?)
-                .map_err(|e| Error::unavailable(e.to_string()))?;
+            let legacy = service.root.join(format!("{}.json", view.id));
+            let fallback = match tokio::fs::read(&legacy).await {
+                Ok(bytes) => serde_json::from_slice(&bytes)
+                    .map_err(|error| Error::unavailable(error.to_string()))?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Index::root(&view.name, false)
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let (store, index) =
+                store::Store::open(&service.root.join(format!("{}.sqlite3", view.id)), fallback)
+                    .await?;
             view.online = false;
             service.domains.lock().await.insert(
                 view.id.clone(),
@@ -224,7 +231,7 @@ impl SystemFolders {
                     index: Mutex::new(index),
                     operations: Mutex::new(()),
                     persistence: Mutex::new(()),
-                    path,
+                    store,
                 }),
             );
         }
@@ -235,10 +242,11 @@ impl SystemFolders {
         // Windows locations and their loopback endpoint are persistent. Do not
         // re-register on startup: a temporarily offline peer must not disconnect
         // an existing Explorer location or delay the desktop runtime.
-        let poller = service.clone();
-        tokio::spawn(async move {
-            poller.poll().await;
-        });
+        let domains: Vec<_> = service.domains.lock().await.values().cloned().collect();
+        for domain in domains {
+            let service = service.clone();
+            tokio::spawn(async move { service.watch_domain(domain).await });
+        }
         Ok(service)
     }
 
@@ -320,15 +328,23 @@ impl SystemFolders {
             error: None,
             recovery_count: 0,
         };
+        let (store, index) = store::Store::open(
+            &self.root.join(format!("{}.sqlite3", view.id)),
+            Index::root(&share_info.name, share_info.writable),
+        )
+        .await?;
         let domain = Arc::new(Domain {
             view: Mutex::new(view.clone()),
-            index: Mutex::new(Index::root(&share_info.name, share_info.writable)),
+            index: Mutex::new(index),
             operations: Mutex::new(()),
             persistence: Mutex::new(()),
-            path: self.root.join(format!("{}.json", view.id)),
+            store,
         });
         domain.persist().await?;
         self.domains.lock().await.insert(view.id.clone(), domain);
+        let watcher = self.clone();
+        let watched_domain = self.domain(&view.id).await?;
+        tokio::spawn(async move { watcher.watch_domain(watched_domain).await });
         // Persist before OS registration so a crash cannot orphan a provider.
         self.persist_folders().await?;
         if let Err(error) = self.register(&view).await {
@@ -426,7 +442,12 @@ impl SystemFolders {
             .entry
             .ok_or_else(|| Error::unavailable("missing file metadata"))?;
         Ok(Item {
-            id: id.into(),
+            id: if id.is_empty() {
+                entry.id.clone()
+            } else {
+                id.into()
+            },
+            source_id: entry.id,
             parent_id: parent.into(),
             name: entry.name,
             path: entry.relative_path,
@@ -482,28 +503,24 @@ impl SystemFolders {
                     },
                 )
                 .await?;
-            let mut metadata =
-                futures_util::stream::iter(response.entries.into_iter().map(|entry| {
-                    let view = &view;
-                    async move {
-                        self.stat_path(
-                            view,
-                            parent_id,
-                            &entry.relative_path,
-                            &uuid::Uuid::new_v4().to_string(),
-                        )
-                        .await
-                    }
-                }))
-                .buffered(8);
-            while let Some(result) = metadata.next().await {
-                let mut item = match result {
-                    Ok(item) => item,
-                    Err(e) if matches!(e.code.as_str(), "invalid" | "notFound") => continue,
-                    Err(e) => return Err(e),
-                };
-                item.writable = parent.writable;
-                items.push(item);
+            for entry in response.entries {
+                if entry.revision.is_empty() || entry.id.is_empty() {
+                    return Err(Error::unavailable(
+                        "remote listing omitted an item identity or revision",
+                    ));
+                }
+                items.push(Item {
+                    id: entry.id.clone(),
+                    source_id: entry.id,
+                    parent_id: parent_id.into(),
+                    name: entry.name,
+                    path: entry.relative_path,
+                    folder: entry.kind == RemoteFileKind::Folder,
+                    size: entry.size,
+                    modified_at_ms: entry.modified_at_ms,
+                    revision: entry.revision,
+                    writable: parent.writable,
+                });
                 if items.len() > 100_000 {
                     return Err(Error {
                         code: "quota".into(),
@@ -605,7 +622,8 @@ impl SystemFolders {
         let item = domain.index.lock().await.upsert(Item {
             id: item_id
                 .map(str::to_owned)
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                .unwrap_or_else(|| entry.id.clone()),
+            source_id: entry.id,
             parent_id: resolved_parent,
             name: entry.name,
             path: entry.relative_path,
@@ -649,9 +667,7 @@ impl SystemFolders {
             },
         )
         .await?;
-        let mut item = self
-            .stat_path(&view, parent_id, &path, &uuid::Uuid::new_v4().to_string())
-            .await?;
+        let mut item = self.stat_path(&view, parent_id, &path, "").await?;
         item.writable = parent.writable;
         let item = domain.index.lock().await.upsert(item);
         domain.persist().await?;
@@ -742,19 +758,35 @@ impl SystemFolders {
         domain.persist().await
     }
 
-    async fn poll(self: Arc<Self>) {
+    async fn watch_domain(self: Arc<Self>, domain: Arc<Domain>) {
+        let mut epoch = String::new();
+        let mut sequence = 0;
         loop {
-            tokio::select! {
-                _ = self.stopped.cancelled() => break,
-                _ = tokio::time::sleep(Duration::from_secs(10)) => (),
+            if self.stopped.is_cancelled() {
+                break;
             }
-            let domains: Vec<_> = self.domains.lock().await.values().cloned().collect();
-            for domain in domains {
-                let view = domain.view.lock().await.clone();
-                let before = domain.index.lock().await.sequence;
-                let result: Result<(), Error> = async {
-                    let response = self.request(&view, Request::ListShares).await?;
-                    let share = response
+            let view = domain.view.lock().await.clone();
+            if self.domains.lock().await.get(&view.id).is_none() {
+                break;
+            }
+            let before = domain.index.lock().await.sequence;
+            let result: Result<(String, u64), Error> = async {
+                let response = tokio::time::timeout(
+                    Duration::from_secs(40),
+                    self.manager.remote_file_request(
+                        &view.peer_id,
+                        Request::WatchChanges {
+                            share_id: view.share_id.clone(),
+                            epoch: epoch.clone(),
+                            after_sequence: sequence,
+                        },
+                    ),
+                )
+                .await
+                .map_err(|_| Error::unavailable("remote change feed timed out"))??;
+                if response.change_reset {
+                    let shares = self.request(&view, Request::ListShares).await?;
+                    let share = shares
                         .shares
                         .iter()
                         .find(|s| s.id == view.share_id)
@@ -772,20 +804,42 @@ impl SystemFolders {
                             self.enumerate(&view.id, &parent).await?;
                         }
                     }
-                    Ok(())
+                } else {
+                    let mut directories = HashSet::new();
+                    let mut index = domain.index.lock().await;
+                    for path in response.changed_directories {
+                        if let Some(id) = index.id_for_path(&path) {
+                            if index.enumerated.contains(&id) {
+                                directories.insert(id);
+                            }
+                        }
+                    }
+                    drop(index);
+                    for parent in directories {
+                        self.enumerate(&view.id, &parent).await?;
+                    }
                 }
-                .await;
-                let mut state = domain.view.lock().await;
-                let was_online = state.online;
-                state.online = result.is_ok();
-                let online = state.online;
-                if state.registered {
-                    state.error = result.err().map(|e| e.message);
-                }
-                drop(state);
-                if before != domain.index.lock().await.sequence || (!was_online && online) {
+                Ok((response.change_epoch, response.change_sequence))
+            }
+            .await;
+            let mut state = domain.view.lock().await;
+            let was_online = state.online;
+            state.online = result.is_ok();
+            if state.registered {
+                state.error = result.as_ref().err().map(|e| e.message.clone());
+            }
+            drop(state);
+            if let Ok((next_epoch, next_sequence)) = result {
+                epoch = next_epoch;
+                sequence = next_sequence;
+                if before != domain.index.lock().await.sequence || !was_online {
                     #[cfg(target_os = "macos")]
-                    macos::signal(&view, !was_online && online);
+                    macos::signal(&view, !was_online);
+                }
+            } else {
+                tokio::select! {
+                    _ = self.stopped.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_secs(2)) => (),
                 }
             }
         }
