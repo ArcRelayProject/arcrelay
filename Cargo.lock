@@ -354,7 +354,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-files"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=ad56df3ca640042dd3d4419b915a820c6db89abe#ad56df3ca640042dd3d4419b915a820c6db89abe"
+source = "git+https://github.com/ArcRelayProject/arcrelay-files.git?rev=f92b0559c7ccd8182609c34fd6badf6137ae9104#f92b0559c7ccd8182609c34fd6badf6137ae9104"
 dependencies = [
  "arcrelay-content",
  "argon2",
@@ -486,7 +486,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=99d94b4abffe00eb3cdd07dbfaabd3dc8b87b29c#99d94b4abffe00eb3cdd07dbfaabd3dc8b87b29c"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=573d2a697878b90a88447f73692cb00b89e3bd8c#573d2a697878b90a88447f73692cb00b89e3bd8c"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
@@ -578,7 +578,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-wire"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=f27e8db31c222bc478f22fabd6c3effe09655625#f27e8db31c222bc478f22fabd6c3effe09655625"
+source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7#1b0a0504546a45b77f7c0fdb2d2a74b79f9427a7"
 dependencies = [
  "bytes",
  "prost",

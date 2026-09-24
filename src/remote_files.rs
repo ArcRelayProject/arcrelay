@@ -63,6 +63,18 @@ impl RemoteFileManager {
 
 #[async_trait::async_trait]
 impl RemoteFileProvider for RemoteFileManager {
+    async fn watch_changes(
+        &self,
+        share_id: &str,
+        epoch: &str,
+        after_sequence: u64,
+    ) -> RemoteFileResult<(String, u64, Vec<String>, bool)> {
+        self.service
+            .watch_changes(share_id, epoch, after_sequence)
+            .await
+            .map_err(remote_file_error)
+    }
+
     async fn stat(
         &self,
         share_id: &str,
@@ -308,6 +320,7 @@ fn remote_file_error(error: FileError) -> RemoteFileError {
 
 fn protocol_entry(entry: FileEntry) -> RemoteFileEntry {
     RemoteFileEntry {
+        id: entry.id,
         name: entry.name,
         relative_path: entry.relative_path,
         kind: match entry.kind {
@@ -316,6 +329,7 @@ fn protocol_entry(entry: FileEntry) -> RemoteFileEntry {
         },
         size: entry.size,
         modified_at_ms: entry.modified_at_ms,
+        revision: entry.revision,
     }
 }
 
