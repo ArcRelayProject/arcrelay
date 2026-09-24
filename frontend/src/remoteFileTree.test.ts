@@ -1,15 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ancestorPaths, buildRemoteFileTreeRows, remoteTreeDirectoryKey } from "./remoteFileTree.ts";
+import {
+  ancestorPaths,
+  buildRemoteFileTreeRows,
+  remoteTreeDirectoryKey,
+} from "./remoteFileTree.ts";
 import type { RemoteFileEntry, RemoteFileShare } from "./types.ts";
 
 const shares: RemoteFileShare[] = [{ id: "downloads", name: "Downloads", writable: true }];
 const root: RemoteFileEntry[] = [
-  { name: "archive", relativePath: "archive", kind: "folder", size: 0, modifiedAtMs: 1 },
+  {
+    id: "archive",
+    name: "archive",
+    relativePath: "archive",
+    kind: "folder",
+    size: 0,
+    modifiedAtMs: 1,
+    revision: "1",
+  },
 ];
 const archive: RemoteFileEntry[] = [
-  { name: "2026", relativePath: "archive/2026", kind: "folder", size: 0, modifiedAtMs: 2 },
+  {
+    id: "2026",
+    name: "2026",
+    relativePath: "archive/2026",
+    kind: "folder",
+    size: 0,
+    modifiedAtMs: 2,
+    revision: "1",
+  },
 ];
 
 test("a selected top-level share can remain collapsed", () => {
@@ -21,7 +41,10 @@ test("a selected top-level share can remain collapsed", () => {
     expandedFolderKeys: new Set(),
     directories: new Map([[remoteTreeDirectoryKey("downloads", ""), root]]),
   });
-  assert.deepEqual(rows.map((row) => row.name), ["Downloads"]);
+  assert.deepEqual(
+    rows.map((row) => row.name),
+    ["Downloads"],
+  );
   assert.equal(rows[0].active, true);
   assert.equal(rows[0].expanded, false);
 });
@@ -38,11 +61,14 @@ test("expanded folders render recursively beyond the second level", () => {
       [remoteTreeDirectoryKey("downloads", "archive"), archive],
     ]),
   });
-  assert.deepEqual(rows.map((row) => [row.name, row.depth]), [
-    ["Downloads", 0],
-    ["archive", 1],
-    ["2026", 2],
-  ]);
+  assert.deepEqual(
+    rows.map((row) => [row.name, row.depth]),
+    [
+      ["Downloads", 0],
+      ["archive", 1],
+      ["2026", 2],
+    ],
+  );
   assert.equal(rows[1].kind === "folder" && rows[1].ancestor, true);
   assert.equal(rows[2].active, true);
 });

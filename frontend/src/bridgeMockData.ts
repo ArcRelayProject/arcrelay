@@ -20,6 +20,22 @@ type BridgeMockData = {
   remoteDirectories: Map<string, RemoteFileEntry[]>;
 };
 
+function mockRemoteDirectories(
+  directories: Array<[string, Array<Omit<RemoteFileEntry, "id" | "revision">>]>,
+): Map<string, RemoteFileEntry[]> {
+  return new Map<string, RemoteFileEntry[]>(
+    directories.map(([key, entries]) => [
+      key,
+      entries.map((entry) => ({
+        ...entry,
+        id: `mock:${key}:${entry.relativePath}`,
+        revision: String(entry.modifiedAtMs),
+      })),
+    ]),
+  );
+}
+
+// prettier-ignore
 export const mockData: BridgeMockData = {
   state: {
     revision: 0,
@@ -471,7 +487,7 @@ export const mockData: BridgeMockData = {
   { id: "local-design", name: "设计交付", path: "/Users/demo/Design/交付", writable: true, web: { mode: "password", listed: true, allowPreview: true, allowDownload: true, slug: "design-demo-share", hasPassword: true, credentialRevision: 1 } },
   { id: "local-public", name: "公共素材", path: "/Users/demo/Shared/公共素材", writable: false, web: { mode: "public", listed: true, allowPreview: true, allowDownload: true, slug: "public-demo-share", hasPassword: false, credentialRevision: 0 } },
   ],
-  remoteDirectories: new Map<string, RemoteFileEntry[]>([
+  remoteDirectories: mockRemoteDirectories([
   ["team-space:", [
     { name: "设计资料", relativePath: "设计资料", kind: "folder", size: 0, modifiedAtMs: Date.UTC(2026, 7, 29, 2, 42) },
     { name: "开发文档", relativePath: "开发文档", kind: "folder", size: 0, modifiedAtMs: Date.UTC(2026, 7, 28, 9, 18) },

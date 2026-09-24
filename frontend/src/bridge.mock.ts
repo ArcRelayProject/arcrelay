@@ -646,12 +646,16 @@ export const bridge = {
     relativePath: string,
     name: string,
   ): Promise<RemoteFileEntry> {
+    const entryPath = [relativePath, name].filter(Boolean).join("/");
+    const modifiedAtMs = Date.now();
     const entry: RemoteFileEntry = {
+      id: `mock:${shareId}:${entryPath}`,
       name,
-      relativePath: [relativePath, name].filter(Boolean).join("/"),
+      relativePath: entryPath,
       kind: "folder",
       size: 0,
-      modifiedAtMs: Date.now(),
+      modifiedAtMs,
+      revision: String(modifiedAtMs),
     };
     mockData.remoteDirectories.set(mockDirectoryKey(shareId, relativePath), [
       ...mockDirectory(shareId, relativePath),
@@ -674,6 +678,7 @@ export const bridge = {
       ...entry,
       name: newName,
       relativePath: [parentPath, newName].filter(Boolean).join("/"),
+      revision: String(Date.now()),
     };
     mockData.remoteDirectories.set(
       mockDirectoryKey(shareId, parentPath),

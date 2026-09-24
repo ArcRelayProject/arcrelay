@@ -392,7 +392,7 @@ export type RemoteFileDirectoryPage = { entries: Array<RemoteFileEntry>, nextCur
 
 export type RemoteFileDragPreparation = { localPath: string, iconPath: string, };
 
-export type RemoteFileEntry = { name: string, relativePath: string, kind: RemoteFileKind, size: number, modifiedAtMs: number, };
+export type RemoteFileEntry = { id: string, name: string, relativePath: string, kind: RemoteFileKind, size: number, modifiedAtMs: number, revision: string, };
 
 export type RemoteFileKind = "file" | "folder";
 
