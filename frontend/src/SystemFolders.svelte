@@ -93,7 +93,7 @@
             <div class="folder">
               <div class="folder-copy">
                 <strong>{folder.name}</strong><span>{!folder.registered ? (zh ? '尚未接入' : 'Not connected') : folder.online ? (zh ? '在线' : 'Online') : (mac ? (zh ? '离线 · 保留本地副本' : 'Offline · local copies retained') : (zh ? '离线 · 暂不可访问' : 'Offline · unavailable'))}</span>
-                {#if folder.registered && folder.name.startsWith('ArcRelay · ')}
+                {#if folder.registered && (folder.name.startsWith('ArcRelay · ') || folder.name.endsWith(` · ${group.name}`))}
                   <small>{zh ? '此位置仍使用旧名称。保存正在编辑的文件后，移除接入并重新添加即可使用简短名称。' : 'This location still uses the old name. Save open files, then disconnect and add it again to use the shorter name.'}</small>
                 {/if}
               </div>
