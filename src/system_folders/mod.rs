@@ -322,7 +322,7 @@ impl SystemFolders {
             id: uuid::Uuid::new_v4().to_string(),
             peer_id: peer,
             share_id: share,
-            name: format!("ArcRelay · {peer_name} · {}", share_info.name),
+            name: format!("{} · {peer_name}", share_info.name),
             online: true,
             registered: false,
             error: None,
