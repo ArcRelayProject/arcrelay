@@ -23,6 +23,7 @@ type PasteTarget = crate::windowing::ClipboardPasteRecipient;
 #[cfg(target_os = "windows")]
 type PasteTarget = crate::windowing::clipboard_windows_policy::ForegroundTarget;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[derive(Clone, Copy)]
 struct PasteTarget;
 
 fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
@@ -1026,6 +1027,7 @@ pub async fn clipboard_paste_records(
     state: State<'_, DesktopState>,
     app: AppHandle,
     ids: Vec<u64>,
+    sequential: bool,
 ) -> Result<usize, String> {
     crate::presence_access::require_clipboard_access(&state)?;
     let _action = begin_clipboard_action()?;
@@ -1034,28 +1036,72 @@ pub async fn clipboard_paste_records(
     }
     require_input_permission(&state, &app).await?;
     let target = capture_paste_target(&app)?;
-    let mut parts = Vec::with_capacity(ids.len());
-    for id in &ids {
-        parts.push(
+    let first_kind = if sequential {
+        Some(
             state
                 .clipboard
-                .text_content(*id)
+                .prepare_record_as(
+                    ids[0],
+                    arcrelay_core::domain::clipboard::ClipboardPasteMode::Source,
+                )
                 .await
-                .map_err(|_| "combined paste supports text entries only".to_string())?,
-        );
-    }
-    let combined = join_clipboard_text(parts);
-    state
-        .clipboard
-        .set_text(&combined)
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        let mut parts = Vec::with_capacity(ids.len());
+        for id in &ids {
+            parts.push(
+                state
+                    .clipboard
+                    .text_content(*id)
+                    .await
+                    .map_err(|_| "combined paste supports text entries only".to_string())?,
+            );
+        }
+        state
+            .clipboard
+            .set_text(&join_clipboard_text(parts))
+            .await
+            .map_err(|error| error.to_string())?;
+        None
+    };
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target.clone()).await?;
+    let paste_result = if let Some(first_kind) = first_kind {
+        async {
+            for (index, id) in ids.iter().enumerate() {
+                let kind = if index == 0 {
+                    first_kind
+                } else {
+                    state
+                        .clipboard
+                        .prepare_record_as(
+                            *id,
+                            arcrelay_core::domain::clipboard::ClipboardPasteMode::Source,
+                        )
+                        .await
+                        .map_err(|error| error.to_string())?
+                };
+                ensure_paste_target_unchanged(&app, &target)?;
+                state
+                    .clipboard
+                    .paste_prepared(kind)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if index + 1 < ids.len() {
+                    // Let the target consume the current clipboard payload before replacing it.
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+            }
+            Ok(())
+        }
         .await
-        .map_err(|error| error.to_string())?;
-    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target).await?;
-    let paste_result = state
-        .clipboard
-        .paste_prepared(ClipboardContentKind::Text)
-        .await
-        .map_err(|error| error.to_string());
+    } else {
+        state
+            .clipboard
+            .paste_prepared(ClipboardContentKind::Text)
+            .await
+            .map_err(|error| error.to_string())
+    };
     let restore_result =
         crate::windowing::restore_clipboard_window_after_paste(&app, restore_pinned_panel)
             .map_err(|error| error.to_string());
@@ -1068,6 +1114,26 @@ pub async fn clipboard_paste_records(
     restore_result?;
     crate::sound::play(crate::sound::SoundEvent::ClipboardUsed);
     Ok(ids.len())
+}
+
+fn ensure_paste_target_unchanged(_app: &AppHandle, _target: &PasteTarget) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let original = _target
+            .as_ref()
+            .ok_or_else(|| "no external paste target; content remains on clipboard".to_string())?;
+        let current =
+            crate::windowing::clipboard_paste_recipient(_app).map_err(|error| error.to_string())?;
+        if current.as_ref().map(|app| app.processIdentifier()) != Some(original.processIdentifier())
+        {
+            return Err("paste target changed; content remains on clipboard".into());
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if !crate::windowing::clipboard_windows::target_ready(*_target)? {
+        return Err("paste target did not regain focus; content remains on clipboard".into());
+    }
+    Ok(())
 }
 
 fn join_clipboard_text(parts: Vec<String>) -> String {

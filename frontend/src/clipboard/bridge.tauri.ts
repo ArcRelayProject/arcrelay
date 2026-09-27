@@ -93,7 +93,8 @@ export const clipboardBridge = {
   },
   sendFiles: (id: number, peerId: string) => invoke("clipboard_send_files", { id, peerId }),
   clear: () => invoke("clipboard_clear_history"),
-  pasteRecords: (ids: number[]) => invoke("clipboard_paste_records", { ids }),
+  pasteRecords: (ids: number[], sequential: boolean) =>
+    invoke("clipboard_paste_records", { ids, sequential }),
   startContinuousPaste: (items: ContinuousPasteItemInput[]) =>
     invoke("clipboard_start_continuous_paste", { items }),
   hide: () => invoke("hide_clipboard_window"),

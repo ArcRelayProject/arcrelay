@@ -900,7 +900,7 @@
   "多选操作": "Multi-select actions",
   "按选择顺序粘贴": "Paste selected items in order",
   "按选择顺序合并并粘贴": "Merge and paste in selected order",
-  "合并粘贴仅支持文本内容": "Combined paste supports text only",
+  "多选粘贴仅支持可用的文本和图片": "Multi-item paste supports available text and images only",
   "多选粘贴": "Paste",
   "每次按剪贴板快捷键粘贴下一项": "Paste the next item each time you press the clipboard shortcut",
   "连续粘贴": "Sequence",
