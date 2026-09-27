@@ -201,6 +201,12 @@
   $: combinedPasteAvailable =
     selectedItems.length === selectedIds.length &&
     selectedItems.every((item) => item.available && (item.kind === "text" || item.kind === "html"));
+  $: multiPasteAvailable =
+    selectedItems.length === selectedIds.length &&
+    selectedItems.every(
+      (item) =>
+        item.available && (item.kind === "text" || item.kind === "html" || item.kind === "image"),
+    );
   let currentSettings: AppSettings | undefined;
 
   $: imagePreviewReady =
@@ -1090,8 +1096,8 @@
 
   async function pasteSelectedItems() {
     if (selectedIds.length === 0 || multiPasting || pasteInFlight || dragBusy) return;
-    if (!combinedPasteAvailable) {
-      error = uiTranslate("合并粘贴仅支持文本内容", $uiLanguage);
+    if (!multiPasteAvailable) {
+      error = uiTranslate("多选粘贴仅支持可用的文本和图片", $uiLanguage);
       return;
     }
     multiPasting = true;
@@ -1099,7 +1105,7 @@
     pasteError = "";
     error = "";
     try {
-      await clipboardBridge.pasteRecords([...selectedIds]);
+      await clipboardBridge.pasteRecords([...selectedIds], !combinedPasteAvailable);
       clearMultiSelection();
     } catch (reason) {
       pasteError = reason instanceof Error ? reason.message : String(reason);
@@ -2045,12 +2051,14 @@
       <button
         class="multi-action paste-action"
         type="button"
-        disabled={multiPasting || !combinedPasteAvailable}
+        disabled={multiPasting || !multiPasteAvailable}
         on:click={pasteSelectedItems}
         aria-label={uiTranslate("粘贴", $uiLanguage)}
-        title={combinedPasteAvailable
-          ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage)
-          : uiTranslate("合并粘贴仅支持文本内容", $uiLanguage)}
+        title={!multiPasteAvailable
+          ? uiTranslate("多选粘贴仅支持可用的文本和图片", $uiLanguage)
+          : combinedPasteAvailable
+            ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage)
+            : uiTranslate("按选择顺序粘贴", $uiLanguage)}
       >
         <span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span>
         <CopySimple size={21} weight="bold" />

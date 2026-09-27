@@ -555,7 +555,7 @@ export interface CommandMap {
   clipboard_merge_devices: { args: { }; result: ClipboardMergeSummary };
   clipboard_paste_record: { args: { id: number; }; result: null };
   clipboard_paste_record_as: { args: { id: number; mode: ClipboardPasteMode; }; result: null };
-  clipboard_paste_records: { args: { ids: Array<number>; }; result: number };
+  clipboard_paste_records: { args: { ids: Array<number>; sequential: boolean; }; result: number };
   clipboard_paste_text: { args: { content: string; }; result: null };
   clipboard_prepare_drag: { args: { ids: Array<number>; mode: ClipboardDragMode; selection: ClipboardDragSelection | null; }; result: ClipboardDragPrepared };
   clipboard_send_files: { args: { id: number; peerId: string; }; result: string };

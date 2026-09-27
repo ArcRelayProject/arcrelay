@@ -839,7 +839,7 @@
   "多选操作": "Acciones de selección múltiple",
   "按选择顺序粘贴": "Pegar en el orden elegido",
   "按选择顺序合并并粘贴": "Combinar y pegar en el orden elegido",
-  "合并粘贴仅支持文本内容": "El pegado combinado solo admite texto",
+  "多选粘贴仅支持可用的文本和图片": "El pegado múltiple solo admite texto e imágenes disponibles",
   "多选粘贴": "Pegar",
   "每次按剪贴板快捷键粘贴下一项": "Pegar el siguiente elemento con cada atajo",
   "连续粘贴": "Secuencia",

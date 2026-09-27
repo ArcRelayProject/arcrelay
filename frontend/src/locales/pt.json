@@ -839,7 +839,7 @@
   "多选操作": "Ações de seleção múltipla",
   "按选择顺序粘贴": "Colar na ordem escolhida",
   "按选择顺序合并并粘贴": "Combinar e colar na ordem escolhida",
-  "合并粘贴仅支持文本内容": "A colagem combinada aceita somente texto",
+  "多选粘贴仅支持可用的文本和图片": "A colagem múltipla aceita apenas textos e imagens disponíveis",
   "多选粘贴": "Colar",
   "每次按剪贴板快捷键粘贴下一项": "Colar o próximo item a cada atalho",
   "连续粘贴": "Sequência",

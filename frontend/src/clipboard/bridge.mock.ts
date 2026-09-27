@@ -404,7 +404,7 @@ export const clipboardBridge = {
   },
   sendFiles: (id: number, peerId: string) => Promise.resolve("mock-transfer"),
   clear: () => Promise.resolve(),
-  pasteRecords: (ids: number[]) => Promise.resolve(ids.length),
+  pasteRecords: (ids: number[], _sequential: boolean) => Promise.resolve(ids.length),
   startContinuousPaste: (items: ContinuousPasteItemInput[]) =>
     Promise.resolve({
       current: 0,
