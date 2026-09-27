@@ -1065,7 +1065,11 @@ pub async fn clipboard_paste_records(
             .map_err(|error| error.to_string())?;
         None
     };
-    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, target.clone()).await?;
+    #[cfg(target_os = "macos")]
+    let prepare_target = target.clone();
+    #[cfg(not(target_os = "macos"))]
+    let prepare_target = target;
+    let restore_pinned_panel = prepare_window_and_wait_for_paste(&app, prepare_target).await?;
     let paste_result = if let Some(first_kind) = first_kind {
         async {
             for (index, id) in ids.iter().enumerate() {
