@@ -72,7 +72,7 @@
   import type { NearbyClipboardPeer } from "./types";
 
   const FETCH_SIZE = 60;
-  const VIRTUAL_OVERSCAN_ROWS = 4;
+  const VIRTUAL_OVERSCAN_VIEWPORTS = 1.5;
   const ROW_GAP = 8;
   const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
   const windowsClipboard =
@@ -341,8 +341,9 @@
     );
     visibleStartIndex = first;
     visibleEndIndex = last;
-    virtualStartIndex = Math.max(0, first - VIRTUAL_OVERSCAN_ROWS);
-    virtualEndIndex = Math.min(entries.length, last + VIRTUAL_OVERSCAN_ROWS);
+    const overscan = Math.max(height * VIRTUAL_OVERSCAN_VIEWPORTS, 600);
+    virtualStartIndex = index.indexAt(Math.max(0, top - overscan));
+    virtualEndIndex = Math.min(entries.length, index.indexAt(viewportBottom + overscan) + 1);
     virtualTopPadding = offsetForIndex(virtualStartIndex);
     virtualBottomPadding = Math.max(0, index.total - index.offset(virtualEndIndex));
     renderedEntries = entries
@@ -1289,6 +1290,7 @@
   }
 
   function handleListScroll() {
+    scrollTop = scrollElement?.scrollTop ?? 0;
     scheduleListMetricsUpdate();
   }
 
@@ -2004,7 +2006,6 @@
             data-clipboard-index={entry.index}
             class="clipboard-item"
             class:timeline-target={nearby?.anchor.id === entry.item.id}
-            style:--enter-order={Math.min(entry.index, 7)}
             aria-posinset={entry.index + 1}
             aria-setsize={history.entries.length}
             use:measureClipboardItem

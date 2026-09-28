@@ -576,15 +576,6 @@
   }
 }
 
-@keyframes clipboard-item-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 @keyframes clipboard-window-enter {
   from {
     opacity: 0;
