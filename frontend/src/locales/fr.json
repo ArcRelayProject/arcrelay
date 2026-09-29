@@ -2183,6 +2183,7 @@
   "帮助与诊断": "Aide et diagnostic",
   "打开日志文件夹": "Ouvrir le dossier des journaux",
   "导出诊断包…": "Exporter le dossier de diagnostic…",
+  "重启 ArcRelay": "Redémarrer ArcRelay",
   "选择要发送的文件": "Choisir les fichiers à envoyer",
   "操作未完成": "Action non terminée",
   "无法完成托盘操作，请重试。": "Impossible de terminer l’action du menu de notification. Veuillez réessayer.",
