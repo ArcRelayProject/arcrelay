@@ -87,7 +87,7 @@ jobs:
           RELEASE_NAME: ArcRelay Test ${{ steps.release.outputs.tag }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_BODY: |
-            Automated test build from `${{ steps.release.outputs.short_commit }}` on `main`.
+            Automated test build from `${{ steps.release.outputs.short_commit }}`.
 
             This signed prerelease follows the Test update channel and may be unstable.
         run: |

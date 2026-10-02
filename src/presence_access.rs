@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use arcrelay_core::domain::clipboard::ClipboardSyncPreferences;
 use arcrelay_gaze::PresenceState;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::backend::DesktopState;
 
@@ -85,6 +85,9 @@ pub async fn reconcile_clipboard_runtime(
             sync_edits_and_deletes: settings.clipboard_sync_edits_and_deletes,
             sync_favorites: settings.clipboard_sync_favorites,
         });
+
+    app.state::<crate::commands::ClipboardEditorSessions>()
+        .reconcile_access(app, locked);
 
     if locked {
         crate::clipboard_drag::invalidate(app);

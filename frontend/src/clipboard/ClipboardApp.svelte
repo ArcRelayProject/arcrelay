@@ -155,7 +155,26 @@
   let imagePreviewReady = false;
   let editDialogOpen = false;
   let editingItem: ClipboardItem | null = null;
-  let editContent = "";
+  let editOrigins = new Map<number, number>();
+  let originsGeneration = 0;
+  $: void refreshEditOrigins(history.entries);
+  async function refreshEditOrigins(entries: ClipboardItem[]) {
+    const generation = ++originsGeneration;
+    try {
+      const origins = await clipboardBridge.editOrigins(
+        entries.slice(0, 500).map((item) => item.id),
+      );
+      if (generation === originsGeneration) editOrigins = new Map(origins);
+    } catch {
+      if (generation === originsGeneration) editOrigins = new Map();
+    }
+  }
+  async function viewOriginal(sourceId: number) {
+    const page = await clipboardBridge.timeline({ type: "around", id: sourceId }, sortBy);
+    const original = page?.entries.find((item) => item.id === sourceId);
+    if (original) await viewNearby(original);
+    else error = "原记录已被删除或清理。";
+  }
   let labelDialogOpen = false;
   let managingLabels = false;
   let labelingItem: ClipboardItem | null = null;
@@ -1420,8 +1439,7 @@
     } else if (action.type === "favorite" && selectedItem) {
       void toggleFavorite(selectedItem);
     } else if (action.type === "edit" && selectedItem) {
-      if (selectedItem.kind === "text") void beginEdit(selectedItem);
-      else error = uiTranslate("仅文本条目支持编辑", $uiLanguage);
+      void beginEdit(selectedItem);
     } else if (action.type === "labels" && selectedItem) {
       void beginLabels(selectedItem);
     } else if (action.type === "preview" && selectedItem) {
@@ -1431,11 +1449,20 @@
     }
   }
 
-  async function beginEdit(item: ClipboardItem) {
-    editingItem = item;
-    try {
-      editContent = await clipboardBridge.textContent(item);
+  async function beginEdit(item: ClipboardItem, confirmed = false) {
+    if (!item.available || item.kind === "files") {
+      error = "此条目暂不支持编辑。";
+      return;
+    }
+    if (item.kind === "html" && !confirmed) {
+      editingItem = item;
       editDialogOpen = true;
+      return;
+    }
+    try {
+      await clipboardBridge.openEditor(item.id, item.kind === "html");
+      editDialogOpen = false;
+      previewDialogOpen = false;
     } catch (reason) {
       error = reason instanceof Error ? reason.message : String(reason);
     }
@@ -1477,13 +1504,6 @@
     }
   }
 
-  async function saveEdit() {
-    if (!editingItem) return;
-    await clipboardBridge.editText(editingItem.id, editContent);
-    editDialogOpen = false;
-    await load();
-  }
-
   async function beginLabels(item: ClipboardItem) {
     managingLabels = false;
     labelingItem = item;
@@ -1513,6 +1533,9 @@
             : undefined,
         reload: load,
         edit: () => beginEdit(item),
+        original: editOrigins.has(item.id)
+          ? () => viewOriginal(editOrigins.get(item.id)!)
+          : undefined,
         segment: () => beginSegments(item),
         manageLabels: () => beginLabels(item),
         paste: (mode) => pasteItem(item, mode),
@@ -2021,6 +2044,8 @@
               {language}
               timestamp={itemTimestamp(entry.item)}
               timelineTarget={nearby?.anchor.id === entry.item.id}
+              edited={editOrigins.has(entry.item.id)}
+              onEdit={() => void beginEdit(entry.item)}
               exactTime={Boolean(nearby)}
               previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
                 entry.index < visibleEndIndex + 2}
@@ -2177,6 +2202,12 @@
             {/if}
           </div>
           <div class="clipboard-preview-header-actions">
+            {#if previewingItem && previewingItem.kind !== "files"}<button
+                class="image-preview-header-paste"
+                disabled={!previewingItem.available || previewLoading}
+                on:click={() => beginEdit(previewingItem!)}
+                >{previewingItem.kind === "html" ? "编辑纯文本副本" : "编辑"}</button
+              >{/if}
             {#if imagePreviewReady && previewingItem}
               {#each ["image_jpg", "image_png"] as imageMode}
                 <button
@@ -2277,22 +2308,20 @@
   </Dialog.Root>
 
   <Dialog.Root bind:open={editDialogOpen}>
-    <Dialog.Portal>
-      <Dialog.Overlay class="dialog-overlay" />
-      <Dialog.Content class="dialog-content">
-        <Dialog.Title class="dialog-title">{tr("编辑文本", language)}</Dialog.Title>
-        <textarea class="clipboard-edit-textarea" bind:value={editContent} rows="8"></textarea>
+    <Dialog.Portal
+      ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content class="dialog-content">
+        <Dialog.Title class="dialog-title">编辑纯文本副本？</Dialog.Title>
+        <Dialog.Description
+          >富文本样式、链接格式和嵌入图片不会保留。保存将新增一条纯文本记录，原记录仍会保留。</Dialog.Description
+        >
         <div class="dialog-actions">
-          <Dialog.Close class="dialog-button">{tr("取消", language)}</Dialog.Close>
-          <button
-            class="dialog-button"
-            type="button"
-            disabled={!editContent.trim()}
-            on:click={saveEdit}>{uiTranslate("保存", $uiLanguage)}</button
+          <Dialog.Close class="dialog-button">取消</Dialog.Close><button
+            class="dialog-button primary"
+            on:click={() => editingItem && beginEdit(editingItem, true)}>编辑纯文本副本</button
           >
         </div>
-      </Dialog.Content>
-    </Dialog.Portal>
+      </Dialog.Content></Dialog.Portal
+    >
   </Dialog.Root>
 
   <ClipboardLabelDialog

@@ -29,12 +29,20 @@
     "lint": "eslint frontend/src",
     "format": "node scripts/format.mjs --write",
     "format:check": "node scripts/format.mjs",
-    "test:runtime-ui": "playwright test --config playwright.visual.config.ts runtime-performance.spec.ts"
+    "test:runtime-ui": "playwright test --config playwright.visual.config.ts runtime-performance.spec.ts clipboard-editor.spec.ts"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/merge": "^6.12.2",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@crabnebula/tauri-plugin-drag": "^2.1.0",
     "@tauri-apps/api": "2.11.1",
     "bits-ui": "^2.18.1",
+    "konva": "^10.7.0",
     "phosphor-svelte": "3.1.0",
     "qrcode": "^1.5.4",
     "svelte": "5.56.8"
@@ -45,8 +53,10 @@
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.10.12",
     "@types/qrcode": "^1.5.5",
+    "dompurify": "^3.4.16",
     "eslint": "10.10.0",
     "eslint-plugin-svelte": "3.23.0",
+    "marked": "^18.0.14",
     "prettier": "3.9.7",
     "prettier-plugin-svelte": "3.5.2",
     "svelte-check": "4.3.4",

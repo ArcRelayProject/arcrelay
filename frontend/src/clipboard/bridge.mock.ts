@@ -242,6 +242,15 @@ function mockHistory(
   return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
 export const clipboardBridge = {
+  openEditor: async (id: number, plainCopy = false) => {
+    const item = mockItems.find((item) => item.id === id);
+    window.open(
+      `/clipboard-editor.html?kind=${item?.kind === "image" ? "image" : "text"}${plainCopy ? "&plainCopy=1" : ""}`,
+      `clipboard-editor-${id}`,
+      "width=1100,height=760",
+    );
+  },
+  editOrigins: async (_ids: number[]): Promise<[number, number][]> => [],
   prepareDrag: async (request: ClipboardDragRequest): Promise<PreparedClipboardDrag> => {
     const token = crypto.randomUUID();
     preparedDrags.set(token, request);

@@ -84,6 +84,10 @@ export type ClipboardDragPrepared = { token: string, kind: ClipboardDragKind, co
 
 export type ClipboardDragSelection = { id: number, text: string, };
 
+export type ClipboardEditorDraft = { "kind": "text", content: string, } | { "kind": "image", png: string, };
+
+export type ClipboardEditorSnapshot = { sourceId: number, kind: string, text: string | null, image: string | null, width: number | null, height: number | null, plainCopy: boolean, };
+
 export type ClipboardHistoryView = { revision: number, entries: Array<ClipboardItemView>, nextCursor: ClipboardCursorView | null, totalCount: number | null, };
 
 export type ClipboardImageOcr = { text: string, blocks: Array<ClipboardOcrBlock>, modelVersion: string, updatedAtMs: number, };
@@ -545,7 +549,15 @@ export interface CommandMap {
   clipboard_delete_label: { args: { labelId: string; }; result: null };
   clipboard_delete_record: { args: { id: number; }; result: null };
   clipboard_delete_records: { args: { ids: Array<number>; }; result: number };
+  clipboard_edit_origins: { args: { ids: Array<number>; }; result: Array<[number, number]> };
   clipboard_edit_text: { args: { content: string; id: number; }; result: null };
+  clipboard_editor_access: { args: { }; result: null };
+  clipboard_editor_close: { args: { }; result: null };
+  clipboard_editor_copy: { args: { }; result: null };
+  clipboard_editor_open: { args: { id: number; plainCopy: boolean; }; result: null };
+  clipboard_editor_preview: { args: { format: ClipboardTextFormat; source: string; }; result: ClipboardTextPreview };
+  clipboard_editor_save: { args: { draft: ClipboardEditorDraft; }; result: number };
+  clipboard_editor_snapshot: { args: { }; result: ClipboardEditorSnapshot };
   clipboard_history: { args: { cursor: ClipboardCursorInput | null; favoriteOnly: boolean; kind: ClipboardContentKind | null; labelIds: Array<string> | null; limit: number | null; search: string | null; }; result: ClipboardHistoryView };
   clipboard_html_preview: { args: { id: number; }; result: string | null };
   clipboard_image_ocr: { args: { id: number; }; result: ClipboardImageOcr | null };
