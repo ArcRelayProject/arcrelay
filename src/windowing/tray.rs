@@ -48,6 +48,7 @@ const TEXTS: &[&str] = &[
     "帮助与诊断",
     "打开日志文件夹",
     "导出诊断包…",
+    "重启 ArcRelay",
     "退出 ArcRelay",
     "选择要发送的文件",
     "操作未完成",
@@ -86,6 +87,7 @@ enum Label {
     Help,
     Logs,
     Diagnostics,
+    Restart,
     Quit,
     ChooseFiles,
     ErrorTitle,
@@ -306,6 +308,8 @@ fn build_menu(app: &AppHandle, state: &MenuState) -> tauri::Result<Menu<tauri::W
         &[
             &item("logs", Label::Logs)?,
             &item("diagnostics", Label::Diagnostics)?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("restart", Label::Restart)?,
         ],
     )?;
     let quit = item("quit", Label::Quit)?;
@@ -522,6 +526,7 @@ async fn handle_action(app: &AppHandle, id: &str) -> Result<(), String> {
                 .show()
                 .await;
         }
+        "restart" => app.restart(),
         "quit" => {
             app.state::<DesktopState>()
                 .inner()

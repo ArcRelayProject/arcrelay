@@ -101,6 +101,15 @@ test("scrolling reassigns badges and both focus modes paste the displayed record
   page,
 }) => {
   await openClipboard(page);
+  // Rows mounted by virtual scrolling must paint immediately instead of fading in.
+  await expect
+    .poll(() =>
+      page
+        .locator(".clipboard-item")
+        .first()
+        .evaluate((row) => getComputedStyle(row).animationName),
+    )
+    .toBe("none");
   // Spy on the browser adapter to verify actual shortcut routing by record ID.
   await page.evaluate(async () => {
     const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
@@ -134,6 +143,59 @@ test("scrolling reassigns badges and both focus modes paste the displayed record
     .poll(() => page.evaluate(() => (window as any).__pasted))
     .toEqual([Number(id), Number(id)]);
   await page.screenshot({ path: "/tmp/arcrelay-clipboard-numbers.png", animations: "disabled" });
+});
+
+test("fast jumps through a long history leave no empty viewport", async ({ page }) => {
+  await openClipboard(page);
+  await page.evaluate(async () => {
+    const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
+    const initial = await clipboardBridge.history({
+      search: "",
+      kind: null,
+      favoriteOnly: false,
+      cursor: null,
+    });
+    const example = initial.entries.find((item) => item.kind === "text")!;
+    const entries = Array.from({ length: 120 }, (_, index) => ({
+      ...example,
+      id: 10_000 + index,
+      syncId: `scroll-${index}`,
+      preview: `Scroll record ${index}`,
+      updatedAtMs: example.updatedAtMs - index * 1000,
+    }));
+    clipboardBridge.history = async () => ({
+      revision: 2,
+      entries,
+      nextCursor: null,
+      totalCount: entries.length,
+    });
+  });
+  await page.getByRole("button", { name: "文本", exact: true }).click();
+  await expect(page.locator(".record-count")).toContainText("120");
+  await page.locator(".clipboard-list").evaluate((list) => {
+    list.scrollTop = list.scrollHeight * 0.7;
+  });
+  await expect.poll(() => page.locator(".clipboard-item").count()).toBeLessThan(120);
+  await expect
+    .poll(() =>
+      page.locator(".clipboard-list").evaluate((list) => {
+        const viewport = list.getBoundingClientRect();
+        const rows = Array.from(list.querySelectorAll<HTMLElement>(".clipboard-row"))
+          .map((row) => ({
+            rect: row.getBoundingClientRect(),
+            opacity: Number(getComputedStyle(row.parentElement!).opacity),
+          }))
+          .filter(({ rect }) => rect.bottom > viewport.top && rect.top < viewport.bottom)
+          .sort((a, b) => a.rect.top - b.rect.top);
+        if (rows.length === 0 || rows.some((row) => row.opacity < 1)) return Infinity;
+        let maxGap = Math.max(0, rows[0].rect.top - viewport.top);
+        for (let index = 1; index < rows.length; index++) {
+          maxGap = Math.max(maxGap, rows[index].rect.top - rows[index - 1].rect.bottom);
+        }
+        return Math.max(maxGap, viewport.bottom - rows.at(-1)!.rect.bottom);
+      }),
+    )
+    .toBeLessThan(20);
 });
 
 test("narrow windows keep the compact label filter contained", async ({ page }) => {

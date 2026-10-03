@@ -17,6 +17,7 @@ import { showInlineContextMenu, type ContextMenuEntry } from "./inlineContextMen
 
 interface ContextMenuCallbacks {
   nearby?: () => Promise<void> | void;
+  original?: () => Promise<void> | void;
   reload: () => Promise<void> | void;
   edit: () => Promise<void> | void;
   segment: () => Promise<void> | void;
@@ -109,9 +110,19 @@ export async function showClipboardContextMenu(
     ...(item.kind === "text" || item.kind === "html"
       ? [{ text: translate("预览与选择…", language), action: action(callbacks.segment) }]
       : []),
-    ...(item.kind === "text"
-      ? [{ text: tr("编辑文本", language), action: action(callbacks.edit) }]
-      : []),
+    {
+      text:
+        item.kind === "html"
+          ? "编辑纯文本副本…"
+          : item.kind === "image"
+            ? "编辑图片…"
+            : item.kind === "files"
+              ? "文件暂不支持编辑"
+              : "编辑文本…",
+      enabled: item.available && item.kind !== "files",
+      action: action(callbacks.edit),
+    },
+    ...(callbacks.original ? [{ text: "查看原记录", action: action(callbacks.original) }] : []),
     ...(callbacks.nearby
       ? [{ text: tr("查看附近记录", language), action: action(callbacks.nearby) }]
       : []),

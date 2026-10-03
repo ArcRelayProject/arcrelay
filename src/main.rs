@@ -90,6 +90,7 @@ fn main() {
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(commands::ClipboardEditorSessions::default())
         .manage(app_update::AppUpdateState::default())
         .manage(Arc::new(clipboard_drag::ClipboardDragService::default()))
         .manage(Arc::new(gesture_debug::GestureDebugState::default()))
@@ -305,6 +306,14 @@ fn main() {
             commands::set_clipboard_navigation_ready,
             commands::activate_clipboard_navigation,
             commands::clipboard_edit_text,
+            commands::clipboard_editor_open,
+            commands::clipboard_editor_snapshot,
+            commands::clipboard_editor_access,
+            commands::clipboard_editor_preview,
+            commands::clipboard_editor_save,
+            commands::clipboard_editor_copy,
+            commands::clipboard_editor_close,
+            commands::clipboard_edit_origins,
             commands::clipboard_text_content,
             commands::clipboard_text_segments,
             commands::clipboard_join_segments,
@@ -593,6 +602,15 @@ fn main() {
                     tracing::warn!(%error, "failed to stop Arc Input during exit");
                 }
             }
+        }
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } if label.starts_with("clipboard-editor-") => {
+            app_handle
+                .state::<commands::ClipboardEditorSessions>()
+                .remove(&label);
         }
         tauri::RunEvent::WindowEvent {
             label,

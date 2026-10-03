@@ -21,6 +21,8 @@ async function imageSource(command: "clipboard_thumbnail" | "clipboard_image_pre
   return path ? convertFileSrc(path) : null;
 }
 export const clipboardBridge = {
+  openEditor: (id: number, plainCopy = false) => invoke("clipboard_editor_open", { id, plainCopy }),
+  editOrigins: (ids: number[]) => invoke("clipboard_edit_origins", { ids }),
   prepareDrag: (request: ClipboardDragRequest) =>
     invoke("clipboard_prepare_drag", { ...request, selection: request.selection ?? null }),
   startDrag: (token: string) => invoke("clipboard_start_drag", { token }),

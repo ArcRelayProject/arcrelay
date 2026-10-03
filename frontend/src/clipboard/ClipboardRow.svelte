@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../localization";
-  import { DevicesIcon, Star } from "phosphor-svelte";
+  import { DevicesIcon, Star, PencilSimple } from "phosphor-svelte";
 
   import type { LanguagePreference } from "../types";
   import ContentPreview from "./ContentPreview.svelte";
@@ -8,6 +8,8 @@
   import type { ClipboardItem } from "./types";
 
   export let item: ClipboardItem;
+  export let edited = false;
+  export let onEdit: () => void = () => {};
   export let shortcutIndex: number | null;
   export let selected: boolean;
   export let multiSelected = false;
@@ -133,6 +135,18 @@
       {/if}
     {/if}
     <strong>{item.sourceApp ?? tr("此电脑", language)}</strong>
+    {#if edited}<span class="edited-badge">已编辑</span>{/if}
+    {#if !multiSelectActive && item.kind !== "files"}<button
+        class="row-edit"
+        title={item.kind === "html" ? "编辑纯文本副本" : "编辑"}
+        aria-label="编辑"
+        disabled={!item.available}
+        onpointerdown={(event) => event.stopPropagation()}
+        onclick={(event) => {
+          event.stopPropagation();
+          onEdit();
+        }}><PencilSimple size={15} /></button
+      >{/if}
     {#if item.sourceDeviceName}
       <span
         class="remote-device-indicator"
@@ -153,6 +167,26 @@
 </div>
 
 <style>
+  .edited-badge {
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+  .row-edit {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    display: flex;
+    padding: 3px;
+    border-radius: 5px;
+  }
+  .row-edit:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
   /* Keep the row as the hit target while asynchronous HTML/image previews
      replace their children between the first and second click. */
   .clipboard-content {

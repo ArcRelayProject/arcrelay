@@ -2183,6 +2183,7 @@
   "帮助与诊断": "Help and Diagnostics",
   "打开日志文件夹": "Open Log Folder",
   "导出诊断包…": "Export Diagnostic Bundle…",
+  "重启 ArcRelay": "Restart ArcRelay",
   "选择要发送的文件": "Choose Files to Send",
   "操作未完成": "Action Not Completed",
   "无法完成托盘操作，请重试。": "Could not complete the tray action. Please try again.",

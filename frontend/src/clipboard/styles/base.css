@@ -363,12 +363,6 @@ input:focus-visible {
   min-width: 0;
   width: 100%;
   margin-bottom: 8px;
-  animation: clipboard-item-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(var(--enter-order, 0) * 14ms);
-}
-
-.clipboard-item:nth-child(n + 9) {
-  animation: none;
 }
 
 .clipboard-row {

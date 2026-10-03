@@ -9,7 +9,7 @@ use image::ImageDecoder;
 // whichever application happens to be focused later.
 static CLIPBOARD_ACTION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
+pub(super) fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
     if crate::clipboard_drag::is_dragging() {
         return Err("clipboard drag already in progress".into());
     }

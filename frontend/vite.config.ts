@@ -19,6 +19,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, "index.html"),
+        clipboardEditor: resolve(import.meta.dirname, "clipboard-editor.html"),
         clipboard: resolve(import.meta.dirname, "clipboard.html"),
         trayTransfer: resolve(import.meta.dirname, "tray-transfer.html"),
         permissionGuide: resolve(import.meta.dirname, "permission-guide.html"),
