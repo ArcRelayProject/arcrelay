@@ -1,5 +1,68 @@
 import { expect, test } from "@playwright/test";
 
+test("long text scrolls in every view and synchronizes the split preview", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 760 });
+  const original = Array.from({ length: 411 }, (_, i) => `Line ${i + 1}: clipboard draft`).join(
+    "\n",
+  );
+  await page.route("**/src/clipboard/editor/mock.ts", (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      body: `
+        export async function snapshot() {
+          return { sourceId: 1, kind: "text", text: ${JSON.stringify(original)},
+            image: null, width: null, height: null, plainCopy: true };
+        }
+        export async function preview(source, format) {
+          return { source, format, safeHtml: null, renderLimited: false };
+        }
+      `,
+    }),
+  );
+  await page.goto("/clipboard-editor.html");
+  const merge = page.locator(".cm-mergeView");
+  const preview = page.locator(".rendered-preview");
+  const wheelDown = async (scroller: typeof merge) => {
+    await scroller.hover();
+    await page.mouse.wheel(0, 600);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  };
+  const reset = (scroller: typeof merge) => scroller.evaluate((element) => (element.scrollTop = 0));
+
+  await expect(page.locator(".cm-merge-b .cm-content")).toContainText("Line 1:");
+  for (const mode of ["编辑", "左右对照", "修改对比"]) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await reset(merge);
+    if (mode === "左右对照") await reset(preview);
+    await wheelDown(merge);
+    if (mode === "左右对照") {
+      await expect.poll(() => preview.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    }
+    await merge.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await expect(
+      page.locator(".cm-merge-b .cm-line").filter({ hasText: "Line 411:" }),
+    ).toBeInViewport();
+    if (mode === "修改对比") {
+      await expect(
+        page.locator(".cm-merge-a .cm-line").filter({ hasText: "Line 411:" }),
+      ).toBeInViewport();
+    }
+    await expect(page.getByRole("button", { name: "保存并复制", exact: true })).toBeInViewport();
+  }
+  await page.getByRole("button", { name: "预览", exact: true }).click();
+  await reset(preview);
+  await wheelDown(preview);
+  await page.getByRole("button", { name: "编辑", exact: true }).click();
+  await page.setViewportSize({ width: 900, height: 600 });
+  await reset(merge);
+  await page.locator(".cm-merge-b .cm-content").click({ position: { x: 100, y: 20 } });
+  await page.keyboard.press("ControlOrMeta+End");
+  await expect(
+    page.locator(".cm-merge-b .cm-line").filter({ hasText: "Line 411:" }),
+  ).toBeInViewport();
+  await expect(page.getByRole("button", { name: "保存并复制", exact: true })).toBeInViewport();
+});
+
 test("views share the complete draft and undo history; copy failure freezes the saved snapshot", async ({
   page,
 }) => {

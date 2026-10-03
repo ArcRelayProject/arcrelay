@@ -219,14 +219,16 @@ button:hover:not(:disabled) {
 .code-host {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 .cm-mergeView {
   height: 100%;
   overflow: auto;
 }
 .cm-mergeViewEditors {
-  height: 100%;
+  /* MergeView scrolls both editors together. Let the row grow with the document;
+     a fixed height clips its contents inside the library's hidden-overflow panes. */
+  min-height: 100%;
 }
 .cm-mergeViewEditor {
   min-width: 0;

@@ -138,17 +138,19 @@
     });
     const scroll = () => {
       if (syncScroll && previewHost && merge && mode === "split") {
-        const scroller = merge.b.scrollDOM;
+        const scroller = merge.dom;
         previewHost.scrollTop =
           (scroller.scrollTop / Math.max(1, scroller.scrollHeight - scroller.clientHeight)) *
           (previewHost.scrollHeight - previewHost.clientHeight);
       }
     };
-    merge.b.scrollDOM.addEventListener("scroll", scroll);
+    // MergeView owns vertical scrolling; its individual editors expand to fit.
+    merge.dom.addEventListener("scroll", scroll);
     void updatePreview();
     return () => {
       clearTimeout(previewTimer);
       previewGeneration++;
+      merge?.dom.removeEventListener("scroll", scroll);
       merge?.destroy();
       merge = undefined;
     };
