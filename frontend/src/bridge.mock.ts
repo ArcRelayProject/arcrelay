@@ -377,8 +377,13 @@ export const bridge = {
   async onTrayNavigationPending(_listener: () => void): Promise<UnlistenFn> {
     return () => {};
   },
-  async getClipboardRetentionDays(): Promise<number> { return mockClipboardRetentionDays; },
-  async setClipboardRetentionDays(days: number): Promise<number> { mockClipboardRetentionDays = days; return days; },
+  async getClipboardRetentionDays(): Promise<number> {
+    return mockClipboardRetentionDays;
+  },
+  async setClipboardRetentionDays(days: number): Promise<number> {
+    mockClipboardRetentionDays = days;
+    return days;
+  },
   async getAppSettings(): Promise<AppSettings> {
     mockData.appSettings.language = visualPreviewEnabled()
       ? (visualPreviewLanguage() ?? "zhCn")
