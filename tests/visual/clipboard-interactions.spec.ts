@@ -14,45 +14,78 @@ async function openHtml(page: import("@playwright/test").Page) {
   await expect(page.locator(".rendered-text h3")).toHaveText("设备列表");
 }
 
-test("image preview offers JPG and PNG paste actions with the selected encoding", async ({
+test("image preview omits the header and Space closes from a focused image tool", async ({
   page,
 }) => {
   await openClipboard(page);
-  await page.evaluate(async () => {
-    const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
-    (window as any).__imagePastes = [];
-    clipboardBridge.pasteAs = async (id: number, mode: string) => {
-      (window as any).__imagePastes.push({ id, mode });
-    };
-  });
   const row = page.locator('[data-clipboard-id="101"] .clipboard-row');
   await row.focus();
   await row.press("Space");
-  await expect(page.getByRole("button", { name: "粘贴为 JPG", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "粘贴为 PNG", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "粘贴为 JPG", exact: true }).click();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__imagePastes))
-    .toEqual([{ id: 101, mode: "image_jpg" }]);
-  await page.getByRole("button", { name: "粘贴为 PNG", exact: true }).click();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__imagePastes))
-    .toEqual([
-      { id: 101, mode: "image_jpg" },
-      { id: 101, mode: "image_png" },
-    ]);
-  await page.setViewportSize({ width: 420, height: 580 });
-  for (const name of ["粘贴为 JPG", "粘贴为 PNG"]) {
-    const rect = await page.getByRole("button", { name, exact: true }).boundingBox();
-    expect(rect).not.toBeNull();
-    expect(rect!.x).toBeGreaterThanOrEqual(0);
-    expect(rect!.x + rect!.width).toBeLessThanOrEqual(420);
+  const dialog = page.getByRole("dialog", { name: "剪贴板预览", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".clipboard-preview-header")).toHaveCount(0);
+  for (const name of ["编辑", "粘贴为 JPG", "粘贴为 PNG", "插入", "取消"]) {
+    await expect(dialog.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
+  await expect(dialog.getByRole("button", { name: "拖出原图", exact: true })).toBeVisible();
+  const zoom = dialog.getByRole("button", { name: "放大", exact: true });
+  await zoom.click();
+  await expect(dialog.locator(".image-preview-zoom")).toHaveText("125%");
+  await page.setViewportSize({ width: 420, height: 580 });
   await page.screenshot({
-    path: "/tmp/arcrelay-clipboard-image-formats.png",
+    path: "/tmp/arcrelay-clipboard-image-preview.png",
     animations: "disabled",
   });
+  await zoom.focus();
+  await page.keyboard.down("Space");
+  await expect(dialog).toHaveCount(0);
+  // Holding the closing key must not reopen the preview on key repeat.
+  await row.focus();
+  await page.keyboard.down("Space");
+  await expect(dialog).toHaveCount(0);
+  await page.keyboard.up("Space");
+  await row.press("Space");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(dialog).toHaveCount(0);
 });
+
+test("Space closes text preview instead of activating its focused toolbar button", async ({
+  page,
+}) => {
+  await openHtml(page);
+  await page.getByRole("button", { name: "源文本", exact: true }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".clipboard-preview-dialog")).toHaveCount(0);
+});
+
+for (const tag of ["input", "textarea", "select", "div"]) {
+  test(`Space closes before rendered ${tag} content can consume the event`, async ({ page }) => {
+    await openHtml(page);
+    await page.locator(".rendered-text").evaluate((root, tag) => {
+      const control = document.createElement(tag);
+      control.id = "preview-space-consumer";
+      if (tag === "div") control.contentEditable = "true";
+      (window as any).__previewSpaceConsumed = false;
+      control.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.code !== "Space") return;
+          (window as any).__previewSpaceConsumed = true;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        },
+        true,
+      );
+      root.append(control);
+      control.focus();
+    }, tag);
+    await expect(page.locator("#preview-space-consumer")).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(page.locator(".clipboard-preview-dialog")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__previewSpaceConsumed)).toBe(false);
+  });
+}
 
 test("HTML renders, double click selects, and source switching clears selection", async ({
   page,

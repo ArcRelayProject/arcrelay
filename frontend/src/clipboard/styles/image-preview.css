@@ -251,14 +251,6 @@
 }
 
 @media (max-width: 620px) {
-  .image-preview-header .clipboard-preview-heading {
-    display: none;
-  }
-
-  .clipboard-preview-header.image-preview-header {
-    justify-content: flex-end;
-  }
-
   .image-preview-dialog .image-preview-toolbar {
     left: 7px;
     transform: none;

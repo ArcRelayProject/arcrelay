@@ -183,29 +183,15 @@
   min-width: 0;
 }
 
-.clipboard-preview-header.image-preview-header {
-  position: relative;
-  z-index: 3;
-  min-height: 52px;
-  align-items: center;
-  padding: 7px 12px;
-  box-sizing: border-box;
-}
-
-.image-preview-header .dialog-title {
-  max-width: 150px;
+.clipboard-preview-accessibility {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.image-preview-header .clipboard-preview-description {
-  max-width: 170px;
-  margin-top: 1px;
-  overflow: hidden;
-  font-size: 10px;
-  text-overflow: ellipsis;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
   white-space: nowrap;
 }
 
@@ -214,21 +200,6 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
-}
-
-.image-preview-header {
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.image-preview-header .clipboard-preview-heading {
-  flex: 1 1 140px;
-}
-
-.image-preview-header .clipboard-preview-header-actions {
-  flex-wrap: wrap;
-  flex-shrink: 1;
-  margin-left: auto;
 }
 
 .image-preview-header-paste {

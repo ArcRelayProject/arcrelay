@@ -588,6 +588,7 @@
       if (!disposed) error = String(reason);
     });
 
+    window.addEventListener("keydown", handlePreviewKeyDown, true);
     window.addEventListener("keydown", handleKeyDown);
     const dragMove = (event: PointerEvent) => dragSession.move(event);
     const dragRelease = (event: PointerEvent) => dragSession.release(event.pointerId);
@@ -607,6 +608,7 @@
       window.clearTimeout(historyRefreshTimer);
       window.clearTimeout(labelFilterCloseTimer);
       cancelAnimationFrame(scrollAnimationFrame);
+      window.removeEventListener("keydown", handlePreviewKeyDown, true);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("pointermove", dragMove, true);
       window.removeEventListener("pointerup", dragRelease, true);
@@ -1313,8 +1315,20 @@
     scheduleListMetricsUpdate();
   }
 
+  function handlePreviewKeyDown(event: KeyboardEvent): boolean {
+    if (!previewDialogOpen) return false;
+    const action = resolvePreviewKeyboardAction(event);
+    if (!action) return false;
+    // Reserve Space before focused controls or rendered content can consume it.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (action === "close") previewDialogOpen = false;
+    return true;
+  }
+
   function handleKeyDown(event: KeyboardEvent) {
-    if (event.isComposing) return;
+    // Native navigation keys call this directly instead of dispatching a DOM event.
+    if (handlePreviewKeyDown(event) || event.isComposing) return;
     if (dragBusy) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -1324,18 +1338,6 @@
       return;
     }
     if (handleInlineMenuKey(event)) return;
-    if (previewDialogOpen) {
-      const interactive =
-        event.target instanceof Element && event.target.closest("button, select, input, textarea");
-      const previewAction =
-        interactive || event.defaultPrevented ? null : resolvePreviewKeyboardAction(event);
-      if (previewAction) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (previewAction === "close") previewDialogOpen = false;
-        return;
-      }
-    }
     if (event.key === "Escape") {
       if (selectedIds.length > 0) {
         event.preventDefault();
@@ -1442,7 +1444,7 @@
       void beginEdit(selectedItem);
     } else if (action.type === "labels" && selectedItem) {
       void beginLabels(selectedItem);
-    } else if (action.type === "preview" && selectedItem) {
+    } else if (action.type === "preview" && selectedItem && !event.repeat) {
       void beginPreview(selectedItem);
     } else if (action.type === "actions") {
       openSelectedActions();
@@ -2180,62 +2182,42 @@
       <Dialog.Content
         class={`dialog-content clipboard-preview-dialog${imagePreviewReady ? " image-preview-dialog" : ""}`}
       >
-        <div class:image-preview-header={imagePreviewReady} class="clipboard-preview-header">
-          <div class="clipboard-preview-heading">
-            <Dialog.Title class="dialog-title">
-              {imagePreviewReady && previewingItem
-                ? (previewingItem.sourceApp ?? tr("图片", language))
-                : uiTranslate("剪贴板预览", $uiLanguage)}
-            </Dialog.Title>
-            {#if previewingItem}
-              <Dialog.Description class="clipboard-preview-description">
-                {#if imagePreviewReady && previewingItem.width && previewingItem.height}
-                  {previewingItem.width}×{previewingItem.height} · {previewTimestamp(
-                    previewingItem,
-                  )}
-                {:else}
+        {#if imagePreviewReady}
+          <div class="clipboard-preview-accessibility">
+            <Dialog.Title>{uiTranslate("剪贴板预览", $uiLanguage)}</Dialog.Title>
+            <Dialog.Description>
+              {previewingItem?.sourceApp ?? tr("图片", language)}
+            </Dialog.Description>
+          </div>
+        {:else}
+          <div class="clipboard-preview-header">
+            <div class="clipboard-preview-heading">
+              <Dialog.Title class="dialog-title">
+                {uiTranslate("剪贴板预览", $uiLanguage)}
+              </Dialog.Title>
+              {#if previewingItem}
+                <Dialog.Description class="clipboard-preview-description">
                   {previewingItem.sourceApp ?? tr("此电脑", language)} · {previewTimestamp(
                     previewingItem,
                   )}
-                {/if}
-              </Dialog.Description>
-            {/if}
-          </div>
-          <div class="clipboard-preview-header-actions">
-            {#if previewingItem && previewingItem.kind !== "files"}<button
-                class="image-preview-header-paste"
-                disabled={!previewingItem.available || previewLoading}
-                on:click={() => beginEdit(previewingItem!)}
-                >{previewingItem.kind === "html" ? "编辑纯文本副本" : "编辑"}</button
-              >{/if}
-            {#if imagePreviewReady && previewingItem}
-              {#each ["image_jpg", "image_png"] as imageMode}
-                <button
+                </Dialog.Description>
+              {/if}
+            </div>
+            <div class="clipboard-preview-header-actions">
+              {#if previewingItem && previewingItem.kind !== "files"}<button
                   class="image-preview-header-paste"
-                  type="button"
-                  disabled={previewActionBusy || pasteInFlight || !previewingItem.available}
-                  on:click={() => pasteItem(previewingItem!, imageMode as ClipboardPasteMode)}
-                  >{uiTranslate(
-                    imageMode === "image_jpg" ? "粘贴为 JPG" : "粘贴为 PNG",
-                    $uiLanguage,
-                  )}</button
-                >
-              {/each}
-              <button
-                class="image-preview-header-paste"
-                type="button"
-                disabled={previewActionBusy}
-                on:click={() => pasteItem(previewingItem!)}
-                >{uiTranslate("插入", $uiLanguage)}</button
+                  disabled={!previewingItem.available || previewLoading}
+                  on:click={() => beginEdit(previewingItem!)}
+                  >{previewingItem.kind === "html" ? "编辑纯文本副本" : "编辑"}</button
+                >{/if}
+              <Dialog.Close
+                class="segment-dialog-close"
+                aria-label={tr("取消", language)}
+                title={tr("取消", language)}><X size={17} /></Dialog.Close
               >
-            {/if}
-            <Dialog.Close
-              class="segment-dialog-close"
-              aria-label={tr("取消", language)}
-              title={tr("取消", language)}><X size={17} /></Dialog.Close
-            >
+            </div>
           </div>
-        </div>
+        {/if}
         <div
           class:structured-preview={previewingItem &&
             (previewingItem.kind === "text" || previewingItem.kind === "html") &&
