@@ -2727,5 +2727,9 @@
   "控制会话开始": "Steuerungssitzung gestartet",
   "输入链路采样正常": "Eingabeerfassung funktioniert",
   "穿越到 {name}": "Zu {name} gewechselt",
-  "{name} 自动重连": "{name} automatisch wieder verbunden"
+  "{name} 自动重连": "{name} automatisch wieder verbunden",
+  "未使用保留时间": "Aufbewahrung bei Nichtnutzung",
+  "永久": "Unbegrenzt",
+  "{part0} 天未使用": "{part0} Tage ohne Nutzung",
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Ab dem letzten Kopieren oder Verwenden berechnet. Favoriten und Einträge mit Tags werden nie automatisch entfernt. Anzahl und Gesamtspeicher des Verlaufs sind unbegrenzt."
 }

@@ -2727,5 +2727,9 @@
   "控制会话开始": "Sessão de controle iniciada",
   "输入链路采样正常": "Amostragem de entrada normal",
   "穿越到 {name}": "Atravessou para {name}",
-  "{name} 自动重连": "{name} reconectado automaticamente"
+  "{name} 自动重连": "{name} reconectado automaticamente",
+  "未使用保留时间": "Retenção sem uso",
+  "永久": "Para sempre",
+  "{part0} 天未使用": "{part0} dias sem uso",
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Calculada a partir da última cópia ou utilização. Favoritos e itens com etiquetas nunca são removidos automaticamente. O histórico não tem limites de quantidade nem de armazenamento total."
 }

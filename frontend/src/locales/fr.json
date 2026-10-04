@@ -2727,5 +2727,9 @@
   "控制会话开始": "Session de contrôle démarrée",
   "输入链路采样正常": "Échantillonnage de saisie normal",
   "穿越到 {name}": "Passage vers {name}",
-  "{name} 自动重连": "{name} reconnecté automatiquement"
+  "{name} 自动重连": "{name} reconnecté automatiquement",
+  "未使用保留时间": "Conservation sans utilisation",
+  "永久": "Indéfiniment",
+  "{part0} 天未使用": "{part0} jours sans utilisation",
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Calculée depuis la dernière copie ou utilisation. Les favoris et les éléments étiquetés ne sont jamais supprimés automatiquement. Le nombre d’éléments et la capacité totale de l’historique sont illimités."
 }
