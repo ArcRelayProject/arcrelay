@@ -616,6 +616,7 @@ export interface CommandMap {
   get_application_bundle_path: { args: { }; result: string };
   get_application_drag_icon_path: { args: { }; result: string };
   get_bootstrap_state: { args: { }; result: BootstrapState };
+  get_clipboard_retention_days: { args: { }; result: number };
   get_clipboard_window_pinned: { args: { }; result: boolean };
   get_gaze_status: { args: { }; result: GazeStatusView };
   get_gesture_debug_report: { args: { }; result: GestureDebugReport };
@@ -709,6 +710,7 @@ export interface CommandMap {
   set_automation_enabled: { args: { automationId: string; enabled: boolean; }; result: null };
   set_clipboard_context_menu_open: { args: { open: boolean; }; result: null };
   set_clipboard_navigation_ready: { args: { ready: boolean; }; result: number };
+  set_clipboard_retention_days: { args: { days: number; }; result: number };
   set_clipboard_window_editing: { args: { editing: boolean; }; result: number };
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };

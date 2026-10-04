@@ -1649,3 +1649,31 @@ mod tests {
 
 #[cfg(test)]
 include!(concat!(env!("OUT_DIR"), "/src_commands_clipboard_ipc.rs"));
+
+#[arcrelay_desktop_ipc::command]
+pub async fn get_clipboard_retention_days(state: State<'_, DesktopState>) -> Result<u32, String> {
+    state
+        .clipboard
+        .policy()
+        .await
+        .map(|policy| policy.retention_days)
+        .map_err(|e| e.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn set_clipboard_retention_days(
+    state: State<'_, DesktopState>,
+    days: u32,
+) -> Result<u32, String> {
+    if days > 3650 {
+        return Err("clipboard retention must be between 0 and 3650 days".into());
+    }
+    let mut policy = state.clipboard.policy().await.map_err(|e| e.to_string())?;
+    policy.retention_days = days;
+    state
+        .clipboard
+        .update_policy(policy)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(days)
+}
