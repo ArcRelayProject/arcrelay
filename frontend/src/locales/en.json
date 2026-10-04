@@ -2727,5 +2727,9 @@
   "控制会话开始": "Control session started",
   "输入链路采样正常": "Input sampling is healthy",
   "穿越到 {name}": "Crossed to {name}",
-  "{name} 自动重连": "{name} reconnected automatically"
+  "{name} 自动重连": "{name} reconnected automatically",
+  "未使用保留时间": "Idle retention",
+  "永久": "Forever",
+  "{part0} 天未使用": "{part0} days without use",
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Count from the last copy or use. Favorites and labeled items are never removed automatically. History has no entry or storage limits."
 }

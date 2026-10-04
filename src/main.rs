@@ -275,6 +275,8 @@ fn main() {
             commands::open_sniptra_settings,
             commands::start_screenshot_capture,
             commands::clipboard_history,
+            commands::get_clipboard_retention_days,
+            commands::set_clipboard_retention_days,
             commands::clipboard_prepare_drag,
             commands::clipboard_start_drag,
             commands::clipboard_cancel_drag,

@@ -48,6 +48,7 @@
   import McpSettings from "./McpSettings.svelte";
   import FileSharingSettings from "./FileSharingSettings.svelte";
   import SoundSettings from "./SoundSettings.svelte";
+  import ClipboardRetentionSettings from "./ClipboardRetentionSettings.svelte";
 
   export let snapshot: BootstrapState | null = null;
   export let settingsTab: SettingsTab;
@@ -559,6 +560,7 @@
               <span class="row-copy"><strong>{uiTranslate("保存剪贴板历史", $uiLanguage)}</strong><small>{uiTranslate("保存复制过的文本、图片和文件，方便稍后再次使用。", $uiLanguage)}</small></span>
               <span class:checked={appSettings.clipboardEnabled} class="switch-control"><span></span></span>
             </button>
+            <ClipboardRetentionSettings />
             <button
               class="settings-row settings-toggle-row"
               role="switch"

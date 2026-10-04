@@ -558,6 +558,7 @@ async fn manual_replication_uses_incoming_transport_and_reports_actual_changes()
     let row = ClipboardReplicaRecord {
         first_captured_at_ms: 1_700_000_000_000,
         copy_count: 3,
+        last_used_at_ms: None,
         record: ClipboardSyncRecord {
             sync_id: format!("{:064x}", 1),
             kind: ClipboardContentKind::Text,
