@@ -102,7 +102,7 @@ pub fn load(id: &str, window: isize) -> Result<Zeroizing<[u8; 32]>, String> {
         CryptographicBuffer::CopyToByteArray(&plain, &mut bytes)
             .map_err(|_| "Key reading failed")?;
         let result = Zeroizing::new(bytes.to_vec());
-        zeroize::Zeroize::zeroize(bytes.as_mut_slice());
+        zeroize::Zeroize::zeroize(&mut bytes[..]);
         result
     };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
