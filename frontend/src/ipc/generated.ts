@@ -279,6 +279,30 @@ export type LogStatus = { enabled: boolean, runId: string, startedAtMs: number, 
 
 export type LogicalRect = { x: number, y: number, width: number, height: number, };
 
+export type LoginAppRule = { id: string, name: string, enabled: boolean, priority: number, };
+
+export type LoginContext = { id: string | null, name: string | null, token: string, };
+
+export type LoginDraft = { id: string | null, title: string, address: string, username: string, password: string | null, totp: LoginTotp | null, keepTotp: boolean, tags: Array<string>, favorite: boolean, apps: Array<LoginAppRule>, };
+
+export type LoginField = "username" | "password" | "totp";
+
+export type LoginOtp = { code: string, expiresAtMs: number, };
+
+export type LoginRequest = { "type": "status" } | { "type": "context" } | { "type": "openSettings" } | { "type": "copyDraft", value: string, } | { "type": "pickApp" } | { "type": "initialize", password: string, } | { "type": "unlock", password: string, } | { "type": "unlockDevice" } | { "type": "lock" } | { "type": "list", search: string, tag: string | null, } | { "type": "save", draft: LoginDraft, } | { "type": "remove", id: string, } | { "type": "otp", id: string, } | { "type": "reveal", id: string, } | { "type": "use", id: string, field: LoginField, paste: boolean, token: string, } | { "type": "settings", settings: LoginSettings, } | { "type": "device", enabled: boolean, } | { "type": "changePassword", previous: string, password: string, } | { "type": "export", password: string, } | { "type": "previewRestore", password: string, recovery: boolean, } | { "type": "restore", token: string, replace: boolean, } | { "type": "recover", token: string, password: string, confirmed: boolean, };
+
+export type LoginResponse = { status: LoginVaultStatus | null, context: LoginContext | null, entries: Array<LoginSummary> | null, tags: Array<string> | null, otp: LoginOtp | null, value: string | null, preview: LoginRestorePreview | null, token: string | null, count: number | null, file: string | null, application: LoginAppRule | null, deviceAvailable: boolean, deviceEnabled: boolean, };
+
+export type LoginRestorePreview = { count: number, titles: Array<string>, };
+
+export type LoginSettings = { unlockSeconds: number, lockOnClose: boolean, clearSeconds: number, };
+
+export type LoginSummary = { id: string, title: string, address: string, username: string, hasPassword: boolean, hasTotp: boolean, totpAlgorithm: string | null, totpDigits: number | null, totpPeriod: number | null, tags: Array<string>, favorite: boolean, apps: Array<LoginAppRule>, matched: boolean, priority: number, lastUsedAtMs: number, };
+
+export type LoginTotp = { secret: string, algorithm: string, digits: number, period: number, };
+
+export type LoginVaultStatus = { sessionVersion: number, configured: boolean, unlocked: boolean, expiresInSeconds: number, settings: LoginSettings, vaultId: string | null, error: string | null, };
+
 export type MaskStyle = "frosted" | "solid";
 
 export type McpClientConfig = { clientId: string, endpoint: string, codex: string, claudeDesktop: string, httpJson: string, codexHttp: string, installPrompt: string, };
@@ -655,6 +679,7 @@ export interface CommandMap {
   list_remote_file_transfers: { args: { }; result: Array<RemoteFileTransferSession> };
   list_system_folders: { args: { }; result: Array<SystemFolder> };
   list_system_share_requests: { args: { }; result: Array<SystemShareRequest> };
+  login_request: { args: { request: LoginRequest; }; result: LoginResponse };
   mark_notification_read: { args: { notificationId: string; }; result: Array<NotificationView> };
   observe_action_output: { args: { actionId: string | null; }; result: null };
   observe_print_jobs: { args: { enabled: boolean; }; result: null };

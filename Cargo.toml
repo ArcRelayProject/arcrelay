@@ -19,13 +19,13 @@ ts-rs = { version = "12", features = ["serde-json-impl", "chrono-impl", "uuid-im
 notify = "8"
 notify-rust = "4.18.0"
 rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
-arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "bf280c67a28f319760ff8b81020291eb5dcf3b82" }
+arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "80cf2143317984ec7fe9fe3c20d2ea63cf5e7b2b" }
 arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "694f578f2c94dc73abb3812b0b88c3d2ce0dab2f" }
 arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "edb2888b5400a0b5cd34c82ce125df9d2a13c94a" }
 arcrelay-gaze = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-gaze.git", rev = "5a6e8ca7c9c8dea713abb6db081414b198967db6" }
 arcrelay-network = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-network.git", rev = "3ee41ae12f0fc2fb7cb836a9f62099820776a18b" }
 arcrelay-peer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-peer.git", rev = "48cd4ad8538a0b5add33877f7f9b295e78c4fce1" }
-arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "5f1f9e917b54fa31d7ca186ab940692c7cb5621b" }
+arcrelay-protocol = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-protocol.git", rev = "fc40093e1d9d2f6e83e25f00e8c0a47e6414fbc5" }
 arcrelay-print = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-print.git", rev = "69d50cdbd14e432629bb6f88988c66c09568d949" }
 arcrelay-transfer = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transfer.git", rev = "1c95ddf9b9d468f6a8c4ed238739e4635e7f44ba" }
 arcrelay-transport = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-transport.git", rev = "c95846ae22ac1a4d72614a126e64ca892f390bca" }
@@ -70,16 +70,18 @@ rand = "0.8"
 rayon = "1"
 qrcode = "0.14"
 sha2 = "0.10"
+zeroize = "1"
 thiserror = "2"
 zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
+security-framework = { version = "3.7", features = ["OSX_10_15"] }
 core-foundation = "0.10"
 core-graphics = { version = "0.24", features = ["highsierra"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSButton", "NSColor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSFont", "NSGraphics", "NSImage", "NSImageView", "NSPanel", "NSPasteboard", "NSRunningApplication", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "NSWorkspace", "block2", "libc", "objc2-core-graphics", "objc2-quartz-core"] }
-objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSBundle", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-service-management = { version = "0.3", default-features = false, features = ["std", "SMAppService", "SMErrors", "objc2", "objc2-foundation"] }
 tauri-nspanel = { version = "2.1.0", git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
@@ -87,6 +89,10 @@ tauri-nspanel = { version = "2.1.0", git = "https://github.com/ahkohd/tauri-nspa
 [target.'cfg(target_os = "windows")'.dependencies]
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 windows = { version = "0.61", features = [
+    "Security_Credentials_UI",
+    "Security_Cryptography",
+    "Security_Cryptography_DataProtection",
+    "Storage_Streams",
     "Win32_Devices_Display",
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
@@ -95,12 +101,14 @@ windows = { version = "0.61", features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_DataExchange",
+    "Win32_System_Power",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_SystemServices",
     "Win32_System_StationsAndDesktops",
     "Win32_System_Threading",
+    "Win32_System_WinRT",
     "Win32_UI_Accessibility",
     "Win32_UI_Controls",
     "Win32_UI_HiDpi",
@@ -112,6 +120,7 @@ windows = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "0.61"
+windows-future = "0.2.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 shell-words = "1.1"
@@ -126,6 +135,6 @@ heck = "0.5"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dev-dependencies]
-arcrelay-core = { features = ["test-support"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "bf280c67a28f319760ff8b81020291eb5dcf3b82" }
+arcrelay-core = { features = ["test-support"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "80cf2143317984ec7fe9fe3c20d2ea63cf5e7b2b" }
 tokio = { version = "1", features = ["test-util"] }
 tempfile = "3"

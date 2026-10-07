@@ -1,0 +1,127 @@
+.login-ui {
+  color: var(--text-primary, #24262d);
+  font-size: 14px;
+  min-width: 0;
+  --login-bg: var(--surface, #fff);
+  --login-muted: var(--text-secondary, #737681);
+  --login-border: var(--border-color, #dedfe7);
+}
+.login-ui * {
+  box-sizing: border-box;
+}
+.login-ui button,
+.login-ui input,
+.login-ui select,
+.login-ui textarea {
+  font: inherit;
+}
+.login-ui button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  border: 1px solid var(--login-border);
+  border-radius: 8px;
+  background: var(--login-bg);
+  color: inherit;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+.login-ui button:hover {
+  background: var(--surface-hover, #f2f2f7);
+}
+.login-ui button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.login-ui button.primary {
+  color: white;
+  background: var(--accent, #5b5ff0);
+  border-color: var(--accent, #5b5ff0);
+}
+.login-ui button.quiet {
+  border-color: transparent;
+  background: transparent;
+  padding: 6px;
+}
+.login-ui button.danger {
+  color: var(--danger, #d54848);
+}
+.login-ui button:focus-visible,
+.login-ui input:focus,
+.login-ui select:focus {
+  outline: 2px solid var(--accent, #5b5ff0);
+  outline-offset: 2px;
+}
+.login-ui input:not([type="checkbox"]),
+.login-ui select,
+.login-ui textarea {
+  width: 100%;
+  border: 1px solid var(--login-border);
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 9px 11px;
+  background: var(--control-bg, white);
+  color: inherit;
+}
+.login-ui input[type="checkbox"] {
+  accent-color: var(--accent, #5b5ff0);
+  width: 16px;
+  height: 16px;
+}
+.login-ui label.field {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0;
+  font-weight: 500;
+}
+.login-ui small,
+.login-ui .muted {
+  color: var(--login-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.login-ui .notice {
+  padding: 12px 14px;
+  background: var(--accent-soft, #f0f0ff);
+  border-radius: 8px;
+  color: var(--login-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.login-ui .error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-soft, #fff2f2);
+  color: var(--danger, #d54848);
+  font-size: 13px;
+}
+.login-ui .success {
+  color: #25865d;
+  font-size: 13px;
+}
+.login-ui .flex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.login-ui .grow {
+  flex: 1;
+  min-width: 0;
+}
+.login-ui .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+.login-ui .chip {
+  display: inline-flex;
+  padding: 3px 7px;
+  background: var(--accent-soft, #f0f0ff);
+  border-radius: 5px;
+  color: var(--accent, #5b5ff0);
+  font-size: 11px;
+}

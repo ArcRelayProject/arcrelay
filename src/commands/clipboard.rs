@@ -19,14 +19,14 @@ pub(super) fn begin_clipboard_action() -> Result<tokio::sync::MutexGuard<'static
 }
 
 #[cfg(target_os = "macos")]
-type PasteTarget = crate::windowing::ClipboardPasteRecipient;
+pub(super) type PasteTarget = crate::windowing::ClipboardPasteRecipient;
 #[cfg(target_os = "windows")]
-type PasteTarget = crate::windowing::clipboard_windows_policy::ForegroundTarget;
+pub(super) type PasteTarget = crate::windowing::clipboard_windows_policy::ForegroundTarget;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[derive(Clone, Copy)]
-struct PasteTarget;
+pub(super) struct PasteTarget;
 
-fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
+pub(super) fn capture_paste_target(_app: &AppHandle) -> Result<PasteTarget, String> {
     #[cfg(target_os = "macos")]
     return crate::windowing::clipboard_paste_recipient(_app).map_err(|error| error.to_string());
     #[cfg(target_os = "windows")]
@@ -937,7 +937,7 @@ async fn paste_clipboard_record(
     Ok(())
 }
 
-async fn prepare_window_and_wait_for_paste(
+pub(super) async fn prepare_window_and_wait_for_paste(
     app: &AppHandle,
     _original: PasteTarget,
 ) -> Result<bool, String> {
@@ -1120,7 +1120,10 @@ pub async fn clipboard_paste_records(
     Ok(ids.len())
 }
 
-fn ensure_paste_target_unchanged(_app: &AppHandle, _target: &PasteTarget) -> Result<(), String> {
+pub(super) fn ensure_paste_target_unchanged(
+    _app: &AppHandle,
+    _target: &PasteTarget,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let original = _target
@@ -1291,7 +1294,10 @@ pub async fn paste_next_continuous_record(
     Ok(Some(progress))
 }
 
-async fn require_input_permission(state: &DesktopState, app: &AppHandle) -> Result<(), String> {
+pub(super) async fn require_input_permission(
+    state: &DesktopState,
+    app: &AppHandle,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let permission = state.clipboard.input_permission_state();

@@ -14,6 +14,7 @@
     CopySimple,
     FileText,
     ImageSquare,
+    LockKey,
     MagnifyingGlass,
     PushPin,
     StackSimple,
@@ -24,6 +25,8 @@
     X,
   } from "phosphor-svelte";
 
+  import LoginPanel from "../features/login/LoginPanel.svelte";
+  let loginEditing = false;
   import BrandLogo from "../BrandLogo.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
@@ -94,6 +97,7 @@
     { id: "text", label: "文本", icon: TextT, size: 20 },
     { id: "image", label: "图片", icon: ImageSquare, size: 20 },
     { id: "files", label: "文件", icon: FileText, size: 19 },
+    { id: "login", label: "登录", icon: LockKey, size: 20 },
     { id: "favorites", label: "收藏", icon: Star, size: 20, weight: "fill" },
   ];
 
@@ -292,6 +296,7 @@
   function changeFilter(value: ClipboardFilter) {
     abandonNearby();
     filter = value;
+    if (value === "login") selectedLabelFilter = null;
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -1327,6 +1332,12 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (
+      filter === "login" ||
+      loginEditing ||
+      (event.target instanceof Element && event.target.closest(".login-panel"))
+    )
+      return;
     // Native navigation keys call this directly instead of dispatching a DOM event.
     if (handlePreviewKeyDown(event) || event.isComposing) return;
     if (dragBusy) {
@@ -1731,7 +1742,12 @@
 
 <svelte:window oncontextmenu={suppressWebviewContextMenu} />
 
-<main class="clipboard-window">
+<main
+  class="clipboard-window"
+  class:login-editing={loginEditing}
+  class:login-mode={filter === "login"}
+  class:login-recent={filter === "all"}
+>
   <header class="clipboard-header drag-region" use:windowDrag>
     <button
       class:active={windowPinned}
@@ -1984,88 +2000,101 @@
     {/if}
   </div>
 
-  <section
-    class:keyboard-active={keyboardMode === "results"}
-    class="clipboard-list"
-    aria-label={tr("剪贴板记录", language)}
-    bind:this={scrollElement}
-    aria-busy={loading || loadingMore || locating}
-    on:scroll={handleListScroll}
-    on:wheel|passive={releasePositionAnchor}
-    on:touchstart|passive={releasePositionAnchor}
-    on:pointerdown={() => {
-      releasePositionAnchor();
-      deferHistoryRefresh();
-    }}
-  >
-    {#if loading && history.entries.length === 0}
-      <div class="list-state loading-state">
-        <span class="loading-spinner" aria-hidden="true"></span>
-        <span>{tr("正在读取剪贴板…", language)}</span>
-      </div>
-    {:else if error}
-      <div class="list-state error-state">{error}</div>
-    {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
-      <div class="list-state label-filter-empty-state">
-        <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}
-          ><Tag size={30} /></span
-        >
-        <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
-        <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
-        <button type="button" on:click={() => selectLabelFilter(null)}
-          >{uiTranslate("清除标签筛选", $uiLanguage)}</button
-        >
-      </div>
-    {:else if history.entries.length === 0}
-      <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
-    {:else}
-      <div
-        class="clipboard-items"
-        style:padding-top={`${virtualTopPadding}px`}
-        style:padding-bottom={`${virtualBottomPadding}px`}
-        use:observeListContent
-      >
-        {#each renderedEntries as entry (entry.item.id)}
-          <div
-            data-clipboard-id={entry.item.id}
-            data-clipboard-index={entry.index}
-            class="clipboard-item"
-            class:timeline-target={nearby?.anchor.id === entry.item.id}
-            aria-posinset={entry.index + 1}
-            aria-setsize={history.entries.length}
-            use:measureClipboardItem
+  {#if filter === "login"}
+    <LoginPanel
+      search={debouncedSearch}
+      tag={selectedLabel?.name ?? null}
+      bind:editing={loginEditing}
+    />
+  {:else}
+    {#if filter === "all"}<LoginPanel
+        search={debouncedSearch}
+        tag={selectedLabel?.name ?? null}
+        compact
+      />{/if}
+    <section
+      class:keyboard-active={keyboardMode === "results"}
+      class="clipboard-list"
+      aria-label={tr("剪贴板记录", language)}
+      bind:this={scrollElement}
+      aria-busy={loading || loadingMore || locating}
+      on:scroll={handleListScroll}
+      on:wheel|passive={releasePositionAnchor}
+      on:touchstart|passive={releasePositionAnchor}
+      on:pointerdown={() => {
+        releasePositionAnchor();
+        deferHistoryRefresh();
+      }}
+    >
+      {#if loading && history.entries.length === 0}
+        <div class="list-state loading-state">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <span>{tr("正在读取剪贴板…", language)}</span>
+        </div>
+      {:else if error}
+        <div class="list-state error-state">{error}</div>
+      {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
+        <div class="list-state label-filter-empty-state">
+          <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}
+            ><Tag size={30} /></span
           >
-            <ClipboardRow
-              item={entry.item}
-              shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
-              shortcutModifier={rowShortcutModifier}
-              selected={selectedId === entry.item.id}
-              multiSelected={selectedIds.includes(entry.item.id)}
-              multiSelectActive={selectedIds.length > 0}
-              selectionOrder={selectionOrder(selectedIds, entry.item.id)}
-              {language}
-              timestamp={itemTimestamp(entry.item)}
-              timelineTarget={nearby?.anchor.id === entry.item.id}
-              edited={editOrigins.has(entry.item.id)}
-              onEdit={() => void beginEdit(entry.item)}
-              exactTime={Boolean(nearby)}
-              previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
-                entry.index < visibleEndIndex + 2}
-              onSelect={(event) => selectRow(event, entry.item)}
-              onDragPress={(event) => beginRecordDrag(event, entry.item)}
-              suppressDragClick={dragSession.suppressClick}
-              onFocus={() => selectedIds.length === 0 && focusRow(entry.item)}
-              onPaste={(plainText) =>
-                selectedIds.length > 0
-                  ? void pasteSelectedItems()
-                  : void pasteItem(entry.item, plainText ? "plain_text" : "source")}
-              onContextMenu={(event) => void openContextMenu(event, entry.item)}
-            />
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+          <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
+          <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
+          <button type="button" on:click={() => selectLabelFilter(null)}
+            >{uiTranslate("清除标签筛选", $uiLanguage)}</button
+          >
+        </div>
+      {:else if history.entries.length === 0}
+        <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
+      {:else}
+        <div
+          class="clipboard-items"
+          style:padding-top={`${virtualTopPadding}px`}
+          style:padding-bottom={`${virtualBottomPadding}px`}
+          use:observeListContent
+        >
+          {#each renderedEntries as entry (entry.item.id)}
+            <div
+              data-clipboard-id={entry.item.id}
+              data-clipboard-index={entry.index}
+              class="clipboard-item"
+              class:timeline-target={nearby?.anchor.id === entry.item.id}
+              aria-posinset={entry.index + 1}
+              aria-setsize={history.entries.length}
+              use:measureClipboardItem
+            >
+              <ClipboardRow
+                item={entry.item}
+                shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
+                shortcutModifier={rowShortcutModifier}
+                selected={selectedId === entry.item.id}
+                multiSelected={selectedIds.includes(entry.item.id)}
+                multiSelectActive={selectedIds.length > 0}
+                selectionOrder={selectionOrder(selectedIds, entry.item.id)}
+                {language}
+                timestamp={itemTimestamp(entry.item)}
+                timelineTarget={nearby?.anchor.id === entry.item.id}
+                edited={editOrigins.has(entry.item.id)}
+                onEdit={() => void beginEdit(entry.item)}
+                exactTime={Boolean(nearby)}
+                previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
+                  entry.index < visibleEndIndex + 2}
+                onSelect={(event) => selectRow(event, entry.item)}
+                onDragPress={(event) => beginRecordDrag(event, entry.item)}
+                suppressDragClick={dragSession.suppressClick}
+                onFocus={() => selectedIds.length === 0 && focusRow(entry.item)}
+                onPaste={(plainText) =>
+                  selectedIds.length > 0
+                    ? void pasteSelectedItems()
+                    : void pasteItem(entry.item, plainText ? "plain_text" : "source")}
+                onContextMenu={(event) => void openContextMenu(event, entry.item)}
+              />
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   {#if selectedIds.length > 0}
     <div class="multi-select-status" role="status" aria-live="polite">
@@ -2127,54 +2156,56 @@
     </div>
   {/if}
 
-  <footer class="clipboard-footer drag-region" use:windowDrag>
-    <div class:busy={ocrPasting} class="record-count">
-      <strong>
-        {#if ocrPasting}
-          {uiTranslate("正在识别图片文字…", $uiLanguage)}
-        {:else if loadingMore && nearby}
-          {tr("正在读取附近记录…", language)}
-        {:else if selectedLabel}
-          {t("{name} · {count} 条", language, {
-            name: selectedLabel.name,
-            count: history.totalCount ?? history.entries.length,
-          })}
-        {:else}
-          {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
+  {#if filter !== "login"}
+    <footer class="clipboard-footer drag-region" use:windowDrag>
+      <div class:busy={ocrPasting} class="record-count">
+        <strong>
+          {#if ocrPasting}
+            {uiTranslate("正在识别图片文字…", $uiLanguage)}
+          {:else if loadingMore && nearby}
+            {tr("正在读取附近记录…", language)}
+          {:else if selectedLabel}
+            {t("{name} · {count} 条", language, {
+              name: selectedLabel.name,
+              count: history.totalCount ?? history.entries.length,
+            })}
+          {:else}
+            {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
+          {/if}
+        </strong>
+        {#if selectedLabel && !ocrPasting}
+          <button
+            class="clear-label-filter"
+            type="button"
+            aria-label={uiTranslate("清除标签筛选", $uiLanguage)}
+            title={uiTranslate("清除标签筛选", $uiLanguage)}
+            on:click={() => selectLabelFilter(null)}><X size={13} /></button
+          >
         {/if}
-      </strong>
-      {#if selectedLabel && !ocrPasting}
+      </div>
+      <div class="footer-actions">
         <button
-          class="clear-label-filter"
+          class:loading
+          class="icon-button"
           type="button"
-          aria-label={uiTranslate("清除标签筛选", $uiLanguage)}
-          title={uiTranslate("清除标签筛选", $uiLanguage)}
-          on:click={() => selectLabelFilter(null)}><X size={13} /></button
+          aria-label={tr("刷新", language)}
+          aria-busy={loading}
+          disabled={dragBusy}
+          title={tr("刷新", language)}
+          on:click={() => load()}><ClockCounterClockwise size={22} /></button
         >
-      {/if}
-    </div>
-    <div class="footer-actions">
-      <button
-        class:loading
-        class="icon-button"
-        type="button"
-        aria-label={tr("刷新", language)}
-        aria-busy={loading}
-        disabled={dragBusy}
-        title={tr("刷新", language)}
-        on:click={() => load()}><ClockCounterClockwise size={22} /></button
-      >
-      <span class="footer-action-divider" aria-hidden="true"></span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label={tr("隐藏", language)}
-        title={tr("隐藏", language)}
-        disabled={dragBusy}
-        on:click={() => clipboardBridge.hide()}><X size={22} /></button
-      >
-    </div>
-  </footer>
+        <span class="footer-action-divider" aria-hidden="true"></span>
+        <button
+          class="icon-button"
+          type="button"
+          aria-label={tr("隐藏", language)}
+          title={tr("隐藏", language)}
+          disabled={dragBusy}
+          on:click={() => clipboardBridge.hide()}><X size={22} /></button
+        >
+      </div>
+    </footer>
+  {/if}
 
   <Dialog.Root bind:open={previewDialogOpen}>
     <Dialog.Portal>
@@ -2323,3 +2354,23 @@
   />
 </main>
 <InlineContextMenu />
+
+<style>
+  .clipboard-window.login-mode :global(.label-filter-toolbar) {
+    display: none;
+  }
+  .clipboard-window.login-mode {
+    grid-template-rows: 60px 60px auto minmax(0, 1fr);
+  }
+  .clipboard-window.login-recent {
+    grid-template-rows: 60px 60px auto auto minmax(0, 1fr) 48px;
+  }
+  .clipboard-window.login-editing {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .clipboard-window.login-editing :global(.clipboard-header),
+  .clipboard-window.login-editing :global(.clipboard-filters),
+  .clipboard-window.login-editing :global(.clipboard-navigation) {
+    display: none;
+  }
+</style>

@@ -21,6 +21,7 @@ mod ipc;
 #[cfg(test)]
 mod ipc_contract;
 mod localization;
+mod login;
 mod mcp;
 mod notification;
 mod observability;
@@ -323,6 +324,7 @@ fn main() {
             commands::clipboard_send_files,
             commands::clipboard_clear_history,
             commands::hide_clipboard_window,
+            commands::login_request,
             commands::get_clipboard_window_pinned,
             commands::set_clipboard_window_pinned,
             commands::start_clipboard_window_drag,

@@ -65,6 +65,7 @@ fn destroy_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     crate::commands::clear_clipboard_thumbnail_cache();
     if let Some(state) = app.try_state::<crate::backend::DesktopState>() {
         state.text_selection.clear();
+        state.login.close();
     }
     if let Some(window) = window {
         window.destroy()?;
@@ -215,6 +216,7 @@ fn hide_clipboard_window_on_main(app: &AppHandle) -> tauri::Result<()> {
     crate::commands::clear_clipboard_thumbnail_cache();
     if let Some(state) = app.try_state::<crate::backend::DesktopState>() {
         state.text_selection.clear();
+        state.login.close();
     }
     hide_platform_clipboard_window(app, &window)?;
     let revision = CLIPBOARD_IDLE_REVISION.fetch_add(1, Ordering::SeqCst) + 1;

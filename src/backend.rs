@@ -350,6 +350,7 @@ impl RuntimeViewState {
 
 #[derive(Clone)]
 pub struct DesktopState {
+    pub login: Arc<crate::login::LoginService>,
     pub port: u16,
     pub local_device_id: String,
     pub action_service: Arc<Mutex<ActionService>>,
@@ -440,7 +441,10 @@ impl DesktopState {
             command_tx,
             network,
         } = init;
+        let login = Arc::new(crate::login::LoginService::new());
+        login.attach_clipboard(clipboard.clone());
         Self {
+            login,
             port,
             local_device_id,
             action_service,
