@@ -124,6 +124,21 @@ fn backup_hash(path: &Path) -> Result<Vec<u8>, String> {
         .map_err(|_| "Cannot read backup file")?;
     Ok(Sha256::digest(&bytes).to_vec())
 }
+fn copy_lifetime_ms(
+    expires_at_ms: Option<i64>,
+    now_ms: i64,
+    clear_seconds: u32,
+) -> Result<u64, String> {
+    if let Some(expires_at_ms) = expires_at_ms {
+        let remaining = expires_at_ms.saturating_sub(now_ms);
+        if remaining < 5000 {
+            return Err("TOTP is about to change; retry insertion later".into());
+        }
+        Ok(remaining as u64)
+    } else {
+        Ok(u64::from(clear_seconds) * 1000)
+    }
+}
 #[arcrelay_desktop_ipc::command]
 pub async fn login_request(
     window: tauri::WebviewWindow,
@@ -267,21 +282,21 @@ pub async fn login_request(
                 let vault = login.clone();
                 let entry_id = id.clone();
                 let chosen = field;
-                let value =
-                    tokio::task::spawn_blocking(move || vault.vault.field(&entry_id, chosen))
-                        .await
-                        .map_err(|_| "Login information read failed")??;
-                let seconds = if matches!(field, LoginField::Totp) {
-                    let vault = login.clone();
-                    let entry_id = id.clone();
-                    let otp = tokio::task::spawn_blocking(move || vault.vault.otp(&entry_id))
-                        .await
-                        .map_err(|_| "TOTP read failed")??;
-                    ((otp.expires_at_ms - chrono::Utc::now().timestamp_millis()).max(0) as u64)
-                        .div_ceil(1000)
-                } else {
-                    u64::from(login.vault.status()?.settings.clear_seconds)
-                };
+                let (value, expires_at_ms) = tokio::task::spawn_blocking(move || {
+                    if matches!(chosen, LoginField::Totp) {
+                        let otp = vault.vault.otp(&entry_id)?;
+                        Ok::<_, String>((Zeroizing::new(otp.code), Some(otp.expires_at_ms)))
+                    } else {
+                        Ok((vault.vault.field(&entry_id, chosen)?, None))
+                    }
+                })
+                .await
+                .map_err(|_| "Login information read failed")??;
+                copy_lifetime_ms(
+                    expires_at_ms,
+                    chrono::Utc::now().timestamp_millis(),
+                    session.settings.clear_seconds,
+                )?;
                 // Recheck after reading and before the native write and key event.
                 if paste {
                     clipboard::ensure_paste_target_unchanged(&app, &target)?;
@@ -301,10 +316,21 @@ pub async fn login_request(
                     let _ = state.clipboard.clear_ephemeral_text(&receipt).await;
                     return Err("Login protection session has changed; unlock again".into());
                 }
+                let lifetime = match copy_lifetime_ms(
+                    expires_at_ms,
+                    chrono::Utc::now().timestamp_millis(),
+                    current.settings.clear_seconds,
+                ) {
+                    Ok(lifetime) => lifetime,
+                    Err(error) => {
+                        let _ = state.clipboard.clear_ephemeral_text(&receipt).await;
+                        return Err(error);
+                    }
+                };
                 let clipboard = state.clipboard.clone();
                 let cleanup = receipt.clone();
                 tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(lifetime)).await;
                     let _ = clipboard.clear_ephemeral_text(&cleanup).await;
                 });
                 if paste {
@@ -535,4 +561,13 @@ fn scrub_locked(response: &mut LoginResponse) {
         response.tags = None;
         response.otp = None;
     }
+}
+
+#[test]
+fn login_otp_copy_keeps_the_original_deadline_and_rejects_delayed_writes() {
+    assert_eq!(copy_lifetime_ms(Some(30_000), 20_001, 30).unwrap(), 9_999);
+    assert_eq!(copy_lifetime_ms(Some(30_000), 25_000, 30).unwrap(), 5_000);
+    assert!(copy_lifetime_ms(Some(30_000), 25_001, 30).is_err());
+    assert!(copy_lifetime_ms(Some(30_000), 30_001, 30).is_err());
+    assert_eq!(copy_lifetime_ms(None, 30_001, 30).unwrap(), 30_000);
 }

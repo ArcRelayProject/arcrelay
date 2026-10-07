@@ -62,6 +62,7 @@
   $: visible = compact ? entries.filter((e) => e.matched) : entries;
   $: active = visible.find((e) => e.id === selected);
   $: seconds = otp ? Math.max(0, Math.ceil((otp.expiresAtMs - now) / 1000)) : 0;
+  $: otpEndingSoon = !otp || otp.expiresAtMs - now < 5000;
   $: if (loaded) {
     search;
     tag;
@@ -386,7 +387,7 @@
                           class:otp={cell.field === "totp"}
                           class="field-value">{cell.value}</span
                         >{#if cell.field === "totp"}<small
-                            >{seconds} 秒后更新{seconds < 5 ? " · 请等待下一轮" : ""}</small
+                            >{seconds} 秒后更新{otpEndingSoon ? " · 请等待下一轮" : ""}</small
                           >{/if}
                       </div>
                       {#if cell.field === "password"}<button
@@ -398,12 +399,14 @@
                         >{/if}
                       <button
                         class="primary"
-                        disabled={busy || !context?.token || (cell.field === "totp" && seconds < 5)}
+                        disabled={busy ||
+                          !context?.token ||
+                          (cell.field === "totp" && otpEndingSoon)}
                         on:click={() => useField(row, cell.field as LoginField, true)}>插入</button
                       >
                       <button
                         class="quiet"
-                        disabled={busy || (cell.field === "totp" && seconds < 5)}
+                        disabled={busy || (cell.field === "totp" && otpEndingSoon)}
                         aria-label={`复制${cell.label}`}
                         title={`复制${cell.label}`}
                         on:click={() => useField(row, cell.field as LoginField, false)}
