@@ -997,3 +997,44 @@ pub fn clipboard_paste_target_ready(
         .observe(pid, focused, elapsed)
         .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))
 }
+
+/// Stable device-local identity for application-specific clipboard pins.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardTargetApplication {
+    pub id: String,
+    pub name: String,
+}
+
+pub fn clipboard_target_application(
+    _app: &AppHandle,
+) -> tauri::Result<Option<ClipboardTargetApplication>> {
+    #[cfg(target_os = "macos")]
+    return dispatch_appkit(_app, "capture clipboard target application", |app| {
+        // Remember external app changes while the panel is kept open, but never
+        // replace the recipient with ArcRelay when a WebView/control takes focus.
+        if let Some(frontmost) = external_frontmost_application() {
+            CLIPBOARD_INVOKING_APP.with(|saved| *saved.borrow_mut() = Some(frontmost));
+        }
+        let Some(recipient) = clipboard_paste_recipient(&app)? else {
+            return Ok(None);
+        };
+        let id = recipient
+            .bundleIdentifier()
+            .map(|id| format!("macos:{id}"))
+            .or_else(|| {
+                recipient
+                    .executableURL()
+                    .and_then(|url| url.path())
+                    .map(|path| format!("macos-executable:{path}"))
+            });
+        let name = recipient.localizedName().map(|name| name.to_string());
+        Ok(id
+            .zip(name)
+            .map(|(id, name)| ClipboardTargetApplication { id, name }))
+    });
+    #[cfg(target_os = "windows")]
+    return Ok(super::clipboard_windows::target_application());
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    Ok(None)
+}

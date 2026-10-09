@@ -125,6 +125,8 @@ export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_c
 
 export type ClipboardSortPreference = "createdAt" | "updatedAt";
 
+export type ClipboardTargetApplication = { id: string, name: string, };
+
 export type ClipboardTextFormat = "text" | "html" | "markdown";
 
 export type ClipboardTextPreview = { source: string, format: ClipboardTextFormat, safeHtml: string | null, renderLimited: boolean, };
@@ -565,6 +567,7 @@ export interface CommandMap {
   clear_gaze_calibration: { args: { }; result: GazeStatusView };
   clear_gesture_debug: { args: { }; result: GestureDebugSnapshot };
   clear_presence_profile: { args: { }; result: GazeStatusView };
+  clipboard_app_pins: { args: { appId: string; labelIds: Array<string> | null; search: string | null; }; result: Array<ClipboardItemView> };
   clipboard_cancel_drag: { args: { token: string; }; result: null };
   clipboard_clear_history: { args: { }; result: null };
   clipboard_copy_record: { args: { id: number; }; result: null };
@@ -595,11 +598,13 @@ export interface CommandMap {
   clipboard_paste_text: { args: { content: string; }; result: null };
   clipboard_prepare_drag: { args: { ids: Array<number>; mode: ClipboardDragMode; selection: ClipboardDragSelection | null; }; result: ClipboardDragPrepared };
   clipboard_send_files: { args: { id: number; peerId: string; }; result: string };
+  clipboard_set_app_pin: { args: { appId: string; id: number; pinned: boolean; }; result: null };
   clipboard_set_favorite: { args: { favorite: boolean; id: number; }; result: null };
   clipboard_set_label_membership: { args: { attached: boolean; id: number; labelId: string; }; result: null };
   clipboard_set_labels: { args: { id: number; labelIds: Array<string>; }; result: null };
   clipboard_start_continuous_paste: { args: { items: Array<ContinuousPasteItemInput>; }; result: ContinuousPasteProgress };
   clipboard_start_drag: { args: { token: string; }; result: null };
+  clipboard_target_application: { args: { }; result: ClipboardTargetApplication | null };
   clipboard_text_content: { args: { id: number; }; result: string };
   clipboard_text_preview: { args: { format: ClipboardTextFormat | null; id: number; }; result: ClipboardTextPreview };
   clipboard_text_segments: { args: { id: number; }; result: TextSliceModel };

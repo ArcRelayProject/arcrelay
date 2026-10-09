@@ -52,9 +52,14 @@
     type ClipboardKeyboardMode,
   } from "./keyboardShortcuts";
   import { appendSelectedIds, selectionOrder, toggleSelectedId } from "./multiSelect";
-  import { showClipboardContextMenu } from "./nativeContextMenu";
+  import { showClipboardContextMenu } from "./clipboardContextMenu";
+  import { mergeAppPinnedEntries } from "./appPins";
   import InlineContextMenu from "./InlineContextMenu.svelte";
-  import { closeInlineContextMenu, handleInlineMenuKey } from "./inlineContextMenu";
+  import {
+    inlineContextMenu,
+    closeInlineContextMenu,
+    handleInlineMenuKey,
+  } from "./inlineContextMenu";
   import { autoFocusSearch, installEditableFocus, isWindowsClipboard } from "./focusPolicy";
   import {
     historyQueryKey,
@@ -113,6 +118,12 @@
   let selectedItems: ClipboardItem[] = [];
   let combinedPasteAvailable = false;
   let windowVisible = !("__TAURI_INTERNALS__" in window);
+  let targetApplication: import("../ipc/generated").ClipboardTargetApplication | null = null;
+  let applicationPinIds = new Set<number>();
+  let applicationPins: ClipboardItem[] = [];
+  let openingContextMenu = false;
+  let contextMenuGeneration = 0;
+  let checkingApplication = false;
   let loading = true;
   let loadingMore = false;
   let ocrPasting = false;
@@ -451,6 +462,8 @@
             navigationGeneration = 0;
             focusRequest++;
             focusController?.pause();
+            contextMenuGeneration++;
+            openingContextMenu = false;
             closeInlineContextMenu();
             keyboardMode = "results";
           }),
@@ -483,6 +496,11 @@
           },
           () => {
             windowVisible = false;
+            contextMenuGeneration++;
+            openingContextMenu = false;
+            targetApplication = null;
+            applicationPins = [];
+            applicationPinIds = new Set();
             dragSession.cancel();
             focusRequest++;
             focusController?.pause();
@@ -603,8 +621,12 @@
     scrollResizeObserver = new ResizeObserver(() => scheduleListMetricsUpdate());
     if (scrollElement) scrollResizeObserver.observe(scrollElement);
     viewportHeight = scrollElement?.clientHeight ?? 0;
+    const applicationTimer = window.setInterval(() => void checkTargetApplication(), 750);
     return () => {
+      window.clearInterval(applicationTimer);
       disposed = true;
+      windowVisible = false;
+      contextMenuGeneration++;
       dragSession.destroy();
       focusController?.destroy();
       closeInlineContextMenu();
@@ -688,15 +710,55 @@
   function requestHistoryRefresh() {
     historyRefreshPending = true;
     window.clearTimeout(historyRefreshTimer);
-    if (!windowVisible || pasteInFlight || dragBusy) return;
+    if (!windowVisible || pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu)
+      return;
     historyRefreshTimer = window.setTimeout(
       () => {
-        if (pasteInFlight || dragBusy) return;
+        if (pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu) return;
         historyRefreshPending = false;
         void load({ preservePosition: true });
       },
       Math.max(0, interactionUntil - Date.now()),
     );
+  }
+
+  async function checkTargetApplication() {
+    if (
+      checkingApplication ||
+      !windowVisible ||
+      loading ||
+      pasteInFlight ||
+      dragBusy ||
+      openingContextMenu ||
+      $inlineContextMenu ||
+      Date.now() < interactionUntil
+    )
+      return;
+    checkingApplication = true;
+    const generation = loadGeneration;
+    try {
+      const target = await clipboardBridge.targetApplication();
+      if (
+        !windowVisible ||
+        generation !== loadGeneration ||
+        pasteInFlight ||
+        dragBusy ||
+        openingContextMenu ||
+        $inlineContextMenu ||
+        Date.now() < interactionUntil
+      )
+        return;
+      if (target?.id !== targetApplication?.id) {
+        targetApplication = target;
+        applicationPins = [];
+        applicationPinIds = new Set();
+        if (!nearby && !locating) await load();
+      }
+    } catch (reason) {
+      console.error(reason);
+    } finally {
+      checkingApplication = false;
+    }
   }
 
   function finishPaste() {
@@ -723,16 +785,37 @@
     }
     append ? (loadingMore = true) : (loading = true);
     try {
-      const page = await clipboardBridge.history({
-        search: debouncedSearch,
-        kind: kindForFilter(filter),
-        favoriteOnly: filter === "favorites",
-        labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
-        cursor,
-        limit: FETCH_SIZE,
-      });
+      const target = append ? targetApplication : await clipboardBridge.targetApplication();
+      const [page, pins] = await Promise.all([
+        clipboardBridge.history({
+          search: debouncedSearch,
+          kind: kindForFilter(filter),
+          favoriteOnly: filter === "favorites",
+          labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
+          cursor,
+          limit: FETCH_SIZE,
+        }),
+        append
+          ? Promise.resolve(applicationPins)
+          : target
+            ? clipboardBridge.appPins(
+                target.id,
+                debouncedSearch,
+                selectedLabelFilter ? [selectedLabelFilter] : [],
+              )
+            : Promise.resolve([]),
+      ]);
+      const entries = mergeAppPinnedEntries(
+        append ? [...history.entries, ...page.entries] : page.entries,
+        filter === "all" ? pins : [],
+      );
       if (generation !== loadGeneration) return;
-      if (dragBusy || (preservePosition && (pasteInFlight || Date.now() < interactionUntil))) {
+      if (
+        dragBusy ||
+        openingContextMenu ||
+        $inlineContextMenu ||
+        (preservePosition && (pasteInFlight || Date.now() < interactionUntil))
+      ) {
         requestHistoryRefresh();
         return;
       }
@@ -743,24 +826,27 @@
       if (
         preservePosition &&
         [anchor?.id, previousSelection].some(
-          (id) => id != null && !page.entries.some((item) => item.id === id),
+          (id) => id != null && !entries.some((item) => item.id === id),
         )
       )
         return;
+      targetApplication = target;
+      applicationPins = pins;
+      applicationPinIds = new Set(pins.map((item) => item.id));
       history = {
         revision: page.revision,
-        entries: append ? [...history.entries, ...page.entries] : page.entries,
+        entries,
         nextCursor: page.nextCursor,
         totalCount: page.totalCount ?? history.totalCount,
       };
       if (!append) {
         rowHeights = new Map(
-          page.entries.flatMap((item) => {
+          entries.flatMap((item) => {
             const height = rowHeights.get(item.id);
             return height === undefined ? [] : [[item.id, height] as const];
           }),
         );
-        selectedId = preservePosition ? previousSelection : (page.entries[0]?.id ?? null);
+        selectedId = preservePosition ? previousSelection : (entries[0]?.id ?? null);
         if (preservePosition) {
           await restorePosition(anchor, scrollTop, generation);
         } else {
@@ -1530,16 +1616,32 @@
   async function openContextMenu(event: MouseEvent, item: ClipboardItem) {
     event.preventDefault();
     event.stopPropagation();
+    const generation = ++contextMenuGeneration;
+    closeInlineContextMenu();
+    openingContextMenu = true;
+    deferHistoryRefresh();
     selectedId = item.id;
     keyboardMode = "results";
-    if (labels.length === 0) labels = await clipboardBridge.labels().catch(() => []);
-    await showClipboardContextMenu(
-      event,
-      item,
-      labels,
-      nearbyPeers,
-      language,
-      {
+    try {
+      // Capture the target once for this menu, including when launched outside 最近.
+      const target = await clipboardBridge.targetApplication();
+      const [currentLabels, pins] = await Promise.all([
+        labels.length ? Promise.resolve(labels) : clipboardBridge.labels(),
+        target ? clipboardBridge.appPins(target.id) : Promise.resolve([]),
+      ]);
+      if (!windowVisible || generation !== contextMenuGeneration) return;
+      labels = currentLabels;
+      await showClipboardContextMenu(event, item, labels, nearbyPeers, language, {
+        application: target,
+        appPinned: pins.some((pin) => pin.id === item.id),
+        pinApplication: async (pinned) => {
+          if (!target) return;
+          await clipboardBridge.setAppPin(item.id, target.id, pinned);
+          await load();
+        },
+        error: (reason) => {
+          error = reason instanceof Error ? reason.message : String(reason);
+        },
         nearby:
           !loading && !locating && search === debouncedSearch && debouncedSearch.trim()
             ? () => viewNearby(item)
@@ -1556,11 +1658,15 @@
         sendFiles: async (peerId) => {
           await clipboardBridge.sendFiles(item.id, peerId);
         },
-      },
-      windowsClipboard,
-    ).catch((reason) => {
+      });
+    } catch (reason) {
       error = reason instanceof Error ? reason.message : String(reason);
-    });
+    } finally {
+      if (generation === contextMenuGeneration) {
+        openingContextMenu = false;
+        if (windowVisible && historyRefreshPending) requestHistoryRefresh();
+      }
+    }
   }
 
   function openSelectedActions() {
@@ -2065,6 +2171,9 @@
             >
               <ClipboardRow
                 item={entry.item}
+                pinnedApplication={applicationPinIds.has(entry.item.id)
+                  ? (targetApplication?.name ?? null)
+                  : null}
                 shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
                 shortcutModifier={rowShortcutModifier}
                 selected={selectedId === entry.item.id}

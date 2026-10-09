@@ -19,7 +19,7 @@ ts-rs = { version = "12", features = ["serde-json-impl", "chrono-impl", "uuid-im
 notify = "8"
 notify-rust = "4.18.0"
 rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
-arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "80cf2143317984ec7fe9fe3c20d2ea63cf5e7b2b" }
+arcrelay-core = { features = ["native"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "83cd0b49f1f120de030de5c7af38b5cb163b94b5" }
 arcrelay-files = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-files.git", rev = "694f578f2c94dc73abb3812b0b88c3d2ce0dab2f" }
 arcrelay-input = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-input.git", rev = "edb2888b5400a0b5cd34c82ce125df9d2a13c94a" }
 arcrelay-gaze = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-gaze.git", rev = "5a6e8ca7c9c8dea713abb6db081414b198967db6" }
@@ -135,6 +135,6 @@ heck = "0.5"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dev-dependencies]
-arcrelay-core = { features = ["test-support"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "80cf2143317984ec7fe9fe3c20d2ea63cf5e7b2b" }
+arcrelay-core = { features = ["test-support"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "83cd0b49f1f120de030de5c7af38b5cb163b94b5" }
 tokio = { version = "1", features = ["test-util"] }
 tempfile = "3"

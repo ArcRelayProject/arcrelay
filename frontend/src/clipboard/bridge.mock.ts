@@ -241,7 +241,19 @@ function mockHistory(
   );
   return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
+const appPins = new Map<string, Set<number>>();
 export const clipboardBridge = {
+  targetApplication: () => Promise.resolve({ id: "mock:safari", name: "Safari" }),
+  appPins: async (appId: string, search = "", labelIds: string[] = []) => {
+    const entries = mockHistory(search, null, false, labelIds).entries;
+    const ids = appPins.get(appId) ?? new Set<number>();
+    return [...ids].flatMap((id) => entries.filter((entry) => entry.id === id));
+  },
+  setAppPin: async (id: number, appId: string, pinned: boolean) => {
+    const ids = appPins.get(appId) ?? new Set<number>();
+    pinned ? ids.add(id) : ids.delete(id);
+    appPins.set(appId, ids);
+  },
   openEditor: async (id: number, plainCopy = false) => {
     const item = mockItems.find((item) => item.id === id);
     window.open(

@@ -461,6 +461,58 @@ pub async fn clipboard_history(
 }
 
 #[arcrelay_desktop_ipc::command]
+pub fn clipboard_target_application(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<Option<crate::windowing::ClipboardTargetApplication>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    crate::windowing::clipboard_target_application(&app).map_err(|error| error.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn clipboard_app_pins(
+    state: State<'_, DesktopState>,
+    app_id: String,
+    search: Option<String>,
+    label_ids: Option<Vec<String>>,
+) -> Result<Vec<ClipboardItemView>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    if app_id.trim().is_empty() || app_id.len() > 1024 {
+        return Err("invalid clipboard application".into());
+    }
+    let mut query = ClipboardQuery::recent(200);
+    query.search = search;
+    query.label_ids = label_ids.unwrap_or_default();
+    state
+        .clipboard
+        .app_pins(app_id, query)
+        .await
+        .map(|entries| entries.into_iter().map(ClipboardItemView::from).collect())
+        .map_err(|error| error.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn clipboard_set_app_pin(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    id: u64,
+    app_id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    let current =
+        crate::windowing::clipboard_target_application(&app).map_err(|error| error.to_string())?;
+    if current.as_ref().map(|app| app.id.as_str()) != Some(app_id.as_str()) {
+        return Err("foreground application changed; clipboard pin cancelled".into());
+    }
+    state
+        .clipboard
+        .set_app_pin(id, app_id, pinned)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
 pub async fn clipboard_thumbnail(
     app: AppHandle,
     state: State<'_, DesktopState>,

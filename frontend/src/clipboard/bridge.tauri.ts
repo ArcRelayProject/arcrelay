@@ -21,6 +21,11 @@ async function imageSource(command: "clipboard_thumbnail" | "clipboard_image_pre
   return path ? convertFileSrc(path) : null;
 }
 export const clipboardBridge = {
+  targetApplication: () => invoke("clipboard_target_application"),
+  appPins: (appId: string, search = "", labelIds: string[] = []) =>
+    invoke("clipboard_app_pins", { appId, search, labelIds }),
+  setAppPin: (id: number, appId: string, pinned: boolean) =>
+    invoke("clipboard_set_app_pin", { id, appId, pinned }),
   openEditor: (id: number, plainCopy = false) => invoke("clipboard_editor_open", { id, plainCopy }),
   editOrigins: (ids: number[]) => invoke("clipboard_edit_origins", { ids }),
   prepareDrag: (request: ClipboardDragRequest) =>
