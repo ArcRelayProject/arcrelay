@@ -1,11 +1,11 @@
 use zeroize::Zeroizing;
 #[cfg(target_os = "macos")]
-const SERVICE: &str = "cn.arcrelay.login.user-presence";
+mod macos;
 
 pub fn available() -> bool {
     #[cfg(target_os = "macos")]
     {
-        true
+        macos::available()
     }
     #[cfg(target_os = "windows")]
     {
@@ -28,22 +28,7 @@ pub fn store(id: &str, key: &[u8; 32], window: isize) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let _ = window;
-        use security_framework::{
-            access_control::{ProtectionMode, SecAccessControl},
-            passwords::{set_generic_password_options, AccessControlOptions, PasswordOptions},
-        };
-        let mut options = PasswordOptions::new_generic_password(SERVICE, id);
-        options.set_access_synchronized(Some(false));
-        options.set_access_control(
-            SecAccessControl::create_with_protection(
-                Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
-                AccessControlOptions::USER_PRESENCE.bits(),
-            )
-            .map_err(|_| "System user verification is unavailable")?,
-        );
-        set_generic_password_options(key, options).map_err(|_| {
-            "Cannot enable system quick unlock; check the system password and Keychain".to_string()
-        })
+        macos::store(id, key)
     }
     #[cfg(target_os = "windows")]
     {
@@ -77,12 +62,7 @@ pub fn load(id: &str, window: isize) -> Result<Zeroizing<[u8; 32]>, String> {
     #[cfg(target_os = "macos")]
     let bytes = {
         let _ = window;
-        Zeroizing::new(
-            security_framework::passwords::generic_password(
-                security_framework::passwords::PasswordOptions::new_generic_password(SERVICE, id),
-            )
-            .map_err(|_| "System verification was not completed; use the master password")?,
-        )
+        macos::load(id)?
     };
     #[cfg(target_os = "windows")]
     let bytes = {
@@ -123,11 +103,7 @@ pub fn load(id: &str, window: isize) -> Result<Zeroizing<[u8; 32]>, String> {
 pub fn remove(id: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        match security_framework::passwords::delete_generic_password(SERVICE, id) {
-            Ok(()) => Ok(()),
-            Err(e) if e.code() == -25300 => Ok(()),
-            Err(_) => Err("Cannot remove the system quick unlock key".into()),
-        }
+        macos::remove(id)
     }
     #[cfg(target_os = "windows")]
     {

@@ -1623,7 +1623,7 @@
     selectedId = item.id;
     keyboardMode = "results";
     try {
-      // Capture the target once for this menu, including when launched outside 最近.
+      // Capture the target once for this menu, including when launched outside Recents.
       const target = await clipboardBridge.targetApplication();
       const [currentLabels, pins] = await Promise.all([
         labels.length ? Promise.resolve(labels) : clipboardBridge.labels(),
