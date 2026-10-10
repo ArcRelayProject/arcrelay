@@ -60,6 +60,33 @@ pub(super) fn gaze_target_is_active(
     }
 }
 
+fn send_pending_pointer(
+    pending: &Mutex<PendingPointerDelta>,
+    sender: &tokio::sync::mpsc::Sender<CapturedInputEvent>,
+) -> Result<(), tokio::sync::mpsc::error::SendError<CapturedInputEvent>> {
+    // The consumer may need this mutex before it can free a queue slot.
+    // An if-let scrutinee would keep its temporary guard over blocking_send.
+    let motion = lock(pending).take();
+    if let Some((x, y)) = motion {
+        sender.blocking_send(CapturedInputEvent::PointerDelta { x, y })?;
+    }
+    Ok(())
+}
+
+fn send_pending_scroll(
+    pending: &Mutex<PendingScrollDelta>,
+    sender: &tokio::sync::mpsc::Sender<CapturedInputEvent>,
+) -> Result<(), tokio::sync::mpsc::error::SendError<CapturedInputEvent>> {
+    let scroll = lock(pending).take();
+    if let Some(event) = scroll {
+        sender.blocking_send(CapturedInputEvent::Scroll {
+            event,
+            native_quartz_event: None,
+        })?;
+    }
+    Ok(())
+}
+
 impl ArcInputRuntime {
     pub(super) fn disable_consumer_capture(&self) {
         *lock(&self.consumer_route) = None;
@@ -696,16 +723,8 @@ impl ArcInputRuntime {
                         {
                             let accepted = lock(&scroll_for_capture).push(event);
                             if !accepted {
-                                if let Some(pending) = lock(&scroll_for_capture).take() {
-                                    if event_tx
-                                        .blocking_send(CapturedInputEvent::Scroll {
-                                            event: pending,
-                                            native_quartz_event: None,
-                                        })
-                                        .is_err()
-                                    {
-                                        break;
-                                    }
+                                if send_pending_scroll(&scroll_for_capture, &event_tx).is_err() {
+                                    break;
                                 }
                                 let pushed = lock(&scroll_for_capture).push(event);
                                 debug_assert!(pushed);
@@ -726,24 +745,11 @@ impl ArcInputRuntime {
                             }
                         }
                         event => {
-                            if let Some((x, y)) = lock(&pointer_for_capture).take() {
-                                if event_tx
-                                    .blocking_send(CapturedInputEvent::PointerDelta { x, y })
-                                    .is_err()
-                                {
-                                    break;
-                                }
+                            if send_pending_pointer(&pointer_for_capture, &event_tx).is_err() {
+                                break;
                             }
-                            if let Some(pending) = lock(&scroll_for_capture).take() {
-                                if event_tx
-                                    .blocking_send(CapturedInputEvent::Scroll {
-                                        event: pending,
-                                        native_quartz_event: None,
-                                    })
-                                    .is_err()
-                                {
-                                    break;
-                                }
+                            if send_pending_scroll(&scroll_for_capture, &event_tx).is_err() {
+                                break;
                             }
                             if event_tx.blocking_send(event).is_err() {
                                 break;
@@ -1921,8 +1927,8 @@ impl ArcInputRuntime {
             return false;
         }
         drop(capabilities);
-        let observed = lock(&self.observed_control);
-        observed.active.as_ref().is_none_or(|(controller, epoch)| {
+        let observed = lock(&self.observed_control).active.clone();
+        observed.as_ref().is_none_or(|(controller, epoch)| {
             !component.contains(controller)
                 || lock(&self.session).as_ref().is_some_and(|session| {
                     &session.controller == controller && &session.control_epoch == epoch
@@ -2844,5 +2850,83 @@ mod pointer_accumulator_tests {
         assert!(guard.blocks(&reverse, started + Duration::from_millis(10)));
         assert!(!guard.blocks(&forward, started + Duration::from_millis(10)));
         assert!(!guard.blocks(&reverse, started + HANDOFF_REENTRY_GUARD));
+    }
+}
+
+#[cfg(test)]
+mod capture_queue_tests {
+    use super::*;
+
+    fn check_pending_buffer_during_backpressure(scroll: bool) {
+        let pointer = Arc::new(Mutex::new(PendingPointerDelta::default()));
+        let pending_scroll = Arc::new(Mutex::new(PendingScrollDelta::default()));
+        lock(&pointer).push(3.0, 4.0);
+        assert!(lock(&pending_scroll).push(ScrollEvent {
+            delta_y: 5.0,
+            ..Default::default()
+        }));
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(64);
+        for _ in 0..64 {
+            sender
+                .try_send(CapturedInputEvent::EmergencyRelease)
+                .unwrap();
+        }
+        let worker_pointer = pointer.clone();
+        let worker_scroll = pending_scroll.clone();
+        let worker = std::thread::spawn(move || {
+            if scroll {
+                send_pending_scroll(&worker_scroll, &sender)
+            } else {
+                send_pending_pointer(&worker_pointer, &sender)
+            }
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut accessible = false;
+        while Instant::now() < deadline {
+            accessible = if scroll {
+                pending_scroll
+                    .try_lock()
+                    .is_ok_and(|buffer| buffer.event.is_none())
+            } else {
+                pointer
+                    .try_lock()
+                    .is_ok_and(|buffer| buffer.x == 0.0 && buffer.y == 0.0)
+            };
+            if accessible {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        // Free one slot even on failure, so a regression cannot strand the worker.
+        receiver.blocking_recv().unwrap();
+        worker.join().unwrap().unwrap();
+        for _ in 0..63 {
+            receiver.blocking_recv().unwrap();
+        }
+        let forwarded = receiver.blocking_recv().unwrap();
+        if scroll {
+            assert!(
+                matches!(forwarded, CapturedInputEvent::Scroll { event, .. } if event.delta_y == 5.0)
+            );
+        } else {
+            assert!(matches!(
+                forwarded,
+                CapturedInputEvent::PointerDelta { x: 3.0, y: 4.0 }
+            ));
+        }
+        assert!(
+            accessible,
+            "handoff cleanup must acquire the pending buffer before draining the full queue"
+        );
+    }
+
+    #[test]
+    fn pointer_cleanup_can_run_while_capture_waits_for_queue_space() {
+        check_pending_buffer_during_backpressure(false);
+    }
+
+    #[test]
+    fn scroll_cleanup_can_run_while_capture_waits_for_queue_space() {
+        check_pending_buffer_during_backpressure(true);
     }
 }

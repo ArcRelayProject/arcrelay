@@ -7,10 +7,10 @@ impl ArcInputRuntime {
     ) -> BTreeMap<DisplayId, DisplayAvailability> {
         let local = &self.identity.service_instance_id;
         let connected = self.network.connected_peers();
-        let capabilities = read(&self.remote_capabilities);
-        let enabled = read(&self.remote_sharing_enabled);
-        let inventories = read(&self.remote_inventories);
-        let local_inventory = read(&self.local_inventory);
+        let capabilities = read(&self.remote_capabilities).clone();
+        let enabled = read(&self.remote_sharing_enabled).clone();
+        let inventories = read(&self.remote_inventories).clone();
+        let local_inventory = read(&self.local_inventory).clone();
         let local_capabilities = InputCapturePort::capabilities(self.platform.as_ref());
         // Network convergence tests supply permission states explicitly; CI
         // must not need access to the operator's physical keyboard or mouse.

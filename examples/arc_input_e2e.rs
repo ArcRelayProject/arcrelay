@@ -7,6 +7,11 @@
 
 #[path = "../src/arc_input/mod.rs"]
 mod arc_input;
+#[path = "../src/infrastructure/durable_file.rs"]
+pub(crate) mod durable_file;
+mod infrastructure {
+    pub(crate) use super::durable_file;
+}
 #[path = "../src/ipc.rs"]
 mod ipc;
 #[path = "../src/retry.rs"]

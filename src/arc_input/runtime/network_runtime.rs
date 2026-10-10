@@ -1615,7 +1615,8 @@ impl ArcInputRuntime {
         routes.sort_by(|left, right| left.device_id.cmp(&right.device_id));
         let active_control = lock(&self.session)
             .as_ref()
-            .map(|session| (session.controller.clone(), session.control_epoch))
+            .map(|session| (session.controller.clone(), session.control_epoch));
+        let active_control = active_control
             .or_else(|| lock(&self.observed_control).active.clone())
             .filter(|(controller, _)| {
                 let component = self.input_component();
