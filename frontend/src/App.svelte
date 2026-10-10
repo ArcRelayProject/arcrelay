@@ -121,27 +121,38 @@
   const previewParams = new URLSearchParams(window.location.search);
   const requestedPage = previewParams.get("page");
   const requestedSettingsTab = previewParams.get("settingsTab");
-  const settingsTabs = new Set<SettingsTab>(["connection", "files", "clipboard", "screenshot", "notifications", "general", "agent"]);
-  let page: Page = requestedPage === "transfer"
-    ? "transfer"
-    : requestedPage === "files"
-      ? "files"
-      : requestedPage === "printers"
-        ? "printers"
-        : requestedPage === "input"
-          ? "input"
-        : requestedPage === "notifications"
-          ? "notifications"
-        : requestedPage === "privacy"
-          ? "privacy"
-        : requestedPage === "workflows" || requestedPage === "automations"
-          ? "workflows"
-        : requestedPage === "settings"
-          ? "settings"
-        : "actions";
-  let settingsTab: SettingsTab = requestedSettingsTab && settingsTabs.has(requestedSettingsTab as SettingsTab)
-    ? requestedSettingsTab as SettingsTab
-    : "connection";
+  let loginSecurityRequested = previewParams.has("login-security") ? 1 : 0;
+  const settingsTabs = new Set<SettingsTab>([
+    "connection",
+    "files",
+    "clipboard",
+    "screenshot",
+    "notifications",
+    "general",
+    "agent",
+  ]);
+  let page: Page =
+    requestedPage === "transfer"
+      ? "transfer"
+      : requestedPage === "files"
+        ? "files"
+        : requestedPage === "printers"
+          ? "printers"
+          : requestedPage === "input"
+            ? "input"
+            : requestedPage === "notifications"
+              ? "notifications"
+              : requestedPage === "privacy"
+                ? "privacy"
+                : requestedPage === "workflows" || requestedPage === "automations"
+                  ? "workflows"
+                  : requestedPage === "settings"
+                    ? "settings"
+                    : "actions";
+  let settingsTab: SettingsTab =
+    requestedSettingsTab && settingsTabs.has(requestedSettingsTab as SettingsTab)
+      ? (requestedSettingsTab as SettingsTab)
+      : "connection";
   let appSettings: AppSettings = {
     revision: 0,
     deviceName: "",
@@ -198,7 +209,11 @@
     },
   };
   let settingsSaving = false;
-  let appUpdateStatus: AppUpdateCheckResult = { currentVersion: "0.2.0", channel: "stable", update: null };
+  let appUpdateStatus: AppUpdateCheckResult = {
+    currentVersion: "0.3.0",
+    channel: "stable",
+    update: null,
+  };
   let appUpdateProgress: AppUpdateProgress | null = null;
   let appUpdateChecking = false;
   let appUpdateInstalling = false;
@@ -215,14 +230,27 @@
   let RemoteFilesPage: typeof import("./RemoteFilesPage.svelte").default | undefined;
   let TransferPage: typeof import("./TransferWorkspace.svelte").default | undefined;
   let AutomationPage: typeof import("./AutomationPage.svelte").default | undefined;
-  let InputSharingPage: typeof import("./features/input-sharing/InputSharingPage.svelte").default | undefined;
+  let InputSharingPage:
+    typeof import("./features/input-sharing/InputSharingPage.svelte").default | undefined;
   let lazyPageErrors: Partial<Record<Page, string>> = {};
-  const loadNotificationsPage = createCachedLoader(async () => (await import("./NotificationsPage.svelte")).default);
-  const loadPrinterPage = createCachedLoader(async () => (await import("./PrinterPage.svelte")).default);
-  const loadRemoteFilesPage = createCachedLoader(async () => (await import("./RemoteFilesPage.svelte")).default);
-  const loadTransferPage = createCachedLoader(async () => (await import("./TransferWorkspace.svelte")).default);
-  const loadAutomationPage = createCachedLoader(async () => (await import("./AutomationPage.svelte")).default);
-  const loadInputSharingPage = createCachedLoader(async () => (await import("./features/input-sharing/InputSharingPage.svelte")).default);
+  const loadNotificationsPage = createCachedLoader(
+    async () => (await import("./NotificationsPage.svelte")).default,
+  );
+  const loadPrinterPage = createCachedLoader(
+    async () => (await import("./PrinterPage.svelte")).default,
+  );
+  const loadRemoteFilesPage = createCachedLoader(
+    async () => (await import("./RemoteFilesPage.svelte")).default,
+  );
+  const loadTransferPage = createCachedLoader(
+    async () => (await import("./TransferWorkspace.svelte")).default,
+  );
+  const loadAutomationPage = createCachedLoader(
+    async () => (await import("./AutomationPage.svelte")).default,
+  );
+  const loadInputSharingPage = createCachedLoader(
+    async () => (await import("./features/input-sharing/InputSharingPage.svelte")).default,
+  );
   let confirmationRequest: ConfirmationRequest | null = null;
   let confirmationBusy = false;
   let toast = "";
@@ -259,56 +287,86 @@
     let modulesObserved = false;
     void (async () => {
       try {
-        await scope.add(bridge.onAppSettingsChanged((settings) => {
-          if (settings.revision >= appSettings.revision) { appSettings = settings; applyAppearance(settings); }
-        }));
-        await Promise.all([
-          bridge.onState((state) => applySnapshot(state)),
-          bridge.onRuntimeModules((modules) => { modulesObserved = true; moduleStatuses = modules; }),
-          bridge.onInputMetrics((metrics: InputMetrics | null) => {
-            if (snapshot) snapshot = { ...snapshot, inputMetrics: metrics };
+        await scope.add(
+          bridge.onAppSettingsChanged((settings) => {
+            if (settings.revision >= appSettings.revision) {
+              appSettings = settings;
+              applyAppearance(settings);
+            }
           }),
-          bridge.onPrivacyState((privacy) => {
-            if (snapshot) snapshot = { ...snapshot, privacy };
-          }),
-          bridge.onTransferState((state) => { applyTransferNotifications(state, transferObserved); transferObserved = true; }),
-          bridge.onOpenTransferRequest((transferId) => {
-            openTransferRequest(transferId);
-            void bridge.takePendingTransferRequest();
-          }),
-          bridge.onTrayNavigationPending(() => { void consumeTrayNavigation(); }),
-          bridge.onOpenSystemShareRequest((request) => openSystemShareRequest(request)),
-          bridge.onNotificationCount((count) => {
-            if (snapshot) snapshot = { ...snapshot, unreadNotificationCount: count };
-          }),
-          bridge.onDesktopNotification((notification) => {
-            const message = notification.body
-              ? `${notification.title}：${notification.body}`
-              : notification.title;
-            showToast(message, notification.error ? "error" : "success");
-          }),
-          bridge.onAppUpdateChecked((result) => { appUpdateStatus = result; }),
-          bridge.onAppUpdateProgress((progress) => {
-            appUpdateProgress = progress;
-          }),
-          bridge.onWebGatewayStatus((status) => {
-            webGatewayStatus = status;
-          }),
-        ].map((registration) => scope.add(registration)));
+        );
+        await Promise.all(
+          [
+            bridge.onState((state) => applySnapshot(state)),
+            bridge.onRuntimeModules((modules) => {
+              modulesObserved = true;
+              moduleStatuses = modules;
+            }),
+            bridge.onInputMetrics((metrics: InputMetrics | null) => {
+              if (snapshot) snapshot = { ...snapshot, inputMetrics: metrics };
+            }),
+            bridge.onPrivacyState((privacy) => {
+              if (snapshot) snapshot = { ...snapshot, privacy };
+            }),
+            bridge.onTransferState((state) => {
+              applyTransferNotifications(state, transferObserved);
+              transferObserved = true;
+            }),
+            bridge.onOpenTransferRequest((transferId) => {
+              openTransferRequest(transferId);
+              void bridge.takePendingTransferRequest();
+            }),
+            bridge.onTrayNavigationPending(() => {
+              void consumeTrayNavigation();
+            }),
+            bridge.onOpenSystemShareRequest((request) => openSystemShareRequest(request)),
+            bridge.onNotificationCount((count) => {
+              if (snapshot) snapshot = { ...snapshot, unreadNotificationCount: count };
+            }),
+            bridge.onDesktopNotification((notification) => {
+              const message = notification.body
+                ? `${notification.title}：${notification.body}`
+                : notification.title;
+              showToast(message, notification.error ? "error" : "success");
+            }),
+            bridge.onAppUpdateChecked((result) => {
+              appUpdateStatus = result;
+            }),
+            bridge.onAppUpdateProgress((progress) => {
+              appUpdateProgress = progress;
+            }),
+            bridge.onWebGatewayStatus((status) => {
+              webGatewayStatus = status;
+            }),
+          ].map((registration) => scope.add(registration)),
+        );
         if (disposed) {
           return;
         }
         const [initialState, settings, maximized] = await Promise.all([
-          bridge.getBootstrapState(), bridge.getAppSettings(), bridge.isWindowMaximized(),
+          bridge.getBootstrapState(),
+          bridge.getAppSettings(),
+          bridge.isWindowMaximized(),
         ]);
-        void bridge.getRuntimeModules().then((modules) => { if (!disposed && !modulesObserved) moduleStatuses = modules; }).catch(console.error);
-        void bridge.getWebGatewayStatus().then((status) => { if (!disposed) webGatewayStatus = status; }).catch((error) => showToast(errorMessage(error), "error"));
+        void bridge
+          .getRuntimeModules()
+          .then((modules) => {
+            if (!disposed && !modulesObserved) moduleStatuses = modules;
+          })
+          .catch(console.error);
+        void bridge
+          .getWebGatewayStatus()
+          .then((status) => {
+            if (!disposed) webGatewayStatus = status;
+          })
+          .catch((error) => showToast(errorMessage(error), "error"));
         if (disposed) return;
         applySnapshot(initialState);
         if (settings.revision >= appSettings.revision) appSettings = settings;
         applyAppearance(appSettings);
         appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
-        handleSystemThemeChange = () => appSettings.theme === "system" && applyAppearance(appSettings);
+        handleSystemThemeChange = () =>
+          appSettings.theme === "system" && applyAppearance(appSettings);
         appearanceMedia.addEventListener("change", handleSystemThemeChange);
         windowMaximized = maximized;
         await consumeTrayNavigation();
@@ -318,12 +376,16 @@
         for (const request of pendingSystemShares) openSystemShareRequest(request);
         if ("__TAURI_INTERNALS__" in window) {
           const currentWindow = getCurrentWebviewWindow();
-          await scope.add(currentWindow.onResized(async () => {
-            windowMaximized = await bridge.isWindowMaximized();
-          }));
-          await scope.add(currentWindow.onFocusChanged(({ payload }) => {
-            windowFocused = payload;
-          }));
+          await scope.add(
+            currentWindow.onResized(async () => {
+              windowMaximized = await bridge.isWindowMaximized();
+            }),
+          );
+          await scope.add(
+            currentWindow.onFocusChanged(({ payload }) => {
+              windowFocused = payload;
+            }),
+          );
         }
       } catch (error) {
         showToast(errorMessage(error), "error");
@@ -335,7 +397,8 @@
     return () => {
       disposed = true;
       scope.dispose();
-      if (appearanceMedia && handleSystemThemeChange) appearanceMedia.removeEventListener("change", handleSystemThemeChange);
+      if (appearanceMedia && handleSystemThemeChange)
+        appearanceMedia.removeEventListener("change", handleSystemThemeChange);
     };
   });
 
@@ -348,7 +411,8 @@
     const connectedDesktopIds = new Set(state.connectedDevices.map((device) => device.id));
     nearbyDesktops = nearbyDesktops.map((device) => ({
       ...device,
-      connecting: !connectedDesktopIds.has(device.deviceId) && connectingDesktopIds.has(device.deviceId),
+      connecting:
+        !connectedDesktopIds.has(device.deviceId) && connectingDesktopIds.has(device.deviceId),
     }));
     if (pairingJustArrived && !requestedPage && page !== "workflows") {
       page = "settings";
@@ -367,21 +431,37 @@
         continue;
       }
 
-      const subject = transfer.files.length === 1
-        ? `“${transfer.files[0].name}”`
-        : t("{count} 个文件", appSettings.language, { count: transfer.files.length });
+      const subject =
+        transfer.files.length === 1
+          ? `“${transfer.files[0].name}”`
+          : t("{count} 个文件", appSettings.language, { count: transfer.files.length });
       if (transfer.status === "awaitingApproval") {
-        if (announce) showToast(t("{name} 请求发送 {subject}", appSettings.language, { name: transfer.peerName, subject: subject }));
+        if (announce)
+          showToast(
+            t("{name} 请求发送 {subject}", appSettings.language, {
+              name: transfer.peerName,
+              subject: subject,
+            }),
+          );
       } else if (transfer.status === "completed" && announce) {
-        showToast(t("已接收来自 {name} 的{subject}", appSettings.language, { name: transfer.peerName, subject: subject }));
+        showToast(
+          t("已接收来自 {name} 的{subject}", appSettings.language, {
+            name: transfer.peerName,
+            subject: subject,
+          }),
+        );
       }
     }
     transferStatuses = nextStatuses;
   }
 
   function navigatePage(next: Page, after: () => void = () => {}) {
-    const change = () => { page = next; after(); };
-    if (page === "workflows" && next !== page && automationPage) automationPage.requestLeave(change);
+    const change = () => {
+      page = next;
+      after();
+    };
+    if (page === "workflows" && next !== page && automationPage)
+      automationPage.requestLeave(change);
     else change();
   }
 
@@ -400,13 +480,25 @@
   async function consumeTrayNavigation() {
     try {
       const destination = parseTrayDestination(await bridge.takePendingTrayNavigation());
-      if (destination?.page === "settings") openSettings("general");
+      if (destination?.page === "settings:clipboard-login") {
+        openSettings("clipboard");
+        loginSecurityRequested++;
+      } else if (destination?.page === "settings") openSettings("general");
       else if (destination?.page === "devices") openSettings("connection");
-      else if (destination?.page === "transfers") navigatePage("transfer", () => { transferOpenRequest = null; });
-      else if (destination?.page === "files") navigatePage("files", () => {
-        remoteFileOpenRequest = { deviceId: destination.peerId, sequence: ++remoteFileOpenSequence };
-      });
-    } catch (error) { showToast(errorMessage(error), "error"); }
+      else if (destination?.page === "transfers")
+        navigatePage("transfer", () => {
+          transferOpenRequest = null;
+        });
+      else if (destination?.page === "files")
+        navigatePage("files", () => {
+          remoteFileOpenRequest = {
+            deviceId: destination.peerId,
+            sequence: ++remoteFileOpenSequence,
+          };
+        });
+    } catch (error) {
+      showToast(errorMessage(error), "error");
+    }
   }
 
   function openSettings(tab: SettingsTab = settingsTab) {
@@ -450,7 +542,7 @@
     localShareBusy = share.id;
     try {
       const updated = await bridge.setRemoteFileShareWritable(share.id, !share.writable);
-      localShares = localShares.map((item) => item.id === updated.id ? updated : item);
+      localShares = localShares.map((item) => (item.id === updated.id ? updated : item));
       showToast(updated.writable ? "已允许远程写入" : "已改为只读");
     } catch (error) {
       showToast(errorMessage(error), "error");
@@ -461,15 +553,26 @@
 
   async function updateLocalShareWebAccess(
     share: LocalSharedDirectory,
-    policy: { mode: import("./types").WebAccessMode; listed: boolean; allowPreview: boolean; allowDownload: boolean },
+    policy: {
+      mode: import("./types").WebAccessMode;
+      listed: boolean;
+      allowPreview: boolean;
+      allowDownload: boolean;
+    },
     newPassword?: string,
   ) {
     if (localShareBusy) return;
     localShareBusy = share.id;
     try {
       const updated = await bridge.setRemoteFileShareWebPolicy(share.id, policy, newPassword);
-      localShares = localShares.map((item) => item.id === updated.id ? updated : item);
-      showToast(policy.mode === "disabled" ? "已关闭浏览器访问" : policy.mode === "public" ? "已设为局域网公开" : "密码访问已更新");
+      localShares = localShares.map((item) => (item.id === updated.id ? updated : item));
+      showToast(
+        policy.mode === "disabled"
+          ? "已关闭浏览器访问"
+          : policy.mode === "public"
+            ? "已设为局域网公开"
+            : "密码访问已更新",
+      );
     } catch (error) {
       showToast(errorMessage(error), "error");
       throw error;
@@ -507,13 +610,18 @@
   }
 
   function applyAppearance(settings: AppSettings) {
-    const resolvedTheme = settings.theme === "system"
-      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : settings.theme;
+    const resolvedTheme =
+      settings.theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : settings.theme;
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
     const themeColor = resolvedTheme === "dark" ? "#1c1e24" : "#ffffff";
-    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", themeColor);
+    document
+      .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+      ?.setAttribute("content", themeColor);
     setLanguage(settings.language);
   }
 
@@ -521,11 +629,20 @@
     return translate(source, appSettings.language);
   }
 
-  async function patchAppSettings(patch: import("./ipc/generated").AppSettingsPatch, message = "设置已保存") {
+  async function patchAppSettings(
+    patch: import("./ipc/generated").AppSettingsPatch,
+    message = "设置已保存",
+  ) {
     if (settingsSaving) return;
     settingsSaving = true;
     const previous = appSettings;
-    const next = { ...appSettings, ...patch, notifications: { ...appSettings.notifications, ...patch.notifications }, sounds: { ...appSettings.sounds, ...patch.sounds }, webFiles: { ...appSettings.webFiles, ...patch.webFiles } };
+    const next = {
+      ...appSettings,
+      ...patch,
+      notifications: { ...appSettings.notifications, ...patch.notifications },
+      sounds: { ...appSettings.sounds, ...patch.sounds },
+      webFiles: { ...appSettings.webFiles, ...patch.webFiles },
+    };
     appSettings = next;
     applyAppearance(next);
     try {
@@ -576,14 +693,16 @@
     const update = appUpdateStatus.update;
     if (!update || appUpdateInstalling) return;
     const transferActive = [...transferStatuses.values()].some((status) =>
-      ["preparing", "awaitingApproval", "connecting", "transferring", "paused"].includes(status));
+      ["preparing", "awaitingApproval", "connecting", "transferring", "paused"].includes(status),
+    );
     if (transferActive) {
       showToast("请先完成或取消正在进行的文件传输", "error");
       return;
     }
     requestConfirmation({
       title: `安装 ArcRelay ${update.version}？`,
-      description: "更新包会先经过签名验证。安装期间 ArcRelay 将退出并重新启动，请先保存正在编辑的工作。",
+      description:
+        "更新包会先经过签名验证。安装期间 ArcRelay 将退出并重新启动，请先保存正在编辑的工作。",
       confirmLabel: "安装并重启",
       kind: "primary",
       onConfirm: installAppUpdate,
@@ -627,7 +746,10 @@
       showToast(tr("全局快捷键至少需要一个修饰键"), "error");
       return;
     }
-    void patchAppSettings({ clipboardShortcut: [...modifiers, key].join("+") }, "剪贴板快捷键已更新");
+    void patchAppSettings(
+      { clipboardShortcut: [...modifiers, key].join("+") },
+      "剪贴板快捷键已更新",
+    );
   }
 
   function captureScreenshotShortcut(event: KeyboardEvent) {
@@ -644,7 +766,10 @@
       showToast(tr("全局快捷键至少需要一个修饰键"), "error");
       return;
     }
-    void patchAppSettings({ screenshotShortcut: [...modifiers, key].join("+") }, "截图快捷键已更新");
+    void patchAppSettings(
+      { screenshotShortcut: [...modifiers, key].join("+") },
+      "截图快捷键已更新",
+    );
   }
 
   async function testScreenshotCapture() {
@@ -660,13 +785,22 @@
     clipboardMergeBusy = true;
     try {
       const result = await bridge.mergeClipboardDevices();
-      const counts = t("接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项", appSettings.language, {
-        received: result.received, sent: result.sent,
-        labels: result.labelsReceived + result.labelsSent, total: result.totalRecords,
-      });
-      showToast(result.complete ? `${tr("设备历史已同步并校对")} · ${counts}`
-        : `${tr("同步尚未完成")} · ${counts} · ${result.failures[0] ?? tr("后台将继续重试")}`,
-        result.complete ? "success" : "error");
+      const counts = t(
+        "接收更新 {received} 次 · 发送更新 {sent} 次 · 标签更新 {labels} 次 · 可同步记录 {total} 项",
+        appSettings.language,
+        {
+          received: result.received,
+          sent: result.sent,
+          labels: result.labelsReceived + result.labelsSent,
+          total: result.totalRecords,
+        },
+      );
+      showToast(
+        result.complete
+          ? `${tr("设备历史已同步并校对")} · ${counts}`
+          : `${tr("同步尚未完成")} · ${counts} · ${result.failures[0] ?? tr("后台将继续重试")}`,
+        result.complete ? "success" : "error",
+      );
     } catch (error) {
       showToast(errorMessage(error), "error");
     } finally {
@@ -829,7 +963,6 @@
     navigatePage("privacy");
   }
 
-
   function handleShortcut(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
@@ -870,7 +1003,6 @@
   function showInputToast(message: string, error = false) {
     showToast(message, error ? "error" : "success");
   }
-
 </script>
 
 <svelte:window on:keydown={handleShortcut} />
@@ -901,229 +1033,272 @@
     <div class="titlebar-main" data-tauri-drag-region>
       {#if windowPlatform !== "macos"}
         <div class="windows-window-controls" aria-label={uiTranslate("窗口控制", $uiLanguage)}>
-          <button aria-label={uiTranslate("最小化窗口", $uiLanguage)} title={uiTranslate("最小化", $uiLanguage)} on:click={() => bridge.minimizeWindow()}><Minus size={16} /></button>
-          <button aria-label={uiTranslate((windowMaximized ? "还原窗口" : "最大化窗口"), $uiLanguage)} title={uiTranslate((windowMaximized ? "还原" : "最大化"), $uiLanguage)} on:click={toggleWindowMaximize}>
+          <button
+            aria-label={uiTranslate("最小化窗口", $uiLanguage)}
+            title={uiTranslate("最小化", $uiLanguage)}
+            on:click={() => bridge.minimizeWindow()}><Minus size={16} /></button
+          >
+          <button
+            aria-label={uiTranslate(windowMaximized ? "还原窗口" : "最大化窗口", $uiLanguage)}
+            title={uiTranslate(windowMaximized ? "还原" : "最大化", $uiLanguage)}
+            on:click={toggleWindowMaximize}
+          >
             {#if windowMaximized}<CopySimple size={15} />{:else}<Square size={14} />{/if}
           </button>
-          <button class="windows-close" aria-label={uiTranslate("关闭窗口", $uiLanguage)} title={uiTranslate("关闭", $uiLanguage)} on:click={() => bridge.closeWindow()}><X size={17} /></button>
+          <button
+            class="windows-close"
+            aria-label={uiTranslate("关闭窗口", $uiLanguage)}
+            title={uiTranslate("关闭", $uiLanguage)}
+            on:click={() => bridge.closeWindow()}><X size={17} /></button
+          >
         </div>
       {/if}
     </div>
   </header>
 
   <div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <span class="brand-mark"><BrandLogo size={24} /></span>
-      <span>ArcRelay</span>
-    </div>
-
-    <nav class="primary-nav" aria-label={uiTranslate("主要导航", $uiLanguage)}>
-      <button class:active={page === "actions"} on:click={() => navigatePage("actions")}>
-        <Lightning size={21} weight={page === "actions" ? "fill" : "regular"} />
-        <span>{uiTranslate("快捷动作", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "notifications"} on:click={() => navigatePage("notifications")}>
-        <Bell size={21} weight={page === "notifications" ? "fill" : "regular"} />
-        <span>{uiTranslate("通知", $uiLanguage)}</span>
-        {#if (snapshot?.unreadNotificationCount ?? 0) > 0}
-          <span class="nav-count">{snapshot?.unreadNotificationCount}</span>
-        {/if}
-      </button>
-      <button class:active={page === "workflows"} on:click={openWorkflowsPage}>
-        <SquaresFour size={21} weight={page === "workflows" ? "fill" : "regular"} />
-        <span>{uiTranslate("自动化", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "privacy"} on:click={openPrivacyPage}>
-        <Shield size={21} weight={page === "privacy" ? "fill" : "regular"} />
-        <span>{uiTranslate("投屏隐私", $uiLanguage)}</span>
-        {#if snapshot?.privacy.active}
-          <span class="privacy-nav-dot" aria-label={uiTranslate("已开启", $uiLanguage)}></span>
-        {/if}
-      </button>
-      <button class:active={page === "transfer"} on:click={() => navigatePage("transfer")}>
-        <PaperPlaneTilt size={21} weight={page === "transfer" ? "fill" : "regular"} />
-        <span>{uiTranslate("附近传输", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "files"} on:click={() => navigatePage("files")}>
-        <HardDrives size={21} weight={page === "files" ? "fill" : "regular"} />
-        <span>{uiTranslate("远程文件", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "printers"} on:click={() => navigatePage("printers")}>
-        <Printer size={21} weight={page === "printers" ? "fill" : "regular"} />
-        <span>{uiTranslate("打印机共享", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "input"} on:click={openInputPage}>
-        <Keyboard size={21} weight={page === "input" ? "fill" : "regular"} />
-        <span>{uiTranslate("跨屏输入", $uiLanguage)}</span>
-      </button>
-      <button class:active={page === "settings"} on:click={() => openSettings()}>
-        <Gear size={21} weight={page === "settings" ? "fill" : "regular"} />
-        <span>{uiTranslate("设置", $uiLanguage)}</span>
-        {#if snapshot?.pendingPairing}
-          <span class="pairing-nav-dot" aria-label={uiTranslate("有新的配对请求", $uiLanguage)}></span>
-        {/if}
-      </button>
-    </nav>
-
-    <div class="sidebar-status">
-      <div>
-        <span class:online={snapshot?.serverRunning} class="status-dot"></span>
-        <span>{uiTranslate(snapshot?.serverRunning ? "服务运行中" : "服务已停止", $uiLanguage)}</span>
-        {#each moduleStatuses.filter((module) => module.state === "unavailable") as module}
-          <span title={module.error ?? ""} role="status">{uiTranslate(module.name === "print" ? "打印服务暂不可用" : "文件传输正在重试", $uiLanguage)}</span>
-        {/each}
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><BrandLogo size={24} /></span>
+        <span>ArcRelay</span>
       </div>
-      <button
-        type="button"
-        class="sidebar-status-link"
-        aria-label={uiTranslate((`打开设备与连接，当前 ${snapshot?.connectedDevices.length ?? 0} 台设备已连接`), $uiLanguage)}
-        on:click={() => openSettings("connection")}
-      >
-        <DesktopTower size={17} />
-        <span>{uiTranslate(`${snapshot?.connectedDevices.length ?? 0} 台设备已连接`, $uiLanguage)}</span>
-      </button>
-    </div>
-  </aside>
 
-  {#if loading}
-    <main class="loading-state">
-      <span class="loading-spinner"></span>
-      <p>{uiTranslate("正在连接本地服务…", $uiLanguage)}</p>
-    </main>
-  {:else if page === "transfer"}
-    {#if TransferPage}
-      <svelte:component this={TransferPage} notify={showToast} openRequest={transferOpenRequest} systemShareRequest={systemShareOpenRequest} />
-    {:else}
+      <nav class="primary-nav" aria-label={uiTranslate("主要导航", $uiLanguage)}>
+        <button class:active={page === "actions"} on:click={() => navigatePage("actions")}>
+          <Lightning size={21} weight={page === "actions" ? "fill" : "regular"} />
+          <span>{uiTranslate("快捷动作", $uiLanguage)}</span>
+        </button>
+        <button
+          class:active={page === "notifications"}
+          on:click={() => navigatePage("notifications")}
+        >
+          <Bell size={21} weight={page === "notifications" ? "fill" : "regular"} />
+          <span>{uiTranslate("通知", $uiLanguage)}</span>
+          {#if (snapshot?.unreadNotificationCount ?? 0) > 0}
+            <span class="nav-count">{snapshot?.unreadNotificationCount}</span>
+          {/if}
+        </button>
+        <button class:active={page === "workflows"} on:click={openWorkflowsPage}>
+          <SquaresFour size={21} weight={page === "workflows" ? "fill" : "regular"} />
+          <span>{uiTranslate("自动化", $uiLanguage)}</span>
+        </button>
+        <button class:active={page === "privacy"} on:click={openPrivacyPage}>
+          <Shield size={21} weight={page === "privacy" ? "fill" : "regular"} />
+          <span>{uiTranslate("投屏隐私", $uiLanguage)}</span>
+          {#if snapshot?.privacy.active}
+            <span class="privacy-nav-dot" aria-label={uiTranslate("已开启", $uiLanguage)}></span>
+          {/if}
+        </button>
+        <button class:active={page === "transfer"} on:click={() => navigatePage("transfer")}>
+          <PaperPlaneTilt size={21} weight={page === "transfer" ? "fill" : "regular"} />
+          <span>{uiTranslate("附近传输", $uiLanguage)}</span>
+        </button>
+        <button class:active={page === "files"} on:click={() => navigatePage("files")}>
+          <HardDrives size={21} weight={page === "files" ? "fill" : "regular"} />
+          <span>{uiTranslate("远程文件", $uiLanguage)}</span>
+        </button>
+        <button class:active={page === "printers"} on:click={() => navigatePage("printers")}>
+          <Printer size={21} weight={page === "printers" ? "fill" : "regular"} />
+          <span>{uiTranslate("打印机共享", $uiLanguage)}</span>
+        </button>
+        <button class:active={page === "input"} on:click={openInputPage}>
+          <Keyboard size={21} weight={page === "input" ? "fill" : "regular"} />
+          <span>{uiTranslate("跨屏输入", $uiLanguage)}</span>
+        </button>
+        <button class:active={page === "settings"} on:click={() => openSettings()}>
+          <Gear size={21} weight={page === "settings" ? "fill" : "regular"} />
+          <span>{uiTranslate("设置", $uiLanguage)}</span>
+          {#if snapshot?.pendingPairing}
+            <span class="pairing-nav-dot" aria-label={uiTranslate("有新的配对请求", $uiLanguage)}
+            ></span>
+          {/if}
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <div>
+          <span class:online={snapshot?.serverRunning} class="status-dot"></span>
+          <span
+            >{uiTranslate(snapshot?.serverRunning ? "服务运行中" : "服务已停止", $uiLanguage)}</span
+          >
+          {#each moduleStatuses.filter((module) => module.state === "unavailable") as module}
+            <span title={module.error ?? ""} role="status"
+              >{uiTranslate(
+                module.name === "print" ? "打印服务暂不可用" : "文件传输正在重试",
+                $uiLanguage,
+              )}</span
+            >
+          {/each}
+        </div>
+        <button
+          type="button"
+          class="sidebar-status-link"
+          aria-label={uiTranslate(
+            `打开设备与连接，当前 ${snapshot?.connectedDevices.length ?? 0} 台设备已连接`,
+            $uiLanguage,
+          )}
+          on:click={() => openSettings("connection")}
+        >
+          <DesktopTower size={17} />
+          <span
+            >{uiTranslate(
+              `${snapshot?.connectedDevices.length ?? 0} 台设备已连接`,
+              $uiLanguage,
+            )}</span
+          >
+        </button>
+      </div>
+    </aside>
+
+    {#if loading}
       <main class="loading-state">
         <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.transfer ?? "正在加载附近传输…", $uiLanguage)}</p>
+        <p>{uiTranslate("正在连接本地服务…", $uiLanguage)}</p>
       </main>
-    {/if}
-  {:else if page === "files"}
-    {#if RemoteFilesPage}
-      <svelte:component this={RemoteFilesPage} notify={showToast} language={appSettings.language} openDeviceRequest={remoteFileOpenRequest} />
-    {:else}
-      <main class="loading-state">
-        <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.files ?? "正在加载远程文件…", $uiLanguage)}</p>
-      </main>
-    {/if}
-  {:else if page === "printers"}
-    {#if PrinterPage}
-      <svelte:component this={PrinterPage} notify={showToast} />
-    {:else}
-      <main class="loading-state">
-        <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.printers ?? "正在加载打印机共享…", $uiLanguage)}</p>
-      </main>
-    {/if}
-  {:else if page === "input"}
-    {#if InputSharingPage}
-      <svelte:component this={InputSharingPage} notify={showInputToast} />
-    {:else}
-      <main class="loading-state">
-        <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.input ?? "正在加载跨屏输入…", $uiLanguage)}</p>
-      </main>
-    {/if}
-  {:else if page === "actions"}
-    <ActionsFeature
-      {snapshot}
-      language={appSettings.language}
-      {shortcutModifier}
-      notify={showToast}
-      confirm={requestConfirmation}
-      onSnapshot={applySnapshot}
-    />
-  {:else if page === "notifications"}
-    {#if NotificationsPage}
-      <svelte:component
-        this={NotificationsPage}
-        bind:this={notificationsPage}
+    {:else if page === "transfer"}
+      {#if TransferPage}
+        <svelte:component
+          this={TransferPage}
+          notify={showToast}
+          openRequest={transferOpenRequest}
+          systemShareRequest={systemShareOpenRequest}
+        />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.transfer ?? "正在加载附近传输…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "files"}
+      {#if RemoteFilesPage}
+        <svelte:component
+          this={RemoteFilesPage}
+          notify={showToast}
+          language={appSettings.language}
+          openDeviceRequest={remoteFileOpenRequest}
+        />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.files ?? "正在加载远程文件…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "printers"}
+      {#if PrinterPage}
+        <svelte:component this={PrinterPage} notify={showToast} />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.printers ?? "正在加载打印机共享…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "input"}
+      {#if InputSharingPage}
+        <svelte:component this={InputSharingPage} notify={showInputToast} />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.input ?? "正在加载跨屏输入…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "actions"}
+      <ActionsFeature
+        {snapshot}
         language={appSettings.language}
         {shortcutModifier}
         notify={showToast}
         confirm={requestConfirmation}
+        onSnapshot={applySnapshot}
       />
-    {:else}
-      <main class="loading-state">
-        <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.notifications ?? "正在加载通知…", $uiLanguage)}</p>
-      </main>
-    {/if}
-  {:else if page === "workflows"}
-    {#if AutomationPage}
-      <svelte:component
-        this={AutomationPage}
-        bind:this={automationPage}
-        openDevices={() => openSettings("connection")}
-        {actions}
+    {:else if page === "notifications"}
+      {#if NotificationsPage}
+        <svelte:component
+          this={NotificationsPage}
+          bind:this={notificationsPage}
+          language={appSettings.language}
+          {shortcutModifier}
+          notify={showToast}
+          confirm={requestConfirmation}
+        />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.notifications ?? "正在加载通知…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "workflows"}
+      {#if AutomationPage}
+        <svelte:component
+          this={AutomationPage}
+          bind:this={automationPage}
+          openDevices={() => openSettings("connection")}
+          {actions}
+          language={appSettings.language}
+          notify={showToast}
+          confirm={requestConfirmation}
+        />
+      {:else}
+        <main class="loading-state">
+          <span class="loading-spinner"></span>
+          <p>{uiTranslate(lazyPageErrors.workflows ?? "正在加载自动化…", $uiLanguage)}</p>
+        </main>
+      {/if}
+    {:else if page === "privacy"}
+      <PrivacyFeature
+        {snapshot}
         language={appSettings.language}
         notify={showToast}
         confirm={requestConfirmation}
+        onSnapshot={applySnapshot}
       />
     {:else}
-      <main class="loading-state">
-        <span class="loading-spinner"></span>
-        <p>{uiTranslate(lazyPageErrors.workflows ?? "正在加载自动化…", $uiLanguage)}</p>
-      </main>
+      <SettingsView
+        {loginSecurityRequested}
+        {snapshot}
+        bind:settingsTab
+        {appSettings}
+        {settingsSaving}
+        {appUpdateStatus}
+        {appUpdateProgress}
+        {appUpdateChecking}
+        {appUpdateInstalling}
+        {localShares}
+        {localSharesLoaded}
+        {localShareBusy}
+        {webGatewayStatus}
+        {clipboardMergeBusy}
+        {nearbyDesktops}
+        {nearbyDiscoveryStarted}
+        {nearbyDiscoveryBusy}
+        {connectingDesktopId}
+        {pairingResponseBusy}
+        bind:addDeviceGuideOpen
+        {loadLocalShares}
+        {addLocalShare}
+        {toggleLocalShareWriteAccess}
+        {updateLocalShareWebAccess}
+        {refreshWebGatewayStatus}
+        {revokeWebAccess}
+        {removeLocalShare}
+        {patchAppSettings}
+        {testSystemNotification}
+        {checkForAppUpdate}
+        {confirmInstallAppUpdate}
+        {captureClipboardShortcut}
+        {captureScreenshotShortcut}
+        {testScreenshotCapture}
+        {mergeClipboardDeviceHistory}
+        {confirmClearClipboardHistory}
+        {copyConnectionInfo}
+        {refreshNearbyDesktops}
+        {connectDesktop}
+        {connectDesktopAddress}
+        {respondToPairing}
+        {setDeviceAutoConnect}
+        {confirmForgetPairedDevice}
+        {confirmQuitApp}
+      />
     {/if}
-  {:else if page === "privacy"}
-    <PrivacyFeature
-      {snapshot}
-      language={appSettings.language}
-      notify={showToast}
-      confirm={requestConfirmation}
-      onSnapshot={applySnapshot}
-    />
-  {:else}
-    <SettingsView
-      {snapshot}
-      bind:settingsTab
-      {appSettings}
-      {settingsSaving}
-      {appUpdateStatus}
-      {appUpdateProgress}
-      {appUpdateChecking}
-      {appUpdateInstalling}
-      {localShares}
-      {localSharesLoaded}
-      {localShareBusy}
-      {webGatewayStatus}
-      {clipboardMergeBusy}
-      {nearbyDesktops}
-      {nearbyDiscoveryStarted}
-      {nearbyDiscoveryBusy}
-      {connectingDesktopId}
-      {pairingResponseBusy}
-      bind:addDeviceGuideOpen
-      {loadLocalShares}
-      {addLocalShare}
-      {toggleLocalShareWriteAccess}
-      {updateLocalShareWebAccess}
-      {refreshWebGatewayStatus}
-      {revokeWebAccess}
-      {removeLocalShare}
-      {patchAppSettings}
-      {testSystemNotification}
-      {checkForAppUpdate}
-      {confirmInstallAppUpdate}
-      {captureClipboardShortcut}
-      {captureScreenshotShortcut}
-      {testScreenshotCapture}
-      {mergeClipboardDeviceHistory}
-      {confirmClearClipboardHistory}
-      {copyConnectionInfo}
-      {refreshNearbyDesktops}
-      {connectDesktop}
-      {connectDesktopAddress}
-      {respondToPairing}
-      {setDeviceAutoConnect}
-      {confirmForgetPairedDevice}
-      {confirmQuitApp}
-    />
-  {/if}
   </div>
 </div>
 
@@ -1138,33 +1313,48 @@
     <Dialog.Content class="modal confirmation-modal">
       <header class="modal-header">
         <div>
-          <Dialog.Title class="modal-title" level={2}>{uiTranslate(confirmationRequest?.title ?? "确认操作", $uiLanguage)}</Dialog.Title>
+          <Dialog.Title class="modal-title" level={2}
+            >{uiTranslate(confirmationRequest?.title ?? "确认操作", $uiLanguage)}</Dialog.Title
+          >
           <Dialog.Description class="modal-description">
             {confirmationRequest?.description ?? ""}
           </Dialog.Description>
         </div>
-        <Dialog.Close class="modal-close-button" aria-label={uiTranslate("关闭", $uiLanguage)} disabled={confirmationBusy}><X size={19} /></Dialog.Close>
+        <Dialog.Close
+          class="modal-close-button"
+          aria-label={uiTranslate("关闭", $uiLanguage)}
+          disabled={confirmationBusy}><X size={19} /></Dialog.Close
+        >
       </header>
       <footer class="modal-footer">
-        <Dialog.Close class="secondary-button" disabled={confirmationBusy}>{uiTranslate("取消", $uiLanguage)}</Dialog.Close>
+        <Dialog.Close class="secondary-button" disabled={confirmationBusy}
+          >{uiTranslate("取消", $uiLanguage)}</Dialog.Close
+        >
         <button
           class={confirmationRequest?.kind === "danger" ? "danger-button" : "primary-button"}
           disabled={confirmationBusy}
           on:click={confirmRequestedAction}
         >
-          {#if confirmationRequest?.kind === "danger"}<Trash size={17} />{:else}<Play size={17} weight="fill" />{/if}
-          {uiTranslate(confirmationBusy ? "处理中…" : confirmationRequest?.confirmLabel ?? "确认", $uiLanguage)}
+          {#if confirmationRequest?.kind === "danger"}<Trash size={17} />{:else}<Play
+              size={17}
+              weight="fill"
+            />{/if}
+          {uiTranslate(
+            confirmationBusy ? "处理中…" : (confirmationRequest?.confirmLabel ?? "确认"),
+            $uiLanguage,
+          )}
         </button>
       </footer>
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
 
-
-
 {#if toast}
   <div class="toast" class:error={toastKind === "error"}>
-    {#if toastKind === "success"}<CheckCircle size={18} weight="fill" />{:else}<WarningCircle size={18} weight="fill" />{/if}
+    {#if toastKind === "success"}<CheckCircle size={18} weight="fill" />{:else}<WarningCircle
+        size={18}
+        weight="fill"
+      />{/if}
     {toast}
   </div>
 {/if}

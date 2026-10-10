@@ -247,3 +247,7 @@ pub fn request_main_window(app: AppHandle) {
         tracing::error!(%error, "Failed to request ArcRelay window");
     }
 }
+
+pub fn open_login_settings(app: &AppHandle) -> Result<(), String> {
+    tray::navigate(app, "settings:clipboard-login")
+}

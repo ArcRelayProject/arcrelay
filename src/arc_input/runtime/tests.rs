@@ -1,6 +1,7 @@
 use super::super::{ProductIdentity, ProductPaths};
 use super::*;
 
+mod locking;
 mod workspace_sync;
 
 #[tokio::test]

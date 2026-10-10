@@ -9,8 +9,10 @@ export function autoFocusSearch(windowsClipboard: boolean, preference: boolean |
 
 export function editableElement(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) return null;
-  const element = target.closest<HTMLElement>('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="hidden"]), textarea, select, [contenteditable="true"]');
-  if (!element || element.matches(':disabled, [readonly]')) return null;
+  const element = target.closest<HTMLElement>(
+    'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="hidden"]), textarea, select, [contenteditable="true"], .login-panel button, .login-panel input[type="checkbox"]',
+  );
+  if (!element || element.matches(":disabled, [readonly]")) return null;
   return element;
 }
 
@@ -30,11 +32,17 @@ export function installEditableFocus(port: FocusPort) {
   let timer: number | undefined;
   const editing = (next: boolean) => {
     desired = next;
-    chain = chain.then(async () => {
-      if (disposed || (next && (!desired || !port.visible()))) return false;
-      await port.editing(next);
-      return true;
-    }).catch(reason => { desired = false; port.error(reason); return false; });
+    chain = chain
+      .then(async () => {
+        if (disposed || (next && (!desired || !port.visible()))) return false;
+        await port.editing(next);
+        return true;
+      })
+      .catch((reason) => {
+        desired = false;
+        port.error(reason);
+        return false;
+      });
     return chain;
   };
   const clear = () => window.clearTimeout(timer);
@@ -43,16 +51,22 @@ export function installEditableFocus(port: FocusPort) {
     clear();
     const input = editableElement(event.target);
     if (input) {
-      void editing(true).then(success => {
-        if (success && !disposed && desired && port.visible() && document.contains(input)) input.focus();
+      void editing(true).then((success) => {
+        if (success && !disposed && desired && port.visible() && document.contains(input))
+          input.focus();
       });
     } else {
       if (editableElement(document.activeElement)) (document.activeElement as HTMLElement).blur();
-      void editing(false).then(() => port.visible() && port.activate()).catch(port.error);
+      void editing(false)
+        .then(() => port.visible() && port.activate())
+        .catch(port.error);
     }
   };
   const focus = (event: FocusEvent) => {
-    if (editableElement(event.target) && port.visible()) { clear(); void editing(true); }
+    if (editableElement(event.target) && port.visible()) {
+      clear();
+      void editing(true);
+    }
   };
   const blur = () => {
     clear();
@@ -60,18 +74,22 @@ export function installEditableFocus(port: FocusPort) {
       if (!editableElement(document.activeElement)) void editing(false);
     }, 80);
   };
-  document.addEventListener('pointerdown', pointer, true);
-  document.addEventListener('focusin', focus, true);
-  document.addEventListener('focusout', blur, true);
+  document.addEventListener("pointerdown", pointer, true);
+  document.addEventListener("focusin", focus, true);
+  document.addEventListener("focusout", blur, true);
   return {
     editing,
-    pause() { clear(); desired = false; editableElement(document.activeElement)?.blur(); },
+    pause() {
+      clear();
+      desired = false;
+      editableElement(document.activeElement)?.blur();
+    },
     destroy() {
       disposed = true;
       clear();
-      document.removeEventListener('pointerdown', pointer, true);
-      document.removeEventListener('focusin', focus, true);
-      document.removeEventListener('focusout', blur, true);
+      document.removeEventListener("pointerdown", pointer, true);
+      document.removeEventListener("focusin", focus, true);
+      document.removeEventListener("focusout", blur, true);
     },
   };
 }

@@ -1,4 +1,12 @@
 <script lang="ts">
+  import LoginSecurity from "../login/LoginSecurity.svelte";
+  export let loginSecurityRequested = 0;
+  let loginSecurityOpen = false;
+  let lastLoginSecurityRequest = 0;
+  $: if (loginSecurityRequested !== lastLoginSecurityRequest) {
+    lastLoginSecurityRequest = loginSecurityRequested;
+    loginSecurityOpen = true;
+  }
   import AppSelect from "../../components/AppSelect.svelte";
   import {
     t as uiT,
@@ -1183,274 +1191,292 @@
       {patchAppSettings}
     />
   {:else if settingsTab === "clipboard"}
-    <section class="settings-tab-content">
-      <div class="connection-section-title">
-        <h2>{uiTranslate("剪贴板", $uiLanguage)}</h2>
-        <span>{uiTranslate("保存与跨设备同步", $uiLanguage)}</span>
-      </div>
-      <div class="settings-list settings-card-list">
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardEnabled}
-          disabled={settingsSaving}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardEnabled: !appSettings.clipboardEnabled },
-              appSettings.clipboardEnabled ? "剪贴板记录已关闭" : "剪贴板记录已开启",
-            )}
-        >
-          <span class="row-icon accent-icon"><ClipboardText size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("保存剪贴板历史", $uiLanguage)}</strong><small
-              >{uiTranslate("保存复制过的文本、图片和文件，方便稍后再次使用。", $uiLanguage)}</small
-            ></span
-          >
-          <span class:checked={appSettings.clipboardEnabled} class="switch-control"
-            ><span></span></span
-          >
-        </button>
-        <ClipboardRetentionSettings />
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardLockWhenOwnerUnconfirmed}
-          disabled={settingsSaving || !appSettings.clipboardEnabled}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardLockWhenOwnerUnconfirmed: !appSettings.clipboardLockWhenOwnerUnconfirmed },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><LockKey size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("非本人在场时锁定剪贴板", $uiLanguage)}</strong><small
-              >{uiTranslate(
-                "眼动检测运行时，暂停历史记录和跨设备同步，并禁止查看、复制或粘贴，直到重新确认本机用户。",
-                $uiLanguage,
-              )}</small
-            ></span
-          >
-          <span class:checked={appSettings.clipboardLockWhenOwnerUnconfirmed} class="switch-control"
-            ><span></span></span
-          >
-        </button>
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardReceiveFiles}
-          disabled={settingsSaving || !appSettings.clipboardEnabled}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardReceiveFiles: !appSettings.clipboardReceiveFiles },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><ClipboardText size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("接收文件后自动加入剪贴板", $uiLanguage)}</strong><small
-              >{uiTranslate(
-                "附近设备传来的文件接收完成后，保存到剪贴板历史，并可直接粘贴到支持文件的应用。",
-                $uiLanguage,
-              )}</small
-            ></span
-          >
-          <span class:checked={appSettings.clipboardReceiveFiles} class="switch-control"
-            ><span></span></span
-          >
-        </button>
-        <label
-          class:disabled={!appSettings.clipboardEnabled}
-          class="settings-row setting-field-row"
-        >
-          <span class="row-icon"><Keyboard size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("打开剪贴板的快捷键", $uiLanguage)}</strong><small
-              >{uiTranslate("点击输入框后，直接按下新的组合键。", $uiLanguage)}</small
-            ></span
-          >
-          <input
-            class="shortcut-input"
-            value={appSettings.clipboardShortcut}
-            disabled={!appSettings.clipboardEnabled || settingsSaving}
-            aria-label={uiTranslate("剪贴板全局快捷键", $uiLanguage)}
-            readonly
-            on:keydown={captureClipboardShortcut}
-          />
-        </label>
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardSyncEnabled}
-          disabled={settingsSaving}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardSyncEnabled: !appSettings.clipboardSyncEnabled },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon accent-icon"><LinkSimpleHorizontal size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("在设备间同步剪贴板", $uiLanguage)}</strong><small
-              >{uiTranslate("在已配对的电脑之间同步复制的文本和图片。", $uiLanguage)}</small
-            ></span
-          >
-          <span class:checked={appSettings.clipboardSyncEnabled} class="switch-control"
-            ><span></span></span
-          >
-        </button>
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardSyncUpdateSystemClipboard}
-          disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
-          on:click={() =>
-            patchAppSettings(
-              {
-                clipboardSyncUpdateSystemClipboard: !appSettings.clipboardSyncUpdateSystemClipboard,
-              },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><ClipboardText size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("自动复制收到的内容", $uiLanguage)}</strong><small
-              >{uiTranslate("其他设备复制后，可直接在这台电脑粘贴。", $uiLanguage)}</small
-            ></span
-          >
-          <span
-            class:checked={appSettings.clipboardSyncUpdateSystemClipboard}
-            class="switch-control"><span></span></span
-          >
-        </button>
-      </div>
-      <div class="connection-section-title">
-        <h2>{uiTranslate("使用方式", $uiLanguage)}</h2>
-        <span>{uiTranslate("面板、记录与同步细节", $uiLanguage)}</span>
-      </div>
-      <div class="settings-list settings-card-list">
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch}
-          disabled={isWindowsPlatform || settingsSaving || !appSettings.clipboardEnabled}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardAutoFocusSearch: !appSettings.clipboardAutoFocusSearch },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><MagnifyingGlass size={21} /></span><span class="row-copy"
-            ><strong>{uiTranslate("唤起后聚焦搜索框", $uiLanguage)}</strong><small
-              >{isWindowsPlatform
-                ? uiTranslate(
-                    "Windows 保留当前输入焦点；点击搜索框或按 Ctrl+F 进入编辑。",
-                    $uiLanguage,
-                  )
-                : uiTranslate(
-                    "打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。",
-                    $uiLanguage,
-                  )}</small
-            ></span
-          ><span
-            class:checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch}
-            class="switch-control"><span></span></span
-          >
-        </button>
-        <div class="settings-row setting-field-row">
-          <span class="row-icon"><ClockCounterClockwise size={21} /></span><span class="row-copy"
-            ><strong>{uiTranslate("历史记录顺序", $uiLanguage)}</strong><small
-              >{uiTranslate("选择最近复制或最早创建的内容优先。", $uiLanguage)}</small
-            ></span
-          >
-          <AppSelect
-            value={appSettings.clipboardSortBy}
-            disabled={!appSettings.clipboardEnabled || settingsSaving}
-            aria-label={uiTranslate("剪贴板历史记录排序", $uiLanguage)}
-            onValueChange={(clipboardSortBy) =>
-              patchAppSettings({ clipboardSortBy }, "剪贴板排序已更新")}
-            options={[
-              { value: "updatedAt", label: uiTranslate("最近使用优先", $uiLanguage) },
-              { value: "createdAt", label: uiTranslate("创建时间优先", $uiLanguage) },
-            ]}
-          />
+    {#if loginSecurityOpen}
+      <LoginSecurity onBack={() => (loginSecurityOpen = false)} />
+    {:else}
+      <section class="settings-tab-content">
+        <div class="connection-section-title">
+          <h2>{uiTranslate("剪贴板", $uiLanguage)}</h2>
+          <span>{uiTranslate("保存与跨设备同步", $uiLanguage)}</span>
         </div>
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardSyncEditsAndDeletes}
-          disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardSyncEditsAndDeletes: !appSettings.clipboardSyncEditsAndDeletes },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><PencilSimple size={21} /></span><span class="row-copy"
-            ><strong>{uiTranslate("同步修改与删除", $uiLanguage)}</strong><small
-              >{uiTranslate("让已同步记录在各台设备保持一致。", $uiLanguage)}</small
-            ></span
-          ><span class:checked={appSettings.clipboardSyncEditsAndDeletes} class="switch-control"
-            ><span></span></span
+        <div class="settings-list settings-card-list">
+          <button class="settings-row" on:click={() => (loginSecurityOpen = true)}>
+            <span class="row-icon accent-icon"><LockKey size={21} /></span>
+            <span class="row-copy"
+              ><strong>登录与安全</strong><small>用户名、密码、动态验证码与加密备份</small></span
+            >
+            <CaretRight size={18} />
+          </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardEnabled}
+            disabled={settingsSaving}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardEnabled: !appSettings.clipboardEnabled },
+                appSettings.clipboardEnabled ? "剪贴板记录已关闭" : "剪贴板记录已开启",
+              )}
           >
-        </button>
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.clipboardSyncFavorites}
-          disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
-          on:click={() =>
-            patchAppSettings(
-              { clipboardSyncFavorites: !appSettings.clipboardSyncFavorites },
-              "设置已保存",
-            )}
-        >
-          <span class="row-icon"><Star size={21} /></span><span class="row-copy"
-            ><strong>{uiTranslate("同步收藏", $uiLanguage)}</strong><small
-              >{uiTranslate("在其他设备保留相同的收藏状态。", $uiLanguage)}</small
-            ></span
-          ><span class:checked={appSettings.clipboardSyncFavorites} class="switch-control"
-            ><span></span></span
+            <span class="row-icon accent-icon"><ClipboardText size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("保存剪贴板历史", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "保存复制过的文本、图片和文件，方便稍后再次使用。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <span class:checked={appSettings.clipboardEnabled} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <ClipboardRetentionSettings />
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardLockWhenOwnerUnconfirmed}
+            disabled={settingsSaving || !appSettings.clipboardEnabled}
+            on:click={() =>
+              patchAppSettings(
+                {
+                  clipboardLockWhenOwnerUnconfirmed: !appSettings.clipboardLockWhenOwnerUnconfirmed,
+                },
+                "设置已保存",
+              )}
           >
-        </button>
-      </div>
-      <div class="connection-section-title clipboard-maintenance-title">
-        <h2>{uiTranslate("记录维护", $uiLanguage)}</h2>
-        <span>{uiTranslate("整理或清除本机保存的剪贴板历史", $uiLanguage)}</span>
-      </div>
-      <div class="settings-list settings-card-list">
-        <button
-          class="settings-row settings-action-row"
-          disabled={clipboardMergeBusy || !appSettings.clipboardSyncEnabled}
-          on:click={mergeClipboardDeviceHistory}
-        >
-          <span class="row-icon"><ClockCounterClockwise size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("同步并校对", $uiLanguage)}</strong><small
-              >{uiTranslate(
-                "双向校对文本、图片和标签，核验共享记录数量与版本。本机文件历史单独保留。",
-                $uiLanguage,
-              )}</small
-            ></span
+            <span class="row-icon"><LockKey size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("非本人在场时锁定剪贴板", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "眼动检测运行时，暂停历史记录和跨设备同步，并禁止查看、复制或粘贴，直到重新确认本机用户。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <span
+              class:checked={appSettings.clipboardLockWhenOwnerUnconfirmed}
+              class="switch-control"><span></span></span
+            >
+          </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardReceiveFiles}
+            disabled={settingsSaving || !appSettings.clipboardEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardReceiveFiles: !appSettings.clipboardReceiveFiles },
+                "设置已保存",
+              )}
           >
-          <span class="row-action-label"
-            >{uiTranslate(clipboardMergeBusy ? "正在同步并校对…" : "同步", $uiLanguage)}</span
+            <span class="row-icon"><ClipboardText size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("接收文件后自动加入剪贴板", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "附近设备传来的文件接收完成后，保存到剪贴板历史，并可直接粘贴到支持文件的应用。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <span class:checked={appSettings.clipboardReceiveFiles} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <label
+            class:disabled={!appSettings.clipboardEnabled}
+            class="settings-row setting-field-row"
           >
-        </button>
-        <button
-          class="settings-row settings-action-row clipboard-danger-row"
-          on:click={confirmClearClipboardHistory}
-        >
-          <span class="row-icon"><Trash size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("清空记录", $uiLanguage)}</strong><small
-              >{uiTranslate("删除全部本地剪贴板记录，包括收藏和标签归类。", $uiLanguage)}</small
-            ></span
+            <span class="row-icon"><Keyboard size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("打开剪贴板的快捷键", $uiLanguage)}</strong><small
+                >{uiTranslate("点击输入框后，直接按下新的组合键。", $uiLanguage)}</small
+              ></span
+            >
+            <input
+              class="shortcut-input"
+              value={appSettings.clipboardShortcut}
+              disabled={!appSettings.clipboardEnabled || settingsSaving}
+              aria-label={uiTranslate("剪贴板全局快捷键", $uiLanguage)}
+              readonly
+              on:keydown={captureClipboardShortcut}
+            />
+          </label>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncEnabled}
+            disabled={settingsSaving}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardSyncEnabled: !appSettings.clipboardSyncEnabled },
+                "设置已保存",
+              )}
           >
-          <span class="row-action-label">{uiTranslate("清空", $uiLanguage)}</span>
-        </button>
-      </div>
-    </section>
+            <span class="row-icon accent-icon"><LinkSimpleHorizontal size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("在设备间同步剪贴板", $uiLanguage)}</strong><small
+                >{uiTranslate("在已配对的电脑之间同步复制的文本和图片。", $uiLanguage)}</small
+              ></span
+            >
+            <span class:checked={appSettings.clipboardSyncEnabled} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncUpdateSystemClipboard}
+            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
+            on:click={() =>
+              patchAppSettings(
+                {
+                  clipboardSyncUpdateSystemClipboard:
+                    !appSettings.clipboardSyncUpdateSystemClipboard,
+                },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><ClipboardText size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("自动复制收到的内容", $uiLanguage)}</strong><small
+                >{uiTranslate("其他设备复制后，可直接在这台电脑粘贴。", $uiLanguage)}</small
+              ></span
+            >
+            <span
+              class:checked={appSettings.clipboardSyncUpdateSystemClipboard}
+              class="switch-control"><span></span></span
+            >
+          </button>
+        </div>
+        <div class="connection-section-title">
+          <h2>{uiTranslate("使用方式", $uiLanguage)}</h2>
+          <span>{uiTranslate("面板、记录与同步细节", $uiLanguage)}</span>
+        </div>
+        <div class="settings-list settings-card-list">
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch}
+            disabled={isWindowsPlatform || settingsSaving || !appSettings.clipboardEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardAutoFocusSearch: !appSettings.clipboardAutoFocusSearch },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><MagnifyingGlass size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("唤起后聚焦搜索框", $uiLanguage)}</strong><small
+                >{isWindowsPlatform
+                  ? uiTranslate(
+                      "Windows 保留当前输入焦点；点击搜索框或按 Ctrl+F 进入编辑。",
+                      $uiLanguage,
+                    )
+                  : uiTranslate(
+                      "打开剪贴板窗口后可直接输入搜索；关闭后优先使用方向键选择。",
+                      $uiLanguage,
+                    )}</small
+              ></span
+            ><span
+              class:checked={!isWindowsPlatform && appSettings.clipboardAutoFocusSearch}
+              class="switch-control"><span></span></span
+            >
+          </button>
+          <div class="settings-row setting-field-row">
+            <span class="row-icon"><ClockCounterClockwise size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("历史记录顺序", $uiLanguage)}</strong><small
+                >{uiTranslate("选择最近复制或最早创建的内容优先。", $uiLanguage)}</small
+              ></span
+            >
+            <AppSelect
+              value={appSettings.clipboardSortBy}
+              disabled={!appSettings.clipboardEnabled || settingsSaving}
+              aria-label={uiTranslate("剪贴板历史记录排序", $uiLanguage)}
+              onValueChange={(clipboardSortBy) =>
+                patchAppSettings({ clipboardSortBy }, "剪贴板排序已更新")}
+              options={[
+                { value: "updatedAt", label: uiTranslate("最近使用优先", $uiLanguage) },
+                { value: "createdAt", label: uiTranslate("创建时间优先", $uiLanguage) },
+              ]}
+            />
+          </div>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncEditsAndDeletes}
+            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardSyncEditsAndDeletes: !appSettings.clipboardSyncEditsAndDeletes },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><PencilSimple size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("同步修改与删除", $uiLanguage)}</strong><small
+                >{uiTranslate("让已同步记录在各台设备保持一致。", $uiLanguage)}</small
+              ></span
+            ><span class:checked={appSettings.clipboardSyncEditsAndDeletes} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncFavorites}
+            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardSyncFavorites: !appSettings.clipboardSyncFavorites },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><Star size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("同步收藏", $uiLanguage)}</strong><small
+                >{uiTranslate("在其他设备保留相同的收藏状态。", $uiLanguage)}</small
+              ></span
+            ><span class:checked={appSettings.clipboardSyncFavorites} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+        </div>
+        <div class="connection-section-title clipboard-maintenance-title">
+          <h2>{uiTranslate("记录维护", $uiLanguage)}</h2>
+          <span>{uiTranslate("整理或清除本机保存的剪贴板历史", $uiLanguage)}</span>
+        </div>
+        <div class="settings-list settings-card-list">
+          <button
+            class="settings-row settings-action-row"
+            disabled={clipboardMergeBusy || !appSettings.clipboardSyncEnabled}
+            on:click={mergeClipboardDeviceHistory}
+          >
+            <span class="row-icon"><ClockCounterClockwise size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("同步并校对", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "双向校对文本、图片和标签，核验共享记录数量与版本。本机文件历史单独保留。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <span class="row-action-label"
+              >{uiTranslate(clipboardMergeBusy ? "正在同步并校对…" : "同步", $uiLanguage)}</span
+            >
+          </button>
+          <button
+            class="settings-row settings-action-row clipboard-danger-row"
+            on:click={confirmClearClipboardHistory}
+          >
+            <span class="row-icon"><Trash size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("清空记录", $uiLanguage)}</strong><small
+                >{uiTranslate("删除全部本地剪贴板记录，包括收藏和标签归类。", $uiLanguage)}</small
+              ></span
+            >
+            <span class="row-action-label">{uiTranslate("清空", $uiLanguage)}</span>
+          </button>
+        </div>
+      </section>
+    {/if}
   {:else if settingsTab === "notifications"}
     <section class="settings-tab-content">
       <SoundSettings

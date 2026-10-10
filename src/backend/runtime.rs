@@ -19,6 +19,8 @@ pub(super) async fn run_backend(
         mcp_server,
     } = prepared;
 
+    crate::login::start_guard(state.clone(), app.clone());
+
     crate::sound::initialize(state.settings.snapshot().sounds, state.privacy.clone());
 
     let config_dir = dirs::config_dir()

@@ -2731,5 +2731,8 @@
   "未使用保留时间": "Idle retention",
   "永久": "Forever",
   "{part0} 天未使用": "{part0} days without use",
-  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Count from the last copy or use. Favorites and labeled items are never removed automatically. History has no entry or storage limits."
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Count from the last copy or use. Favorites and labeled items are never removed automatically. History has no entry or storage limits.",
+  "在 {name} 中置顶": "Pin in {name}",
+  "取消在 {name} 中置顶": "Unpin from {name}",
+  "在当前应用中置顶": "Pin in current application"
 }

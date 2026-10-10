@@ -174,10 +174,6 @@ impl ArcInputRuntime {
         Ok(())
     }
 
-    pub(super) fn is_paired(&self, peer: &ServiceInstanceId) -> bool {
-        read(&self.paired_peers).contains_key(peer)
-    }
-
     pub async fn connect_peer(
         &self,
         peer: ServiceInstanceId,
@@ -271,28 +267,43 @@ impl ArcInputRuntime {
     }
 
     pub fn snapshot(&self) -> RuntimeSnapshot {
-        let mut revision = lock(&self.snapshot_revision);
-        *revision += 1;
+        let revision = {
+            let mut revision = lock(&self.snapshot_revision);
+            *revision += 1;
+            *revision
+        };
         let grant = self.arbiter.current();
         let connected = self.network.connected_peers();
-        let discovered = read(&self.discovered);
+        // Build the view from owned copies. In particular, reading the paired
+        // map twice while a writer is queued can deadlock a recursive reader.
+        let discovered = read(&self.discovered).clone();
+        let paired = read(&self.paired_peers).clone();
+        let remote_capabilities = read(&self.remote_capabilities).clone();
+        let remote_operating_systems = read(&self.remote_operating_systems).clone();
+        let configuration = self.store.snapshot();
+        let display_availability = self.display_availability(&configuration);
+        let control_epoch = lock(&self.session)
+            .as_ref()
+            .map(|session| session.control_epoch.0)
+            .or_else(|| grant.as_ref().map(|grant| grant.epoch.0));
+        let diagnostics = lock(&self.diagnostics).iter().cloned().collect();
         RuntimeSnapshot {
-            revision: *revision,
+            revision,
             product_id: arcrelay_input::PRODUCT_ID,
             service_instance_id: self.identity.service_instance_id.to_string(),
             local_operating_system: local_os_family(),
-            remote_operating_systems: read(&self.remote_operating_systems)
+            remote_operating_systems: remote_operating_systems
                 .iter()
                 .map(|(peer, family)| (peer.to_string(), *family))
                 .collect(),
             capabilities: arcrelay_input::InputCapturePort::capabilities(self.platform.as_ref()),
-            configuration: self.store.snapshot(),
+            configuration,
             discovered_peers: discovered.keys().map(ToString::to_string).collect(),
             nearby_peers: discovered
                 .values()
                 .map(|peer| NearbyPeerView {
                     service_instance_id: peer.service_instance_id.to_string(),
-                    display_name: read(&self.paired_peers)
+                    display_name: paired
                         .get(&peer.service_instance_id)
                         .map(|paired| paired.display_name.clone())
                         .or_else(|| Some(peer.display_name.clone())),
@@ -300,22 +311,17 @@ impl ArcInputRuntime {
                     port: peer.port,
                     certificate_sha256: peer.certificate_sha256.clone(),
                     capability_digest: peer.capability_digest.clone(),
-                    paired: self.is_paired(&peer.service_instance_id),
+                    paired: paired.contains_key(&peer.service_instance_id),
                     connected: connected.contains(&peer.service_instance_id),
-                    capabilities: read(&self.remote_capabilities)
-                        .get(&peer.service_instance_id)
-                        .cloned(),
+                    capabilities: remote_capabilities.get(&peer.service_instance_id).cloned(),
                 })
                 .collect(),
             connected_peers: connected.into_iter().map(|id| id.to_string()).collect(),
-            display_availability: self.display_availability(&self.store.snapshot()),
+            display_availability,
             controller: grant.as_ref().map(|grant| grant.controller.to_string()),
-            control_epoch: lock(&self.session)
-                .as_ref()
-                .map(|session| session.control_epoch.0)
-                .or_else(|| grant.map(|grant| grant.epoch.0)),
+            control_epoch,
             capture_active: self.capture_active.load(Ordering::Acquire),
-            diagnostics: lock(&self.diagnostics).iter().cloned().collect(),
+            diagnostics,
         }
     }
 
@@ -394,6 +400,7 @@ impl ArcInputRuntime {
                 Some(router) => router.replace(snapshot),
                 None => *router = Some(Arc::new(RuntimeRouter::new(snapshot))),
             }
+            drop(router);
             if let Some(session) = lock(&self.session).as_mut() {
                 if session.controller == self.identity.service_instance_id {
                     session.topology_revision = layout.revision;

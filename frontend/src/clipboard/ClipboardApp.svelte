@@ -14,6 +14,7 @@
     CopySimple,
     FileText,
     ImageSquare,
+    LockKey,
     MagnifyingGlass,
     PushPin,
     StackSimple,
@@ -24,6 +25,8 @@
     X,
   } from "phosphor-svelte";
 
+  import LoginPanel from "../features/login/LoginPanel.svelte";
+  let loginEditing = false;
   import BrandLogo from "../BrandLogo.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
@@ -49,9 +52,14 @@
     type ClipboardKeyboardMode,
   } from "./keyboardShortcuts";
   import { appendSelectedIds, selectionOrder, toggleSelectedId } from "./multiSelect";
-  import { showClipboardContextMenu } from "./nativeContextMenu";
+  import { showClipboardContextMenu } from "./clipboardContextMenu";
+  import { mergeAppPinnedEntries } from "./appPins";
   import InlineContextMenu from "./InlineContextMenu.svelte";
-  import { closeInlineContextMenu, handleInlineMenuKey } from "./inlineContextMenu";
+  import {
+    inlineContextMenu,
+    closeInlineContextMenu,
+    handleInlineMenuKey,
+  } from "./inlineContextMenu";
   import { autoFocusSearch, installEditableFocus, isWindowsClipboard } from "./focusPolicy";
   import {
     historyQueryKey,
@@ -94,6 +102,7 @@
     { id: "text", label: "文本", icon: TextT, size: 20 },
     { id: "image", label: "图片", icon: ImageSquare, size: 20 },
     { id: "files", label: "文件", icon: FileText, size: 19 },
+    { id: "login", label: "登录", icon: LockKey, size: 20 },
     { id: "favorites", label: "收藏", icon: Star, size: 20, weight: "fill" },
   ];
 
@@ -109,6 +118,12 @@
   let selectedItems: ClipboardItem[] = [];
   let combinedPasteAvailable = false;
   let windowVisible = !("__TAURI_INTERNALS__" in window);
+  let targetApplication: import("../ipc/generated").ClipboardTargetApplication | null = null;
+  let applicationPinIds = new Set<number>();
+  let applicationPins: ClipboardItem[] = [];
+  let openingContextMenu = false;
+  let contextMenuGeneration = 0;
+  let checkingApplication = false;
   let loading = true;
   let loadingMore = false;
   let ocrPasting = false;
@@ -292,6 +307,7 @@
   function changeFilter(value: ClipboardFilter) {
     abandonNearby();
     filter = value;
+    if (value === "login") selectedLabelFilter = null;
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -446,6 +462,8 @@
             navigationGeneration = 0;
             focusRequest++;
             focusController?.pause();
+            contextMenuGeneration++;
+            openingContextMenu = false;
             closeInlineContextMenu();
             keyboardMode = "results";
           }),
@@ -478,6 +496,11 @@
           },
           () => {
             windowVisible = false;
+            contextMenuGeneration++;
+            openingContextMenu = false;
+            targetApplication = null;
+            applicationPins = [];
+            applicationPinIds = new Set();
             dragSession.cancel();
             focusRequest++;
             focusController?.pause();
@@ -588,6 +611,7 @@
       if (!disposed) error = String(reason);
     });
 
+    window.addEventListener("keydown", handlePreviewKeyDown, true);
     window.addEventListener("keydown", handleKeyDown);
     const dragMove = (event: PointerEvent) => dragSession.move(event);
     const dragRelease = (event: PointerEvent) => dragSession.release(event.pointerId);
@@ -597,8 +621,12 @@
     scrollResizeObserver = new ResizeObserver(() => scheduleListMetricsUpdate());
     if (scrollElement) scrollResizeObserver.observe(scrollElement);
     viewportHeight = scrollElement?.clientHeight ?? 0;
+    const applicationTimer = window.setInterval(() => void checkTargetApplication(), 750);
     return () => {
+      window.clearInterval(applicationTimer);
       disposed = true;
+      windowVisible = false;
+      contextMenuGeneration++;
       dragSession.destroy();
       focusController?.destroy();
       closeInlineContextMenu();
@@ -607,6 +635,7 @@
       window.clearTimeout(historyRefreshTimer);
       window.clearTimeout(labelFilterCloseTimer);
       cancelAnimationFrame(scrollAnimationFrame);
+      window.removeEventListener("keydown", handlePreviewKeyDown, true);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("pointermove", dragMove, true);
       window.removeEventListener("pointerup", dragRelease, true);
@@ -681,15 +710,55 @@
   function requestHistoryRefresh() {
     historyRefreshPending = true;
     window.clearTimeout(historyRefreshTimer);
-    if (!windowVisible || pasteInFlight || dragBusy) return;
+    if (!windowVisible || pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu)
+      return;
     historyRefreshTimer = window.setTimeout(
       () => {
-        if (pasteInFlight || dragBusy) return;
+        if (pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu) return;
         historyRefreshPending = false;
         void load({ preservePosition: true });
       },
       Math.max(0, interactionUntil - Date.now()),
     );
+  }
+
+  async function checkTargetApplication() {
+    if (
+      checkingApplication ||
+      !windowVisible ||
+      loading ||
+      pasteInFlight ||
+      dragBusy ||
+      openingContextMenu ||
+      $inlineContextMenu ||
+      Date.now() < interactionUntil
+    )
+      return;
+    checkingApplication = true;
+    const generation = loadGeneration;
+    try {
+      const target = await clipboardBridge.targetApplication();
+      if (
+        !windowVisible ||
+        generation !== loadGeneration ||
+        pasteInFlight ||
+        dragBusy ||
+        openingContextMenu ||
+        $inlineContextMenu ||
+        Date.now() < interactionUntil
+      )
+        return;
+      if (target?.id !== targetApplication?.id) {
+        targetApplication = target;
+        applicationPins = [];
+        applicationPinIds = new Set();
+        if (!nearby && !locating) await load();
+      }
+    } catch (reason) {
+      console.error(reason);
+    } finally {
+      checkingApplication = false;
+    }
   }
 
   function finishPaste() {
@@ -716,16 +785,37 @@
     }
     append ? (loadingMore = true) : (loading = true);
     try {
-      const page = await clipboardBridge.history({
-        search: debouncedSearch,
-        kind: kindForFilter(filter),
-        favoriteOnly: filter === "favorites",
-        labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
-        cursor,
-        limit: FETCH_SIZE,
-      });
+      const target = append ? targetApplication : await clipboardBridge.targetApplication();
+      const [page, pins] = await Promise.all([
+        clipboardBridge.history({
+          search: debouncedSearch,
+          kind: kindForFilter(filter),
+          favoriteOnly: filter === "favorites",
+          labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
+          cursor,
+          limit: FETCH_SIZE,
+        }),
+        append
+          ? Promise.resolve(applicationPins)
+          : target
+            ? clipboardBridge.appPins(
+                target.id,
+                debouncedSearch,
+                selectedLabelFilter ? [selectedLabelFilter] : [],
+              )
+            : Promise.resolve([]),
+      ]);
+      const entries = mergeAppPinnedEntries(
+        append ? [...history.entries, ...page.entries] : page.entries,
+        filter === "all" ? pins : [],
+      );
       if (generation !== loadGeneration) return;
-      if (dragBusy || (preservePosition && (pasteInFlight || Date.now() < interactionUntil))) {
+      if (
+        dragBusy ||
+        openingContextMenu ||
+        $inlineContextMenu ||
+        (preservePosition && (pasteInFlight || Date.now() < interactionUntil))
+      ) {
         requestHistoryRefresh();
         return;
       }
@@ -736,24 +826,27 @@
       if (
         preservePosition &&
         [anchor?.id, previousSelection].some(
-          (id) => id != null && !page.entries.some((item) => item.id === id),
+          (id) => id != null && !entries.some((item) => item.id === id),
         )
       )
         return;
+      targetApplication = target;
+      applicationPins = pins;
+      applicationPinIds = new Set(pins.map((item) => item.id));
       history = {
         revision: page.revision,
-        entries: append ? [...history.entries, ...page.entries] : page.entries,
+        entries,
         nextCursor: page.nextCursor,
         totalCount: page.totalCount ?? history.totalCount,
       };
       if (!append) {
         rowHeights = new Map(
-          page.entries.flatMap((item) => {
+          entries.flatMap((item) => {
             const height = rowHeights.get(item.id);
             return height === undefined ? [] : [[item.id, height] as const];
           }),
         );
-        selectedId = preservePosition ? previousSelection : (page.entries[0]?.id ?? null);
+        selectedId = preservePosition ? previousSelection : (entries[0]?.id ?? null);
         if (preservePosition) {
           await restorePosition(anchor, scrollTop, generation);
         } else {
@@ -1313,8 +1406,26 @@
     scheduleListMetricsUpdate();
   }
 
+  function handlePreviewKeyDown(event: KeyboardEvent): boolean {
+    if (!previewDialogOpen) return false;
+    const action = resolvePreviewKeyboardAction(event);
+    if (!action) return false;
+    // Reserve Space before focused controls or rendered content can consume it.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (action === "close") previewDialogOpen = false;
+    return true;
+  }
+
   function handleKeyDown(event: KeyboardEvent) {
-    if (event.isComposing) return;
+    if (
+      filter === "login" ||
+      loginEditing ||
+      (event.target instanceof Element && event.target.closest(".login-panel"))
+    )
+      return;
+    // Native navigation keys call this directly instead of dispatching a DOM event.
+    if (handlePreviewKeyDown(event) || event.isComposing) return;
     if (dragBusy) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -1324,18 +1435,6 @@
       return;
     }
     if (handleInlineMenuKey(event)) return;
-    if (previewDialogOpen) {
-      const interactive =
-        event.target instanceof Element && event.target.closest("button, select, input, textarea");
-      const previewAction =
-        interactive || event.defaultPrevented ? null : resolvePreviewKeyboardAction(event);
-      if (previewAction) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (previewAction === "close") previewDialogOpen = false;
-        return;
-      }
-    }
     if (event.key === "Escape") {
       if (selectedIds.length > 0) {
         event.preventDefault();
@@ -1442,7 +1541,7 @@
       void beginEdit(selectedItem);
     } else if (action.type === "labels" && selectedItem) {
       void beginLabels(selectedItem);
-    } else if (action.type === "preview" && selectedItem) {
+    } else if (action.type === "preview" && selectedItem && !event.repeat) {
       void beginPreview(selectedItem);
     } else if (action.type === "actions") {
       openSelectedActions();
@@ -1517,16 +1616,32 @@
   async function openContextMenu(event: MouseEvent, item: ClipboardItem) {
     event.preventDefault();
     event.stopPropagation();
+    const generation = ++contextMenuGeneration;
+    closeInlineContextMenu();
+    openingContextMenu = true;
+    deferHistoryRefresh();
     selectedId = item.id;
     keyboardMode = "results";
-    if (labels.length === 0) labels = await clipboardBridge.labels().catch(() => []);
-    await showClipboardContextMenu(
-      event,
-      item,
-      labels,
-      nearbyPeers,
-      language,
-      {
+    try {
+      // Capture the target once for this menu, including when launched outside 最近.
+      const target = await clipboardBridge.targetApplication();
+      const [currentLabels, pins] = await Promise.all([
+        labels.length ? Promise.resolve(labels) : clipboardBridge.labels(),
+        target ? clipboardBridge.appPins(target.id) : Promise.resolve([]),
+      ]);
+      if (!windowVisible || generation !== contextMenuGeneration) return;
+      labels = currentLabels;
+      await showClipboardContextMenu(event, item, labels, nearbyPeers, language, {
+        application: target,
+        appPinned: pins.some((pin) => pin.id === item.id),
+        pinApplication: async (pinned) => {
+          if (!target) return;
+          await clipboardBridge.setAppPin(item.id, target.id, pinned);
+          await load();
+        },
+        error: (reason) => {
+          error = reason instanceof Error ? reason.message : String(reason);
+        },
         nearby:
           !loading && !locating && search === debouncedSearch && debouncedSearch.trim()
             ? () => viewNearby(item)
@@ -1543,11 +1658,15 @@
         sendFiles: async (peerId) => {
           await clipboardBridge.sendFiles(item.id, peerId);
         },
-      },
-      windowsClipboard,
-    ).catch((reason) => {
+      });
+    } catch (reason) {
       error = reason instanceof Error ? reason.message : String(reason);
-    });
+    } finally {
+      if (generation === contextMenuGeneration) {
+        openingContextMenu = false;
+        if (windowVisible && historyRefreshPending) requestHistoryRefresh();
+      }
+    }
   }
 
   function openSelectedActions() {
@@ -1729,7 +1848,12 @@
 
 <svelte:window oncontextmenu={suppressWebviewContextMenu} />
 
-<main class="clipboard-window">
+<main
+  class="clipboard-window"
+  class:login-editing={loginEditing}
+  class:login-mode={filter === "login"}
+  class:login-recent={filter === "all"}
+>
   <header class="clipboard-header drag-region" use:windowDrag>
     <button
       class:active={windowPinned}
@@ -1982,88 +2106,104 @@
     {/if}
   </div>
 
-  <section
-    class:keyboard-active={keyboardMode === "results"}
-    class="clipboard-list"
-    aria-label={tr("剪贴板记录", language)}
-    bind:this={scrollElement}
-    aria-busy={loading || loadingMore || locating}
-    on:scroll={handleListScroll}
-    on:wheel|passive={releasePositionAnchor}
-    on:touchstart|passive={releasePositionAnchor}
-    on:pointerdown={() => {
-      releasePositionAnchor();
-      deferHistoryRefresh();
-    }}
-  >
-    {#if loading && history.entries.length === 0}
-      <div class="list-state loading-state">
-        <span class="loading-spinner" aria-hidden="true"></span>
-        <span>{tr("正在读取剪贴板…", language)}</span>
-      </div>
-    {:else if error}
-      <div class="list-state error-state">{error}</div>
-    {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
-      <div class="list-state label-filter-empty-state">
-        <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}
-          ><Tag size={30} /></span
-        >
-        <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
-        <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
-        <button type="button" on:click={() => selectLabelFilter(null)}
-          >{uiTranslate("清除标签筛选", $uiLanguage)}</button
-        >
-      </div>
-    {:else if history.entries.length === 0}
-      <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
-    {:else}
-      <div
-        class="clipboard-items"
-        style:padding-top={`${virtualTopPadding}px`}
-        style:padding-bottom={`${virtualBottomPadding}px`}
-        use:observeListContent
-      >
-        {#each renderedEntries as entry (entry.item.id)}
-          <div
-            data-clipboard-id={entry.item.id}
-            data-clipboard-index={entry.index}
-            class="clipboard-item"
-            class:timeline-target={nearby?.anchor.id === entry.item.id}
-            aria-posinset={entry.index + 1}
-            aria-setsize={history.entries.length}
-            use:measureClipboardItem
+  {#if filter === "login"}
+    <LoginPanel
+      search={debouncedSearch}
+      tag={selectedLabel?.name ?? null}
+      bind:editing={loginEditing}
+    />
+  {:else}
+    {#if filter === "all"}<LoginPanel
+        search={debouncedSearch}
+        tag={selectedLabel?.name ?? null}
+        compact
+      />{/if}
+    <section
+      class:keyboard-active={keyboardMode === "results"}
+      class="clipboard-list"
+      aria-label={tr("剪贴板记录", language)}
+      bind:this={scrollElement}
+      aria-busy={loading || loadingMore || locating}
+      on:scroll={handleListScroll}
+      on:wheel|passive={releasePositionAnchor}
+      on:touchstart|passive={releasePositionAnchor}
+      on:pointerdown={() => {
+        releasePositionAnchor();
+        deferHistoryRefresh();
+      }}
+    >
+      {#if loading && history.entries.length === 0}
+        <div class="list-state loading-state">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <span>{tr("正在读取剪贴板…", language)}</span>
+        </div>
+      {:else if error}
+        <div class="list-state error-state">{error}</div>
+      {:else if history.entries.length === 0 && selectedLabel && !debouncedSearch.trim()}
+        <div class="list-state label-filter-empty-state">
+          <span class="label-filter-empty-icon" style:--label-color={selectedLabel.color}
+            ><Tag size={30} /></span
           >
-            <ClipboardRow
-              item={entry.item}
-              shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
-              shortcutModifier={rowShortcutModifier}
-              selected={selectedId === entry.item.id}
-              multiSelected={selectedIds.includes(entry.item.id)}
-              multiSelectActive={selectedIds.length > 0}
-              selectionOrder={selectionOrder(selectedIds, entry.item.id)}
-              {language}
-              timestamp={itemTimestamp(entry.item)}
-              timelineTarget={nearby?.anchor.id === entry.item.id}
-              edited={editOrigins.has(entry.item.id)}
-              onEdit={() => void beginEdit(entry.item)}
-              exactTime={Boolean(nearby)}
-              previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
-                entry.index < visibleEndIndex + 2}
-              onSelect={(event) => selectRow(event, entry.item)}
-              onDragPress={(event) => beginRecordDrag(event, entry.item)}
-              suppressDragClick={dragSession.suppressClick}
-              onFocus={() => selectedIds.length === 0 && focusRow(entry.item)}
-              onPaste={(plainText) =>
-                selectedIds.length > 0
-                  ? void pasteSelectedItems()
-                  : void pasteItem(entry.item, plainText ? "plain_text" : "source")}
-              onContextMenu={(event) => void openContextMenu(event, entry.item)}
-            />
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+          <strong>{t("“{name}”标签下暂无内容", language, { name: selectedLabel.name })}</strong>
+          <span>{uiTranslate("可以切换其他标签，或返回查看全部剪贴板记录。", $uiLanguage)}</span>
+          <button type="button" on:click={() => selectLabelFilter(null)}
+            >{uiTranslate("清除标签筛选", $uiLanguage)}</button
+          >
+        </div>
+      {:else if history.entries.length === 0}
+        <div class="list-state">{tr("没有找到剪贴板记录", language)}</div>
+      {:else}
+        <div
+          class="clipboard-items"
+          style:padding-top={`${virtualTopPadding}px`}
+          style:padding-bottom={`${virtualBottomPadding}px`}
+          use:observeListContent
+        >
+          {#each renderedEntries as entry (entry.item.id)}
+            <div
+              data-clipboard-id={entry.item.id}
+              data-clipboard-index={entry.index}
+              class="clipboard-item"
+              class:timeline-target={nearby?.anchor.id === entry.item.id}
+              aria-posinset={entry.index + 1}
+              aria-setsize={history.entries.length}
+              use:measureClipboardItem
+            >
+              <ClipboardRow
+                item={entry.item}
+                pinnedApplication={applicationPinIds.has(entry.item.id)
+                  ? (targetApplication?.name ?? null)
+                  : null}
+                shortcutIndex={shortcutNumbers.get(entry.item.id) ?? null}
+                shortcutModifier={rowShortcutModifier}
+                selected={selectedId === entry.item.id}
+                multiSelected={selectedIds.includes(entry.item.id)}
+                multiSelectActive={selectedIds.length > 0}
+                selectionOrder={selectionOrder(selectedIds, entry.item.id)}
+                {language}
+                timestamp={itemTimestamp(entry.item)}
+                timelineTarget={nearby?.anchor.id === entry.item.id}
+                edited={editOrigins.has(entry.item.id)}
+                onEdit={() => void beginEdit(entry.item)}
+                exactTime={Boolean(nearby)}
+                previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
+                  entry.index < visibleEndIndex + 2}
+                onSelect={(event) => selectRow(event, entry.item)}
+                onDragPress={(event) => beginRecordDrag(event, entry.item)}
+                suppressDragClick={dragSession.suppressClick}
+                onFocus={() => selectedIds.length === 0 && focusRow(entry.item)}
+                onPaste={(plainText) =>
+                  selectedIds.length > 0
+                    ? void pasteSelectedItems()
+                    : void pasteItem(entry.item, plainText ? "plain_text" : "source")}
+                onContextMenu={(event) => void openContextMenu(event, entry.item)}
+              />
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   {#if selectedIds.length > 0}
     <div class="multi-select-status" role="status" aria-live="polite">
@@ -2125,54 +2265,56 @@
     </div>
   {/if}
 
-  <footer class="clipboard-footer drag-region" use:windowDrag>
-    <div class:busy={ocrPasting} class="record-count">
-      <strong>
-        {#if ocrPasting}
-          {uiTranslate("正在识别图片文字…", $uiLanguage)}
-        {:else if loadingMore && nearby}
-          {tr("正在读取附近记录…", language)}
-        {:else if selectedLabel}
-          {t("{name} · {count} 条", language, {
-            name: selectedLabel.name,
-            count: history.totalCount ?? history.entries.length,
-          })}
-        {:else}
-          {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
+  {#if filter !== "login"}
+    <footer class="clipboard-footer drag-region" use:windowDrag>
+      <div class:busy={ocrPasting} class="record-count">
+        <strong>
+          {#if ocrPasting}
+            {uiTranslate("正在识别图片文字…", $uiLanguage)}
+          {:else if loadingMore && nearby}
+            {tr("正在读取附近记录…", language)}
+          {:else if selectedLabel}
+            {t("{name} · {count} 条", language, {
+              name: selectedLabel.name,
+              count: history.totalCount ?? history.entries.length,
+            })}
+          {:else}
+            {t("共 {count} 条", language, { count: history.totalCount ?? history.entries.length })}
+          {/if}
+        </strong>
+        {#if selectedLabel && !ocrPasting}
+          <button
+            class="clear-label-filter"
+            type="button"
+            aria-label={uiTranslate("清除标签筛选", $uiLanguage)}
+            title={uiTranslate("清除标签筛选", $uiLanguage)}
+            on:click={() => selectLabelFilter(null)}><X size={13} /></button
+          >
         {/if}
-      </strong>
-      {#if selectedLabel && !ocrPasting}
+      </div>
+      <div class="footer-actions">
         <button
-          class="clear-label-filter"
+          class:loading
+          class="icon-button"
           type="button"
-          aria-label={uiTranslate("清除标签筛选", $uiLanguage)}
-          title={uiTranslate("清除标签筛选", $uiLanguage)}
-          on:click={() => selectLabelFilter(null)}><X size={13} /></button
+          aria-label={tr("刷新", language)}
+          aria-busy={loading}
+          disabled={dragBusy}
+          title={tr("刷新", language)}
+          on:click={() => load()}><ClockCounterClockwise size={22} /></button
         >
-      {/if}
-    </div>
-    <div class="footer-actions">
-      <button
-        class:loading
-        class="icon-button"
-        type="button"
-        aria-label={tr("刷新", language)}
-        aria-busy={loading}
-        disabled={dragBusy}
-        title={tr("刷新", language)}
-        on:click={() => load()}><ClockCounterClockwise size={22} /></button
-      >
-      <span class="footer-action-divider" aria-hidden="true"></span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label={tr("隐藏", language)}
-        title={tr("隐藏", language)}
-        disabled={dragBusy}
-        on:click={() => clipboardBridge.hide()}><X size={22} /></button
-      >
-    </div>
-  </footer>
+        <span class="footer-action-divider" aria-hidden="true"></span>
+        <button
+          class="icon-button"
+          type="button"
+          aria-label={tr("隐藏", language)}
+          title={tr("隐藏", language)}
+          disabled={dragBusy}
+          on:click={() => clipboardBridge.hide()}><X size={22} /></button
+        >
+      </div>
+    </footer>
+  {/if}
 
   <Dialog.Root bind:open={previewDialogOpen}>
     <Dialog.Portal>
@@ -2180,62 +2322,42 @@
       <Dialog.Content
         class={`dialog-content clipboard-preview-dialog${imagePreviewReady ? " image-preview-dialog" : ""}`}
       >
-        <div class:image-preview-header={imagePreviewReady} class="clipboard-preview-header">
-          <div class="clipboard-preview-heading">
-            <Dialog.Title class="dialog-title">
-              {imagePreviewReady && previewingItem
-                ? (previewingItem.sourceApp ?? tr("图片", language))
-                : uiTranslate("剪贴板预览", $uiLanguage)}
-            </Dialog.Title>
-            {#if previewingItem}
-              <Dialog.Description class="clipboard-preview-description">
-                {#if imagePreviewReady && previewingItem.width && previewingItem.height}
-                  {previewingItem.width}×{previewingItem.height} · {previewTimestamp(
-                    previewingItem,
-                  )}
-                {:else}
+        {#if imagePreviewReady}
+          <div class="clipboard-preview-accessibility">
+            <Dialog.Title>{uiTranslate("剪贴板预览", $uiLanguage)}</Dialog.Title>
+            <Dialog.Description>
+              {previewingItem?.sourceApp ?? tr("图片", language)}
+            </Dialog.Description>
+          </div>
+        {:else}
+          <div class="clipboard-preview-header">
+            <div class="clipboard-preview-heading">
+              <Dialog.Title class="dialog-title">
+                {uiTranslate("剪贴板预览", $uiLanguage)}
+              </Dialog.Title>
+              {#if previewingItem}
+                <Dialog.Description class="clipboard-preview-description">
                   {previewingItem.sourceApp ?? tr("此电脑", language)} · {previewTimestamp(
                     previewingItem,
                   )}
-                {/if}
-              </Dialog.Description>
-            {/if}
-          </div>
-          <div class="clipboard-preview-header-actions">
-            {#if previewingItem && previewingItem.kind !== "files"}<button
-                class="image-preview-header-paste"
-                disabled={!previewingItem.available || previewLoading}
-                on:click={() => beginEdit(previewingItem!)}
-                >{previewingItem.kind === "html" ? "编辑纯文本副本" : "编辑"}</button
-              >{/if}
-            {#if imagePreviewReady && previewingItem}
-              {#each ["image_jpg", "image_png"] as imageMode}
-                <button
+                </Dialog.Description>
+              {/if}
+            </div>
+            <div class="clipboard-preview-header-actions">
+              {#if previewingItem && previewingItem.kind !== "files"}<button
                   class="image-preview-header-paste"
-                  type="button"
-                  disabled={previewActionBusy || pasteInFlight || !previewingItem.available}
-                  on:click={() => pasteItem(previewingItem!, imageMode as ClipboardPasteMode)}
-                  >{uiTranslate(
-                    imageMode === "image_jpg" ? "粘贴为 JPG" : "粘贴为 PNG",
-                    $uiLanguage,
-                  )}</button
-                >
-              {/each}
-              <button
-                class="image-preview-header-paste"
-                type="button"
-                disabled={previewActionBusy}
-                on:click={() => pasteItem(previewingItem!)}
-                >{uiTranslate("插入", $uiLanguage)}</button
+                  disabled={!previewingItem.available || previewLoading}
+                  on:click={() => beginEdit(previewingItem!)}
+                  >{previewingItem.kind === "html" ? "编辑纯文本副本" : "编辑"}</button
+                >{/if}
+              <Dialog.Close
+                class="segment-dialog-close"
+                aria-label={tr("取消", language)}
+                title={tr("取消", language)}><X size={17} /></Dialog.Close
               >
-            {/if}
-            <Dialog.Close
-              class="segment-dialog-close"
-              aria-label={tr("取消", language)}
-              title={tr("取消", language)}><X size={17} /></Dialog.Close
-            >
+            </div>
           </div>
-        </div>
+        {/if}
         <div
           class:structured-preview={previewingItem &&
             (previewingItem.kind === "text" || previewingItem.kind === "html") &&
@@ -2341,3 +2463,23 @@
   />
 </main>
 <InlineContextMenu />
+
+<style>
+  .clipboard-window.login-mode :global(.label-filter-toolbar) {
+    display: none;
+  }
+  .clipboard-window.login-mode {
+    grid-template-rows: 60px 60px auto minmax(0, 1fr);
+  }
+  .clipboard-window.login-recent {
+    grid-template-rows: 60px 60px auto auto minmax(0, 1fr) 48px;
+  }
+  .clipboard-window.login-editing {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .clipboard-window.login-editing :global(.clipboard-header),
+  .clipboard-window.login-editing :global(.clipboard-filters),
+  .clipboard-window.login-editing :global(.clipboard-navigation) {
+    display: none;
+  }
+</style>

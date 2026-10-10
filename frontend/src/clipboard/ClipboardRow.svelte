@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../localization";
-  import { DevicesIcon, Star, PencilSimple } from "phosphor-svelte";
+  import { DevicesIcon, Star, PencilSimple, PushPin } from "phosphor-svelte";
 
   import type { LanguagePreference } from "../types";
   import ContentPreview from "./ContentPreview.svelte";
@@ -8,6 +8,7 @@
   import type { ClipboardItem } from "./types";
 
   export let item: ClipboardItem;
+  export let pinnedApplication: string | null = null;
   export let edited = false;
   export let onEdit: () => void = () => {};
   export let shortcutIndex: number | null;
@@ -155,6 +156,14 @@
         ><DevicesIcon size={15} weight="bold" /></span
       >
     {/if}
+    {#if pinnedApplication}
+      <span
+        class="application-pin"
+        title={t("在 {name} 中置顶", language, { name: pinnedApplication })}
+        aria-label={t("在 {name} 中置顶", language, { name: pinnedApplication })}
+        ><PushPin size={15} /></span
+      >
+    {/if}
     {#if item.favorite}<Star size={14} weight="fill" class="meta-pin" />{/if}
     {#each item.labels.slice(0, 2) as label (label.id)}
       <span class="label-chip" style:--label-color={label.color}>{label.name}</span>
@@ -167,6 +176,11 @@
 </div>
 
 <style>
+  .application-pin {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--accent);
+  }
   .edited-badge {
     color: var(--accent);
     background: var(--accent-soft);

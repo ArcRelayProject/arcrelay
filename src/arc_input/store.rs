@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use arcrelay_input::{
@@ -68,6 +67,7 @@ impl Default for WorkspaceConfiguration {
 pub struct WorkspaceStore {
     path: Arc<PathBuf>,
     state: Arc<Mutex<WorkspaceConfiguration>>,
+    save_gate: Arc<Mutex<()>>,
 }
 
 impl WorkspaceStore {
@@ -88,6 +88,7 @@ impl WorkspaceStore {
         Ok(Self {
             path: Arc::new(path),
             state: Arc::new(Mutex::new(state)),
+            save_gate: Arc::new(Mutex::new(())),
         })
     }
 
@@ -115,25 +116,13 @@ impl WorkspaceStore {
             layout.validate()?;
         }
         let bytes = serde_json::to_vec_pretty(&next)?;
-        atomic_write(&self.path, &bytes)?;
+        // Serialize disk replacement and publication together, without holding
+        // the state mutex over fsync on the input hot path.
+        let _save = lock(&self.save_gate);
+        crate::infrastructure::durable_file::replace(&self.path, &bytes)?;
         *lock(&self.state) = next;
         Ok(())
     }
-}
-
-fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let temporary = path.with_extension("tmp");
-    let mut file = std::fs::File::create(&temporary)?;
-    file.write_all(contents)?;
-    file.sync_all()?;
-    #[cfg(target_os = "windows")]
-    if path.exists() {
-        std::fs::remove_file(path)?;
-    }
-    std::fs::rename(temporary, path)
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -161,6 +150,56 @@ mod tests {
         EdgeSegment, KeyChord, KeyboardMappingRule, KeyboardProfileKind, SemanticAction, HID_KEY_C,
         HID_LEFT_CONTROL,
     };
+
+    #[test]
+    fn concurrent_workspace_saves_keep_disk_and_memory_consistent() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("workspace.json");
+        let store = WorkspaceStore::load(&path).unwrap();
+        let start = Arc::new(std::sync::Barrier::new(8));
+        let workers = (0..8)
+            .map(|worker| {
+                let store = store.clone();
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    for revision in 0..32 {
+                        let next = WorkspaceConfiguration {
+                            topology_author: format!(
+                                "{worker}-{revision}-{}",
+                                "x".repeat(worker * 128)
+                            ),
+                            ..WorkspaceConfiguration::default()
+                        };
+                        store.save(next).unwrap();
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let persisted = WorkspaceStore::load(&path).unwrap().snapshot();
+        assert_eq!(
+            serde_json::to_value(persisted).unwrap(),
+            serde_json::to_value(store.snapshot()).unwrap()
+        );
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_workspace_replace_keeps_memory_and_removes_temporary_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("workspace.json");
+        let store = WorkspaceStore::load(&path).unwrap();
+        // A directory at the destination forces replacement to fail.
+        std::fs::create_dir(&path).unwrap();
+        let mut next = store.snapshot();
+        next.topology_author = "must-not-be-published".into();
+        assert!(store.save(next).is_err());
+        assert!(store.snapshot().topology_author.is_empty());
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn empty_store_is_stable() {

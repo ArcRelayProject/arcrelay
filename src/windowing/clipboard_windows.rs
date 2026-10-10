@@ -617,6 +617,41 @@ fn start_hooks(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// The saved nonactivating paste recipient also identifies an app while the
+/// clipboard's editable controls own foreground focus. PIDs are never persisted.
+pub fn target_application() -> Option<super::clipboard::ClipboardTargetApplication> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    // Identity sampling must not reactivate navigation or retarget its key hook.
+    // set_editing already remembers the recipient before activating the WebView.
+    let target = capture_paste_target().ok()?;
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, target.process).ok()?;
+        let mut buffer = vec![0u16; 32768];
+        let mut size = buffer.len() as u32;
+        let result = QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_FORMAT(0),
+            windows::core::PWSTR(buffer.as_mut_ptr()),
+            &mut size,
+        );
+        let _ = CloseHandle(process);
+        result.ok()?;
+        let path = String::from_utf16_lossy(&buffer[..size as usize]);
+        let name = std::path::Path::new(&path)
+            .file_stem()?
+            .to_string_lossy()
+            .into_owned();
+        Some(super::clipboard::ClipboardTargetApplication {
+            id: format!("windows:{}", path.to_lowercase()),
+            name,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

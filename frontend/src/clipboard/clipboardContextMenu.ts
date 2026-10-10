@@ -1,7 +1,4 @@
-import { translate } from "../localization";
-import { Menu } from "@tauri-apps/api/menu";
-import { LogicalPosition } from "@tauri-apps/api/dpi";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { t, translate } from "../localization";
 
 import type { LanguagePreference } from "../types";
 import { tr } from "./i18n";
@@ -12,10 +9,19 @@ import type {
   ClipboardPasteMode,
   NearbyClipboardPeer,
 } from "./types";
-import { isWindowsClipboard } from "./focusPolicy";
-import { showInlineContextMenu, type ContextMenuEntry } from "./inlineContextMenu";
+import {
+  closeInlineContextMenu,
+  showInlineContextMenu,
+  type ContextMenuEntry,
+} from "./inlineContextMenu";
+
+let menuGeneration = 0;
 
 interface ContextMenuCallbacks {
+  application: import("../ipc/generated").ClipboardTargetApplication | null;
+  appPinned: boolean;
+  pinApplication: (pinned: boolean) => Promise<void> | void;
+  error: (reason: unknown) => void;
   nearby?: () => Promise<void> | void;
   original?: () => Promise<void> | void;
   reload: () => Promise<void> | void;
@@ -34,12 +40,11 @@ export async function showClipboardContextMenu(
   nearbyPeers: NearbyClipboardPeer[],
   language: LanguagePreference,
   callbacks: ContextMenuCallbacks,
-  inline = isWindowsClipboard(navigator.platform, "__TAURI_INTERNALS__" in window),
 ) {
   event.preventDefault();
   event.stopPropagation();
   const action = (callback: () => Promise<unknown> | unknown) => () => {
-    Promise.resolve(callback()).catch(console.error);
+    void Promise.resolve().then(callback).catch(callbacks.error);
   };
   const pasteItem = (text: string, mode: ClipboardPasteMode, enabled = true) => ({
     text,
@@ -81,7 +86,8 @@ export async function showClipboardContextMenu(
 
   const labelItems: ContextMenuEntry[] = labels.map((label) => ({
     id: `clipboard-label-${label.id}`,
-    text: `${item.labels.some((current) => current.id === label.id) ? "●" : "○"} ${label.name}`,
+    text: label.name,
+    checked: item.labels.some((current) => current.id === label.id),
     action: action(async () => {
       const attached = !item.labels.some((current) => current.id === label.id);
       await clipboardBridge.setLabelMembership(item.id, label.id, attached);
@@ -98,12 +104,14 @@ export async function showClipboardContextMenu(
   const items: ContextMenuEntry[] = [
     {
       text: tr("插入到当前应用", language),
+      icon: "insert",
       enabled: item.available,
       action: action(() => callbacks.paste("source")),
     },
     { text: translate("粘贴为", language), items: pasteItems },
     {
       text: tr("复制到剪贴板", language),
+      icon: "copy",
       enabled: item.available,
       action: action(() => clipboardBridge.copy(item.id)),
     },
@@ -111,6 +119,7 @@ export async function showClipboardContextMenu(
       ? [{ text: translate("预览与选择…", language), action: action(callbacks.segment) }]
       : []),
     {
+      icon: "edit",
       text:
         item.kind === "html"
           ? "编辑纯文本副本…"
@@ -128,13 +137,24 @@ export async function showClipboardContextMenu(
       : []),
     { item: "Separator" },
     {
+      text: callbacks.application
+        ? t(callbacks.appPinned ? "取消在 {name} 中置顶" : "在 {name} 中置顶", language, {
+            name: callbacks.application.name,
+          })
+        : translate("在当前应用中置顶", language),
+      icon: "pin",
+      enabled: callbacks.application !== null,
+      action: action(() => callbacks.pinApplication(!callbacks.appPinned)),
+    },
+    {
+      icon: "favorite",
       text: tr(item.favorite ? "取消收藏" : "收藏", language),
       action: action(async () => {
         await clipboardBridge.setFavorite(item.id, !item.favorite);
         await callbacks.reload();
       }),
     },
-    { text: tr("添加到标签", language), items: labelItems },
+    { text: tr("添加到标签", language), icon: "label", items: labelItems },
     ...(item.kind === "files"
       ? [
           {
@@ -151,25 +171,25 @@ export async function showClipboardContextMenu(
     { item: "Separator" },
     {
       text: tr("删除记录", language),
+      icon: "delete",
+      destructive: true,
       action: action(async () => {
         await clipboardBridge.remove(item.id);
         await callbacks.reload();
       }),
     },
   ];
-  await clipboardBridge.setContextMenuOpen(true);
-  let menu: Menu | undefined;
+  const generation = ++menuGeneration;
+  closeInlineContextMenu();
+  let selected: (() => void) | null = null;
   try {
-    if (inline) {
-      // Render inside the existing noactivate WebView: no TrackPopupMenu and no
-      // extra native owner window can activate the application.
-      await showInlineContextMenu(items, event.clientX, event.clientY);
-    } else {
-      menu = await Menu.new({ items });
-      await menu.popup(new LogicalPosition(event.clientX, event.clientY), getCurrentWindow());
-    }
+    await clipboardBridge.setContextMenuOpen(true);
+    if (generation !== menuGeneration) return;
+    selected = await showInlineContextMenu(items, event.clientX, event.clientY);
   } finally {
-    await clipboardBridge.setContextMenuOpen(false);
-    await menu?.close();
+    if (generation === menuGeneration) await clipboardBridge.setContextMenuOpen(false);
   }
+  // The WebView menu and host suppression state are both closed before paste,
+  // editing, or another action can restore/focus the saved recipient.
+  if (generation === menuGeneration) selected?.();
 }
