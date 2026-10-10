@@ -256,13 +256,14 @@
   <section class="agent-section" aria-labelledby="default-access-title">
     <div class="section-heading"><h3 id="default-access-title">{tr("默认授权方式", $language)}</h3></div>
     <div class="permission-preset-surface">
-      <div class="permission-presets">
-        {#each permissionOptions as option}
-          <button class:selected={defaultPreset === option.value} aria-pressed={defaultPreset === option.value} on:click={() => setDefaultPreset(option.value)}>
-            <svelte:component this={option.icon} size={22} />
-            <span><strong>{tr(option.label, $language)}{#if option.value === "daily"}<em>{tr("推荐", $language)}</em>{/if}</strong><small>{tr(option.description, $language)}</small></span>
-          </button>
-        {/each}
+      <div class="settings-row settings-preset-row">
+        <span class="row-icon"><ShieldCheck size={21} /></span>
+        <span class="row-copy"><strong>{tr("授权方式", $language)}</strong><small>{tr("新 Agent 默认使用以下权限", $language)}</small></span>
+        <div class="permission-presets">
+          {#each permissionOptions as option}
+            <button class:selected={defaultPreset === option.value} aria-pressed={defaultPreset === option.value} title={tr(option.description, $language)} on:click={() => setDefaultPreset(option.value)}>{tr(option.label, $language)}</button>
+          {/each}
+        </div>
       </div>
       <div class="permission-note"><span>{tr("新接入默认可查看并管理配置；运行脚本仍需单独确认。", $language)}</span><button class="text-button" on:click={openCreate}>{tr("了解权限", $language)}<CaretRight size={14} /></button></div>
     </div>
@@ -401,10 +402,7 @@
   .permission-presets > button:last-child { border-right: 1px solid var(--border); border-radius: 0 10px 10px 0; }
   .permission-presets > button:hover { background: var(--surface-hover); }
   .permission-presets > button.selected { position: relative; z-index: 1; border-color: var(--accent); color: var(--accent-strong); background: var(--surface-accent); box-shadow: 0 0 0 1px var(--accent); }
-  .permission-presets span { display: grid; gap: 4px; }
-  .permission-presets strong { display: flex; align-items: center; gap: 7px; color: inherit; font-size: 13px; }
-  .permission-presets small { color: var(--text-muted); font-size: 10px; }
-  .permission-presets em, .dialog-permission-presets em { padding: 2px 6px; border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); font-size: 9px; font-style: normal; }
+  .dialog-permission-presets em { padding: 2px 6px; border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); font-size: 9px; font-style: normal; }
   .permission-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 16px 14px; color: var(--text-muted); font-size: 11px; }
   .permission-note .text-button { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .advanced-agent-settings { margin-top: 26px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-raised); }

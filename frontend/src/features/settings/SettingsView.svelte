@@ -253,6 +253,12 @@
       class="connection-settings connection-settings-v3"
       aria-labelledby="connection-settings-title-v3"
     >
+      <div class="settings-page-heading">
+        <div>
+          <h2>{uiTranslate("设备与连接", $uiLanguage)}</h2>
+          <p>{uiTranslate("管理已配对设备与安全连接", $uiLanguage)}</p>
+        </div>
+      </div>
       <div class="connection-toolbar">
         <div class="connection-toolbar-copy">
           <strong id="connection-settings-title-v3"
@@ -635,96 +641,89 @@
               >
             </div>
           {/if}
-
-          <details class="inspector-settings-disclosure">
-            <summary>{uiTranslate("连接设置", $uiLanguage)} <CaretDown size={17} /></summary>
-            <div class="inspector-settings-body">
-              <label class="inspector-setting-field"
-                ><span
-                  ><strong>{uiTranslate("本机设备名称", $uiLanguage)}</strong><small
-                    >{uiTranslate("其他设备会通过这个名称识别本机", $uiLanguage)}</small
-                  ></span
-                ><input
-                  class="device-name-input"
-                  value={appSettings.deviceName}
-                  maxlength="128"
-                  disabled={settingsSaving}
-                  placeholder={uiTranslate("使用系统主机名", $uiLanguage)}
-                  aria-label={uiTranslate("设备名称", $uiLanguage)}
-                  on:change={(event) =>
-                    patchAppSettings(
-                      { deviceName: event.currentTarget.value.trim() },
-                      "设备名称已更新，其他设备将自动同步",
-                    )}
-                /></label
-              >
-              <div
-                class:permission-warning={snapshot?.inputPermission !== "Granted"}
-                class="inspector-setting-row"
-              >
-                <span
-                  ><strong>{uiTranslate("控制权限", $uiLanguage)}</strong><small
-                    >{uiTranslate(
-                      snapshot?.inputPermission === "Granted"
-                        ? "已开启，连接的设备可以控制键盘和指针"
-                        : permissionText(snapshot?.inputPermission),
-                      $uiLanguage,
-                    )}</small
-                  ></span
-                ><button class="text-button" on:click={() => bridge.openInputPermissionSettings()}
-                  >{uiTranslate(
-                    snapshot?.inputPermission === "Granted" ? "查看" : "去开启",
-                    $uiLanguage,
-                  )}</button
-                >
-              </div>
-              <button
-                class="inspector-setting-row inspector-setting-toggle"
-                role="switch"
-                aria-checked={appSettings.nearbyDiscoverable}
-                disabled={settingsSaving}
-                on:click={() =>
-                  patchAppSettings(
-                    { nearbyDiscoverable: !appSettings.nearbyDiscoverable },
-                    appSettings.nearbyDiscoverable
-                      ? "已关闭附近设备发现"
-                      : "此设备现在可被附近设备发现",
-                  )}
-                ><span
-                  ><strong>{uiTranslate("附近设备发现", $uiLanguage)}</strong><small
-                    >{uiTranslate("允许同一网络中的设备找到这台电脑", $uiLanguage)}</small
-                  ></span
-                ><span class:checked={appSettings.nearbyDiscoverable} class="switch-control"
-                  ><span></span></span
-                ></button
-              >
-              <details class="inspector-advanced-settings">
-                <summary>{uiTranslate("高级连接设置", $uiLanguage)} <CaretDown size={16} /></summary
-                >
-                <div>
-                  <p>
-                    <span>{uiTranslate("后台服务", $uiLanguage)}</span><strong
-                      >{uiTranslate(
-                        snapshot?.serverRunning ? "运行中" : "已停止",
-                        $uiLanguage,
-                      )}</strong
-                    >
-                  </p>
-                  <p>
-                    <span>{uiTranslate("网络端口", $uiLanguage)}</span><strong
-                      >{snapshot?.port}</strong
-                    >
-                  </p>
-                  <p><span>{uiTranslate("安全连接", $uiLanguage)}</span><strong>TLS 1.3</strong></p>
-                  <button class="secondary-button" on:click={copyConnectionInfo}
-                    ><Copy size={16} /> {uiTranslate("复制诊断信息", $uiLanguage)}</button
-                  >
-                </div>
-              </details>
-            </div>
-          </details>
         </article>
       </div>
+      <section class="local-connection-settings">
+        <h3 class="settings-group-title">{uiTranslate("本机连接", $uiLanguage)}</h3>
+        <div class="inspector-settings-body">
+          <label class="inspector-setting-field"
+            ><span class="row-icon"><DesktopTower size={21} /></span><span
+              ><strong>{uiTranslate("本机设备名称", $uiLanguage)}</strong><small
+                >{uiTranslate("其他设备会通过这个名称识别本机", $uiLanguage)}</small
+              ></span
+            ><input
+              class="device-name-input"
+              value={appSettings.deviceName}
+              maxlength="128"
+              disabled={settingsSaving}
+              placeholder={uiTranslate("使用系统主机名", $uiLanguage)}
+              aria-label={uiTranslate("设备名称", $uiLanguage)}
+              on:change={(event) =>
+                patchAppSettings(
+                  { deviceName: event.currentTarget.value.trim() },
+                  "设备名称已更新，其他设备将自动同步",
+                )}
+            /></label
+          >
+          <div
+            class:permission-warning={snapshot?.inputPermission !== "Granted"}
+            class="inspector-setting-row"
+          >
+            <span class="row-icon"><Keyboard size={21} /></span><span
+              ><strong>{uiTranslate("控制权限", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  snapshot?.inputPermission === "Granted"
+                    ? "已开启，连接的设备可以控制键盘和指针"
+                    : permissionText(snapshot?.inputPermission),
+                  $uiLanguage,
+                )}</small
+              ></span
+            ><button class="text-button" on:click={() => bridge.openInputPermissionSettings()}
+              >{uiTranslate(
+                snapshot?.inputPermission === "Granted" ? "查看" : "去开启",
+                $uiLanguage,
+              )}</button
+            >
+          </div>
+          <button
+            class="inspector-setting-row inspector-setting-toggle"
+            role="switch"
+            aria-checked={appSettings.nearbyDiscoverable}
+            disabled={settingsSaving}
+            on:click={() =>
+              patchAppSettings(
+                { nearbyDiscoverable: !appSettings.nearbyDiscoverable },
+                appSettings.nearbyDiscoverable
+                  ? "已关闭附近设备发现"
+                  : "此设备现在可被附近设备发现",
+              )}
+            ><span class="row-icon"><WifiHigh size={21} /></span><span
+              ><strong>{uiTranslate("附近设备发现", $uiLanguage)}</strong><small
+                >{uiTranslate("允许同一网络中的设备找到这台电脑", $uiLanguage)}</small
+              ></span
+            ><span class:checked={appSettings.nearbyDiscoverable} class="switch-control"
+              ><span></span></span
+            ></button
+          >
+          <details class="inspector-advanced-settings">
+            <summary>{uiTranslate("高级连接设置", $uiLanguage)} <CaretDown size={16} /></summary>
+            <div>
+              <p>
+                <span>{uiTranslate("后台服务", $uiLanguage)}</span><strong
+                  >{uiTranslate(snapshot?.serverRunning ? "运行中" : "已停止", $uiLanguage)}</strong
+                >
+              </p>
+              <p>
+                <span>{uiTranslate("网络端口", $uiLanguage)}</span><strong>{snapshot?.port}</strong>
+              </p>
+              <p><span>{uiTranslate("安全连接", $uiLanguage)}</span><strong>TLS 1.3</strong></p>
+              <button class="secondary-button" on:click={copyConnectionInfo}
+                ><Copy size={16} /> {uiTranslate("复制诊断信息", $uiLanguage)}</button
+              >
+            </div>
+          </details>
+        </div>
+      </section>
     </section>
 
     <section
@@ -1195,10 +1194,13 @@
       <LoginSecurity onBack={() => (loginSecurityOpen = false)} />
     {:else}
       <section class="settings-tab-content">
-        <div class="connection-section-title">
-          <h2>{uiTranslate("剪贴板", $uiLanguage)}</h2>
-          <span>{uiTranslate("保存与跨设备同步", $uiLanguage)}</span>
+        <div class="settings-page-heading">
+          <div>
+            <h2>{uiTranslate("剪贴板", $uiLanguage)}</h2>
+            <p>{uiTranslate("保存、使用与跨设备同步", $uiLanguage)}</p>
+          </div>
         </div>
+        <h3 class="settings-group-title">{uiTranslate("保存与访问", $uiLanguage)}</h3>
         <div class="settings-list settings-card-list">
           <button class="settings-row" on:click={() => (loginSecurityOpen = true)}>
             <span class="row-icon accent-icon"><LockKey size={21} /></span>
@@ -1231,7 +1233,6 @@
               ><span></span></span
             >
           </button>
-          <ClipboardRetentionSettings />
           <button
             class="settings-row settings-toggle-row"
             role="switch"
@@ -1302,6 +1303,10 @@
               on:keydown={captureClipboardShortcut}
             />
           </label>
+          <ClipboardRetentionSettings />
+        </div>
+        <h3 class="settings-group-title">{uiTranslate("跨设备同步", $uiLanguage)}</h3>
+        <div class="settings-list settings-card-list">
           <button
             class="settings-row settings-toggle-row"
             role="switch"
@@ -1348,11 +1353,46 @@
               class="switch-control"><span></span></span
             >
           </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncEditsAndDeletes}
+            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardSyncEditsAndDeletes: !appSettings.clipboardSyncEditsAndDeletes },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><PencilSimple size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("同步修改与删除", $uiLanguage)}</strong><small
+                >{uiTranslate("让已同步记录在各台设备保持一致。", $uiLanguage)}</small
+              ></span
+            ><span class:checked={appSettings.clipboardSyncEditsAndDeletes} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.clipboardSyncFavorites}
+            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
+            on:click={() =>
+              patchAppSettings(
+                { clipboardSyncFavorites: !appSettings.clipboardSyncFavorites },
+                "设置已保存",
+              )}
+          >
+            <span class="row-icon"><Star size={21} /></span><span class="row-copy"
+              ><strong>{uiTranslate("同步收藏", $uiLanguage)}</strong><small
+                >{uiTranslate("在其他设备保留相同的收藏状态。", $uiLanguage)}</small
+              ></span
+            ><span class:checked={appSettings.clipboardSyncFavorites} class="switch-control"
+              ><span></span></span
+            >
+          </button>
         </div>
-        <div class="connection-section-title">
-          <h2>{uiTranslate("使用方式", $uiLanguage)}</h2>
-          <span>{uiTranslate("面板、记录与同步细节", $uiLanguage)}</span>
-        </div>
+        <h3 class="settings-group-title">{uiTranslate("使用方式", $uiLanguage)}</h3>
         <div class="settings-list settings-card-list">
           <button
             class="settings-row settings-toggle-row"
@@ -1400,49 +1440,8 @@
               ]}
             />
           </div>
-          <button
-            class="settings-row settings-toggle-row"
-            role="switch"
-            aria-checked={appSettings.clipboardSyncEditsAndDeletes}
-            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
-            on:click={() =>
-              patchAppSettings(
-                { clipboardSyncEditsAndDeletes: !appSettings.clipboardSyncEditsAndDeletes },
-                "设置已保存",
-              )}
-          >
-            <span class="row-icon"><PencilSimple size={21} /></span><span class="row-copy"
-              ><strong>{uiTranslate("同步修改与删除", $uiLanguage)}</strong><small
-                >{uiTranslate("让已同步记录在各台设备保持一致。", $uiLanguage)}</small
-              ></span
-            ><span class:checked={appSettings.clipboardSyncEditsAndDeletes} class="switch-control"
-              ><span></span></span
-            >
-          </button>
-          <button
-            class="settings-row settings-toggle-row"
-            role="switch"
-            aria-checked={appSettings.clipboardSyncFavorites}
-            disabled={settingsSaving || !appSettings.clipboardSyncEnabled}
-            on:click={() =>
-              patchAppSettings(
-                { clipboardSyncFavorites: !appSettings.clipboardSyncFavorites },
-                "设置已保存",
-              )}
-          >
-            <span class="row-icon"><Star size={21} /></span><span class="row-copy"
-              ><strong>{uiTranslate("同步收藏", $uiLanguage)}</strong><small
-                >{uiTranslate("在其他设备保留相同的收藏状态。", $uiLanguage)}</small
-              ></span
-            ><span class:checked={appSettings.clipboardSyncFavorites} class="switch-control"
-              ><span></span></span
-            >
-          </button>
         </div>
-        <div class="connection-section-title clipboard-maintenance-title">
-          <h2>{uiTranslate("记录维护", $uiLanguage)}</h2>
-          <span>{uiTranslate("整理或清除本机保存的剪贴板历史", $uiLanguage)}</span>
-        </div>
+        <h3 class="settings-group-title">{uiTranslate("记录维护", $uiLanguage)}</h3>
         <div class="settings-list settings-card-list">
           <button
             class="settings-row settings-action-row"
@@ -1488,10 +1487,13 @@
     </section>
   {:else if settingsTab === "screenshot"}
     <section class="settings-tab-content">
-      <div class="connection-section-title">
-        <h2>{uiTranslate("截图", $uiLanguage)}</h2>
-        <span>{uiTranslate("快捷键、捕获与输出", $uiLanguage)}</span>
+      <div class="settings-page-heading">
+        <div>
+          <h2>{uiTranslate("截图", $uiLanguage)}</h2>
+          <p>{uiTranslate("快捷键、捕获与输出", $uiLanguage)}</p>
+        </div>
       </div>
+      <h3 class="settings-group-title">{uiTranslate("快捷键与启动", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <button
           class="settings-row settings-toggle-row"
@@ -1551,10 +1553,7 @@
         </button>
       </div>
 
-      <div class="connection-section-title">
-        <h2>{uiTranslate("捕获", $uiLanguage)}</h2>
-        <span>{uiTranslate("区域选择行为", $uiLanguage)}</span>
-      </div>
+      <h3 class="settings-group-title">{uiTranslate("捕获", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <button
           class="settings-row settings-toggle-row"
@@ -1574,10 +1573,7 @@
         </button>
       </div>
 
-      <div class="connection-section-title">
-        <h2>{uiTranslate("输出", $uiLanguage)}</h2>
-        <span>{uiTranslate("保存截图时使用", $uiLanguage)}</span>
-      </div>
+      <h3 class="settings-group-title">{uiTranslate("输出", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <div class="settings-row setting-field-row">
           <span class="row-icon"><FileText size={21} /></span><span class="row-copy"
@@ -1623,10 +1619,13 @@
     </section>
   {:else}
     <section class="settings-tab-content">
-      <div class="connection-section-title">
-        <h2>{uiTranslate("通用", $uiLanguage)}</h2>
-        <span>{uiTranslate("外观与启动", $uiLanguage)}</span>
+      <div class="settings-page-heading">
+        <div>
+          <h2>{uiTranslate("通用", $uiLanguage)}</h2>
+          <p>{uiTranslate("个性化外观、启动与更新", $uiLanguage)}</p>
+        </div>
       </div>
+      <h3 class="settings-group-title">{uiTranslate("外观", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <div class="settings-row setting-field-row">
           <span class="row-icon accent-icon"><Palette size={21} /></span>
@@ -1669,6 +1668,9 @@
             ]}
           />
         </div>
+      </div>
+      <h3 class="settings-group-title">{uiTranslate("启动", $uiLanguage)}</h3>
+      <div class="settings-list settings-card-list">
         <button
           class="settings-row settings-toggle-row"
           role="switch"
@@ -1711,6 +1713,9 @@
             ><span></span></span
           >
         </button>
+      </div>
+      <h3 class="settings-group-title">{uiTranslate("更新", $uiLanguage)}</h3>
+      <div class="settings-list settings-card-list">
         <button
           class="settings-row settings-toggle-row"
           role="switch"
@@ -1757,22 +1762,7 @@
             }}
           />
         </div>
-        {#if isMacPlatform}
-          <div class="settings-row setting-field-row">
-            <span class="row-icon"><ShieldCheck size={21} /></span>
-            <span class="row-copy"
-              ><strong>{uiTranslate("完全磁盘访问", $uiLanguage)}</strong><small
-                >{uiTranslate(
-                  "可一次授权 ArcRelay 读取你选择共享的文件夹；也可只在添加文件夹时按需授权。",
-                  $uiLanguage,
-                )}</small
-              ></span
-            >
-            <button class="secondary-button" on:click={() => bridge.openFullDiskAccessSettings()}
-              >{uiTranslate("前往系统设置", $uiLanguage)}</button
-            >
-          </div>
-        {/if}
+
         <div class="settings-row setting-field-row app-update-row">
           <span class="row-icon accent-icon"><ClockCounterClockwise size={21} /></span>
           <span class="row-copy">
@@ -1836,6 +1826,25 @@
           </span>
         </div>
       </div>
+      {#if isMacPlatform}
+        <h3 class="settings-group-title">{uiTranslate("权限", $uiLanguage)}</h3>
+        <div class="settings-list settings-card-list">
+          <div class="settings-row setting-field-row">
+            <span class="row-icon"><ShieldCheck size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("完全磁盘访问", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "可一次授权 ArcRelay 读取你选择共享的文件夹；也可只在添加文件夹时按需授权。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <button class="secondary-button" on:click={() => bridge.openFullDiskAccessSettings()}
+              >{uiTranslate("前往系统设置", $uiLanguage)}</button
+            >
+          </div>
+        </div>
+      {/if}
       <div class="settings-about-footer">
         <div>
           <BrandLogo size={22} /><span

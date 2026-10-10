@@ -283,6 +283,8 @@
     </button>
   </header>
 
+  <h3 class="settings-group-title">{uiTranslate("浏览器访问", $uiLanguage)}</h3>
+  <div class="browser-access-surface">
   <div class:error={Boolean(webGatewayStatus?.lastError)} class:running={webGatewayStatus?.running} class="gateway-overview">
     <span class="gateway-overview-icon"><GlobeHemisphereWest size={25} weight="duotone" /></span>
     <div class="gateway-overview-copy">
@@ -311,6 +313,8 @@
   <div class="gateway-security-note">
     <ShieldCheck size={17} />
     <span><strong>{uiTranslate("HTTP 局域网共享", $uiLanguage)}</strong>{uiTranslate("不会加密密码和文件内容，请勿在公共 Wi-Fi 或端口转发环境中开启。", $uiLanguage)}</span>
+  </div>
+
   </div>
 
   <div class="file-sharing-section-heading">

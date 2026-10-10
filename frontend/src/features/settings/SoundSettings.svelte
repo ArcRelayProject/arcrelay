@@ -211,15 +211,18 @@
 
   <section class="settings-block" aria-labelledby="reminder-intensity-title">
     <h3 id="reminder-intensity-title">{tr("提醒强度", $language)}</h3>
-    <div class="preset-selector">
-      {#each presetOptions as option}
-        <button class:selected={currentPreset === option.value} aria-pressed={currentPreset === option.value} disabled={busy || settingsSaving} on:click={() => applyPreset(option.value)}>
-          <svelte:component this={option.icon} size={22} />
-          <span><strong>{tr(option.label, $language)}{#if option.value === "balanced"}<em>{tr("推荐", $language)}</em>{/if}</strong><small>{tr(option.description, $language)}</small></span>
-        </button>
-      {/each}
+    <div class="settings-list settings-card-list">
+      <div class="settings-row settings-preset-row">
+        <span class="row-icon"><Scales size={21} /></span>
+        <span class="row-copy"><strong>{tr("提醒模式", $language)}</strong><small>{tr("选择需要提醒的活动", $language)}</small></span>
+        <div class="preset-selector">
+          {#each presetOptions as option}
+            <button class:selected={currentPreset === option.value} aria-pressed={currentPreset === option.value} title={tr(option.description, $language)} disabled={busy || settingsSaving} on:click={() => applyPreset(option.value)}>{tr(option.label, $language)}</button>
+          {/each}
+        </div>
+      </div>
+      <div class="preset-summary"><Sparkle size={22} /><span><strong>{tr(presetTitle(), $language)}</strong><small>{tr(presetSummary(), $language)}</small></span></div>
     </div>
-    <div class="preset-summary"><Sparkle size={22} /><span><strong>{tr(presetTitle(), $language)}</strong><small>{tr(presetSummary(), $language)}</small></span></div>
   </section>
 
   <section class="settings-block" aria-labelledby="quiet-title">
@@ -318,10 +321,6 @@
   .preset-selector > button:last-child { border-right: 0; }
   .preset-selector > button:hover { background: var(--surface-hover); }
   .preset-selector > button.selected { position: relative; color: var(--accent-strong); background: var(--surface-accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
-  .preset-selector span { display: grid; gap: 4px; }
-  .preset-selector strong { display: flex; align-items: center; gap: 7px; color: inherit; font-size: 14px; }
-  .preset-selector small { color: var(--text-muted); font-size: 11px; }
-  .preset-selector em { padding: 2px 6px; border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); font-size: 9px; font-style: normal; }
   .preset-summary { display: flex; align-items: center; gap: 14px; min-height: 62px; padding: 10px 16px; border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border)); border-radius: 11px; color: var(--accent); background: var(--surface-accent); }
   .preset-summary span { display: grid; gap: 4px; }
   .preset-summary strong { color: var(--accent-strong); font-size: 13px; }

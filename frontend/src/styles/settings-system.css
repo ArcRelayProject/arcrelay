@@ -1,0 +1,571 @@
+/* Shared preferences language: grouped rows, quiet icons and aligned controls. */
+.settings-page {
+  --settings-row-height: 64px;
+  --settings-control-height: 36px;
+  --settings-control-width: 180px;
+  --settings-radius: 8px;
+  --settings-label-size: 15px;
+  --settings-helper-size: 13px;
+  --settings-group-gap: 20px;
+  font-size: var(--settings-helper-size);
+}
+
+.settings-page .settings-header {
+  min-height: 116px;
+}
+.settings-page .settings-header h1 {
+  font-size: 28px;
+}
+.settings-page .settings-tabs {
+  gap: 26px;
+}
+.settings-page .settings-tabs button {
+  font-size: 14px;
+}
+.settings-page .settings-tab-content,
+.settings-page .connection-settings-v3,
+.settings-page .sound-settings,
+.settings-page .agent-settings,
+.settings-page .security {
+  width: 100%;
+  max-width: 1120px;
+  padding-top: 24px;
+}
+.settings-page .connection-settings-v3 {
+  gap: 16px;
+}
+.settings-page .settings-page-heading,
+.settings-page .file-sharing-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 24px;
+}
+.settings-page .connection-settings-v3 > .settings-page-heading {
+  margin-bottom: 0;
+}
+.settings-page .settings-page-heading h2,
+.settings-page .file-sharing-page-heading h2,
+.settings-page .security h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.settings-page .settings-page-heading p,
+.settings-page .file-sharing-page-heading p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--settings-helper-size);
+  line-height: 1.5;
+}
+.settings-page .settings-group-title,
+.settings-page .sound-settings .settings-block > h3,
+.settings-page .agent-settings .section-heading h3,
+.settings-page .file-sharing-section-heading h3,
+.settings-page .security > h3 {
+  margin: var(--settings-group-gap) 0 8px;
+  color: var(--text);
+  font-size: var(--settings-label-size);
+  font-weight: 650;
+  line-height: 1.4;
+}
+.settings-page .settings-page-heading + .settings-group-title,
+.settings-page .sound-settings .settings-block:first-of-type > h3 {
+  margin-top: 0;
+}
+.settings-page .settings-card-list,
+.settings-page .sound-settings .method-list,
+.settings-page .sound-settings .quiet-list,
+.settings-page .local-share-table,
+.settings-page .agent-settings .agent-list,
+.settings-page .agent-settings .permission-preset-surface,
+.settings-page .sound-settings .custom-reminders,
+.settings-page .agent-settings .advanced-agent-settings,
+.settings-page .device-master-detail,
+.settings-page .inspector-settings-body {
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--settings-radius);
+  background: var(--surface-raised);
+  box-shadow: none;
+}
+.settings-page .settings-row,
+.settings-page .inspector-setting-field,
+.settings-page .inspector-setting-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) var(--settings-control-width);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: var(--settings-row-height);
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.settings-page .settings-row:last-child {
+  border-bottom: 0;
+}
+.settings-page .row-copy,
+.settings-page .inspector-setting-field > span:not(.row-icon),
+.settings-page .inspector-setting-row > span:not(.row-icon):not(.switch-control) {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.settings-page .row-copy strong,
+.settings-page .inspector-setting-field strong,
+.settings-page .inspector-setting-row strong,
+.settings-page .sound-settings .method-copy strong,
+.settings-page .sound-settings .quiet-list strong,
+.settings-page .local-share-copy strong,
+.settings-page .agent-settings .agent-identity strong {
+  font-size: var(--settings-label-size);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.settings-page .row-copy small,
+.settings-page .inspector-setting-field small,
+.settings-page .inspector-setting-row small,
+.settings-page .sound-settings .method-copy small,
+.settings-page .sound-settings .quiet-list small,
+.settings-page .local-share-copy small,
+.settings-page .share-access-status small,
+.settings-page .agent-settings .agent-identity small {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--settings-helper-size);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.settings-page .row-icon,
+.settings-page .sound-settings .method-icon,
+.settings-page .sound-settings .quiet-icon,
+.settings-page .inspector-section-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.settings-page .settings-row > :last-child,
+.settings-page .inspector-setting-field > :last-child,
+.settings-page .inspector-setting-row > :last-child {
+  justify-self: end;
+}
+.settings-page .app-select-trigger,
+.settings-page input:not([type="checkbox"]):not([type="range"]),
+.settings-page .primary-button,
+.settings-page .secondary-button {
+  min-height: var(--settings-control-height);
+  height: var(--settings-control-height);
+  border-radius: var(--settings-radius);
+  font-size: var(--settings-helper-size);
+}
+.settings-page .setting-field-row > .app-select-trigger,
+.settings-page .setting-field-row > input,
+.settings-page .inspector-setting-field > input {
+  width: var(--settings-control-width);
+  max-width: 100%;
+}
+.settings-page .switch-control.checked {
+  background: var(--accent);
+}
+.settings-page .switch-control.checked > span {
+  background: #fff;
+}
+.settings-page .switch-control {
+  flex-shrink: 0;
+  transform: none;
+}
+.settings-page .settings-row:focus-visible,
+.settings-page .inspector-setting-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.settings-page .settings-about-footer {
+  margin-top: 24px;
+  box-shadow: none;
+}
+.settings-page .device-master-detail {
+  min-height: 380px;
+}
+.settings-page .device-inspector {
+  padding: 24px;
+}
+.settings-page .device-inspector-header h2 {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.settings-page .inspector-device-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+}
+.settings-page .device-master-list > button {
+  min-height: 72px;
+  border-radius: 8px;
+}
+.settings-page .master-device-copy strong {
+  font-size: 13px;
+}
+.settings-page .master-device-copy small,
+.settings-page .inspector-online-state,
+.settings-page .device-connection-facts dt,
+.settings-page .device-connection-facts dd {
+  font-size: var(--settings-helper-size);
+}
+.settings-page .device-connection-facts {
+  margin-top: 20px;
+  padding: 0 0 16px;
+  gap: 16px;
+}
+.settings-page .device-inspector .inspector-section {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  min-height: var(--settings-row-height);
+  padding: 12px 0;
+}
+.settings-page .inspector-section strong {
+  font-size: var(--settings-label-size);
+}
+.settings-page .inspector-section small {
+  font-size: var(--settings-helper-size);
+}
+.settings-page .device-inspector-actions {
+  margin-top: 16px;
+  gap: 12px;
+}
+.settings-page .device-inspector-actions button {
+  min-height: 36px;
+  height: 36px;
+}
+.settings-page .local-connection-settings > .settings-group-title {
+  margin-top: 8px;
+}
+.settings-page .inspector-settings-body {
+  padding: 0;
+}
+.settings-page .inspector-advanced-settings {
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+}
+.settings-page .inspector-advanced-settings > summary {
+  min-height: 56px;
+  font-size: 14px;
+}
+.settings-page .add-device-sheet {
+  border-radius: 8px;
+  box-shadow: none;
+}
+.settings-page .gateway-overview {
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.settings-page .gateway-overview-icon {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+}
+.settings-page .gateway-overview-copy strong {
+  font-size: var(--settings-label-size);
+}
+.settings-page .gateway-overview-copy small,
+.settings-page .gateway-security-note,
+.settings-page .share-access-status strong {
+  font-size: var(--settings-helper-size);
+}
+.settings-page .local-share-row {
+  min-height: var(--settings-row-height);
+  padding: 12px 16px;
+}
+.settings-page .local-share-folder-icon,
+.settings-page .agent-settings .agent-icon {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+}
+.settings-page .sound-settings {
+  gap: 0;
+}
+.settings-page .sound-settings .settings-block {
+  margin-bottom: 0;
+}
+.settings-page .sound-settings .method-row {
+  grid-template-columns: 24px minmax(0, 1fr) minmax(100px, 180px) auto 42px;
+  gap: 16px;
+  min-height: var(--settings-row-height);
+  padding: 12px 16px;
+}
+.settings-page .sound-settings .method-copy b {
+  display: none;
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-page .sound-settings .switch-button {
+  width: 42px;
+  height: 36px;
+}
+.settings-page .sound-settings .quiet-list > button {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  min-height: var(--settings-row-height);
+  padding: 12px 16px;
+  gap: 16px;
+}
+.settings-page .sound-settings .preset-selector,
+.settings-page .agent-settings .permission-presets {
+  border-radius: 8px;
+}
+.settings-page .sound-settings .preset-selector > button,
+.settings-page .agent-settings .permission-presets > button {
+  min-height: 64px;
+  padding: 12px 16px;
+  gap: 12px;
+}
+.settings-page .sound-settings .preset-selector strong,
+.settings-page .agent-settings .permission-presets strong {
+  font-size: 14px;
+}
+.settings-page .sound-settings .preset-selector small,
+.settings-page .agent-settings .permission-presets small {
+  font-size: 12px;
+}
+.settings-page .sound-settings .preset-summary {
+  min-height: 36px;
+  margin-top: 0;
+  padding: 8px 16px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+.settings-page .sound-settings .custom-reminders {
+  margin-top: 24px;
+}
+.settings-page .sound-settings .custom-reminders > summary {
+  min-height: var(--settings-row-height);
+}
+.settings-page .sound-settings .custom-reminders > summary strong {
+  font-size: var(--settings-label-size);
+}
+.settings-page .sound-settings .custom-reminders > summary small {
+  font-size: var(--settings-helper-size);
+}
+.settings-page .agent-settings {
+  gap: 0;
+}
+.settings-page .agent-settings .agent-service-status {
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 13px;
+}
+.settings-page .agent-settings .agent-service-status strong {
+  font-size: 15px;
+}
+.settings-page .agent-settings .agent-section {
+  margin-top: 24px;
+}
+.settings-page .agent-settings .section-heading {
+  margin-bottom: 8px;
+}
+.settings-page .agent-settings .section-heading h3 {
+  margin: 0;
+}
+.settings-page .agent-settings .agent-row {
+  min-height: var(--settings-row-height);
+}
+.settings-page .agent-settings .permission-summary,
+.settings-page .agent-settings .created-at,
+.settings-page .agent-settings .permission-note {
+  font-size: 13px;
+}
+.settings-page .agent-settings .advanced-agent-settings {
+  margin-top: 24px;
+}
+.settings-page .agent-settings .advanced-agent-settings > summary {
+  min-height: var(--settings-row-height);
+}
+.settings-page :is(.sound-settings, .agent-settings) .settings-page-heading h2 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: normal;
+}
+.settings-page :is(.sound-settings, .agent-settings) .settings-page-heading p {
+  margin-top: 4px;
+}
+.settings-page .sound-settings.sound-settings,
+.settings-page .agent-settings.agent-settings {
+  padding-top: 24px;
+}
+.settings-page .agent-settings .settings-preset-row .permission-presets {
+  padding: 0;
+}
+.settings-page .agent-settings .agent-service-status {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 4px 16px;
+  background: var(--surface-accent);
+}
+.settings-page .agent-settings .agent-service-status > svg {
+  grid-row: 1 / 3;
+  align-self: center;
+}
+.settings-page .agent-settings .agent-service-status > span {
+  grid-column: 2;
+}
+.settings-page .browser-access-surface {
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.settings-page .browser-access-surface .gateway-overview {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  border: 0;
+  border-radius: 0;
+  min-height: 80px;
+}
+.settings-page .browser-access-surface .gateway-security-note {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-page .settings-preset-row {
+  grid-template-columns: 24px minmax(0, 1fr) minmax(280px, 40%);
+}
+.settings-page .settings-preset-row .preset-selector,
+.settings-page .settings-preset-row .permission-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  border: 1px solid var(--border-strong);
+}
+.settings-page .settings-preset-row .preset-selector > button,
+.settings-page .settings-preset-row .permission-presets > button {
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  font-size: 13px;
+  box-shadow: none;
+}
+.settings-page .settings-preset-row .preset-selector > button:last-child,
+.settings-page .settings-preset-row .permission-presets > button:last-child {
+  border-right: 0;
+}
+.settings-page .settings-preset-row .preset-selector > button.selected,
+.settings-page .settings-preset-row .permission-presets > button.selected {
+  color: var(--text-inverse);
+  background: var(--accent);
+}
+
+/* Credential subpages use the same text and control metrics as preferences. */
+.settings-page .security .status-card strong,
+.settings-page .security label.field {
+  font-size: var(--settings-label-size);
+}
+.settings-page .security .muted,
+.settings-page .security label.field small {
+  font-size: var(--settings-helper-size);
+  line-height: 1.5;
+}
+.settings-page .security button:not(.setting-row) {
+  min-height: var(--settings-control-height);
+  font-size: var(--settings-helper-size);
+}
+
+@media (max-width: 900px) {
+  .settings-page .sound-settings .method-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto 42px;
+  }
+  .settings-page .sound-settings .method-volume,
+  .settings-page .sound-settings .method-spacer {
+    grid-column: 2;
+  }
+  .settings-page .sound-settings .method-action {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .settings-page .sound-settings .switch-button {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
+@media (max-width: 760px) {
+  .settings-page {
+    --settings-control-width: 160px;
+  }
+  .settings-page .device-master-detail {
+    grid-template-columns: 1fr;
+  }
+  .settings-page .device-master-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-page .settings-page-heading {
+    align-items: flex-start;
+  }
+  .settings-page .device-inspector {
+    padding: 16px;
+  }
+}
+@media (max-width: 600px) {
+  .settings-page .settings-preset-row .preset-selector,
+  .settings-page .settings-preset-row .permission-presets {
+    grid-column: 2 / -1;
+  }
+  .settings-page .settings-row,
+  .settings-page .inspector-setting-field,
+  .settings-page .inspector-setting-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .settings-page .setting-field-row > .app-select-trigger,
+  .settings-page .setting-field-row > input,
+  .settings-page .inspector-setting-field > input {
+    grid-column: 2 / -1;
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+  }
+  .settings-page .sound-settings .method-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .settings-page .sound-settings .method-action {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .settings-page .sound-settings .switch-button {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .settings-page .device-connection-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-page .sound-settings .preset-summary > svg,
+.settings-page .sound-settings .preset-summary strong {
+  display: none;
+}
+.settings-page .sound-settings .preset-summary small {
+  font-size: var(--settings-helper-size);
+  line-height: 1.5;
+}
+.settings-page .agent-settings .permission-note {
+  border-top: 1px solid var(--border);
+}
