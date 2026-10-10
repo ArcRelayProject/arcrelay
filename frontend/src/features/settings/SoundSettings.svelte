@@ -6,6 +6,7 @@
     FunnelSimple,
     Play,
     Scales,
+    SlidersHorizontal,
     ShieldCheck,
     Sparkle,
     SpeakerHigh,
@@ -40,6 +41,7 @@
   let muteTimer: ReturnType<typeof setTimeout> | undefined;
   let automations: AutomationDefinition[] = [];
   let automationsLoaded = false;
+  let customRemindersOpen = false;
   let volume = settings.sounds.volume;
   let currentPreset: ReminderPreset | "custom" = "custom";
   $: volume = settings.sounds.volume;
@@ -241,8 +243,9 @@
     </div>
   </section>
 
-  <details class="custom-reminders" on:toggle={(event) => loadAutomations(event.currentTarget.open)}>
-    <summary><CaretDown size={18} /><span><strong>{tr("自定义提醒内容", $language)}</strong><small>{tr("按功能调整声音与桌面通知", $language)}</small></span><span class="summary-action">{tr("展开", $language)}</span></summary>
+  <h3 class="settings-group-title">{tr("自定义", $language)}</h3>
+  <details class="custom-reminders" on:toggle={(event) => { customRemindersOpen = event.currentTarget.open; void loadAutomations(customRemindersOpen); }}>
+    <summary><SlidersHorizontal size={21} /><span><strong>{tr("自定义提醒内容", $language)}</strong><small>{tr("按功能调整声音与桌面通知", $language)}</small></span><span class="summary-action">{tr(customRemindersOpen ? "收起" : "展开", $language)}<CaretDown size={16} /></span></summary>
     <div class="custom-reminders-body">
       <div class="custom-display-row">
         <span><strong>{tr("通知出现时机", $language)}</strong><small>{tr("ArcRelay 在前台时可用页面状态代替系统通知。", $language)}</small></span>
@@ -337,7 +340,7 @@
   .custom-reminders > summary { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 70px; padding: 9px 16px; cursor: pointer; list-style: none; }
   .custom-reminders > summary::-webkit-details-marker { display: none; }
   .custom-reminders[open] > summary { border-bottom: 1px solid var(--border); }
-  .custom-reminders[open] > summary :global(svg) { transform: rotate(180deg); }
+  .custom-reminders[open] > summary .summary-action :global(svg) { transform: rotate(180deg); }
   .custom-reminders > summary > span:nth-child(2) { display: grid; gap: 4px; }
   .custom-reminders > summary strong { color: var(--text); font-size: 13px; }
   .custom-reminders > summary small { color: var(--text-muted); font-size: 11px; }

@@ -1669,7 +1669,7 @@
           />
         </div>
       </div>
-      <h3 class="settings-group-title">{uiTranslate("启动", $uiLanguage)}</h3>
+      <h3 class="settings-group-title">{uiTranslate("启动设置", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <button
           class="settings-row settings-toggle-row"

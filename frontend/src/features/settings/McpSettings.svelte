@@ -43,6 +43,7 @@
   let error = "";
   let createOpen = false;
   let manageOpen = false;
+  let permissionHelpOpen = false;
   let managedClient: McpClientView | null = null;
   let managedPermissions: McpPermissions = { ...permissionPresets.daily };
   let createPreset: PermissionPreset = "daily";
@@ -106,6 +107,12 @@
       throw new Error(tr("复制失败，请在“管理”中重试复制配置。已完成的授权仍然有效。", $language));
     }
     message = tr("配置已复制，粘贴给桌面 Agent 即可添加。", $language);
+  }
+
+  function defaultPermissionSummary() {
+    if (defaultPreset === "readOnly") return "新接入默认只能查看配置与通知。";
+    if (defaultPreset === "full") return "新接入默认可管理配置、运行操作与使用脚本。";
+    return "新接入默认可查看并管理配置；运行脚本仍需单独确认。";
   }
 
   function openCreate() {
@@ -265,10 +272,18 @@
           {/each}
         </div>
       </div>
-      <div class="permission-note"><span>{tr("新接入默认可查看并管理配置；运行脚本仍需单独确认。", $language)}</span><button class="text-button" on:click={openCreate}>{tr("了解权限", $language)}<CaretRight size={14} /></button></div>
+      <div class="permission-note"><span>{tr(defaultPermissionSummary(), $language)}</span><button class="text-button" aria-expanded={permissionHelpOpen} aria-controls="agent-permission-help" on:click={() => (permissionHelpOpen = !permissionHelpOpen)}>{tr("了解权限", $language)}<CaretRight size={14} /></button></div>
+      {#if permissionHelpOpen}
+        <div id="agent-permission-help" class="permission-help">
+          {#each permissionOptions as option}
+            <p><strong>{tr(option.label, $language)}</strong><span>{tr(option.description, $language)}</span></p>
+          {/each}
+        </div>
+      {/if}
     </div>
   </section>
 
+  <h3 class="settings-group-title">{tr("高级", $language)}</h3>
   <details class="advanced-agent-settings">
     <summary><Gear size={20} /><span><strong>{tr("高级接入设置", $language)}</strong><small>{tr("自定义格式、令牌与访问记录", $language)}</small></span><CaretRight size={18} /></summary>
     <div class="advanced-agent-body">
@@ -288,7 +303,7 @@
 <Dialog.Root bind:open={createOpen}>
   <Dialog.Portal>
     <Dialog.Overlay class="modal-backdrop" />
-    <Dialog.Content class="modal agent-dialog">
+    <Dialog.Content class="modal agent-dialog settings-dialog">
       <header class="modal-header">
         <div><Dialog.Title class="modal-title" level={2}>{tr("接入新 Agent", $language)}</Dialog.Title><Dialog.Description class="modal-description">{tr("为这个 Agent 单独授权，之后可以随时调整或停用。", $language)}</Dialog.Description></div>
         <Dialog.Close class="modal-close-button" aria-label={tr("关闭", $language)}><X size={19} /></Dialog.Close>
@@ -315,7 +330,7 @@
 <Dialog.Root bind:open={manageOpen}>
   <Dialog.Portal>
     <Dialog.Overlay class="modal-backdrop" />
-    <Dialog.Content class="modal agent-dialog">
+    <Dialog.Content class="modal agent-dialog settings-dialog">
       <header class="modal-header">
         <div><Dialog.Title class="modal-title" level={2}>{managedClient?.legacy ? tr("通知助手", $language) : managedClient?.name ?? tr("管理 Agent", $language)}</Dialog.Title><Dialog.Description class="modal-description">{tr("查看权限、复制新配置或停用这个 Agent。", $language)}</Dialog.Description></div>
         <Dialog.Close class="modal-close-button" aria-label={tr("关闭", $language)}><X size={19} /></Dialog.Close>

@@ -381,7 +381,7 @@
   >
     <Dialog.Portal>
       <Dialog.Overlay class="modal-backdrop file-sharing-dialog-backdrop" />
-      <Dialog.Content class={`modal file-sharing-dialog file-sharing-dialog-${activeDialog ?? "closed"}`}>
+      <Dialog.Content class={`modal settings-dialog file-sharing-dialog file-sharing-dialog-${activeDialog ?? "closed"}`}>
         {#if activeDialog === "enable"}
           <header class="modal-header file-dialog-heading">
             <span class="file-dialog-icon"><GlobeHemisphereWest size={27} /><ShieldCheck size={18} /></span>
