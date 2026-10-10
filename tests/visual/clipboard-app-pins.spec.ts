@@ -106,7 +106,9 @@ test("switching applications updates the prefix without confusing copied source 
     "data-clipboard-id",
     "103",
   );
-  await expect(page.locator('[data-clipboard-id="103"] strong')).toHaveText("Microsoft Edge");
+  await expect(page.locator('[data-clipboard-id="103"] .clipboard-meta > strong')).toHaveText(
+    "Microsoft Edge",
+  );
   await page.evaluate(async () => {
     const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
     clipboardBridge.targetApplication = async () => ({ id: "mock:safari", name: "Safari" });

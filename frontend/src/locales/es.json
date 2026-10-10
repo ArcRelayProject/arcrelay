@@ -2731,5 +2731,8 @@
   "未使用保留时间": "Retención sin uso",
   "永久": "Para siempre",
   "{part0} 天未使用": "{part0} días sin uso",
-  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Se calcula desde la última copia o uso. Los favoritos y los elementos etiquetados nunca se eliminan automáticamente. El historial no tiene límites de cantidad ni de almacenamiento total."
+  "从最后一次复制或使用起计算；收藏和带标签的内容不会自动清理。记录条数和总容量不限。": "Se calcula desde la última copia o uso. Los favoritos y los elementos etiquetados nunca se eliminan automáticamente. El historial no tiene límites de cantidad ni de almacenamiento total.",
+  "取消在 {name} 中置顶": "Desfijar en {name}",
+  "在 {name} 中置顶": "Fijar en {name}",
+  "在当前应用中置顶": "Fijar en la aplicación actual"
 }
