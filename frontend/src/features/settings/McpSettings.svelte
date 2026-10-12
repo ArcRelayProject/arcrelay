@@ -688,10 +688,9 @@
   .agent-list-header,
   .agent-row {
     display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) minmax(100px, 0.75fr) minmax(
-        210px,
-        1.35fr
-      ) 90px 72px;
+    grid-template-columns:
+      minmax(180px, 1.2fr) minmax(100px, 0.75fr) minmax(210px, 1.35fr)
+      90px 72px;
     align-items: center;
     column-gap: 18px;
     padding: 0 16px;
