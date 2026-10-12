@@ -37,13 +37,18 @@ mod tests {
     fn pre_service_activation_forwarding_needs_no_runtime() {
         assert!(tokio::runtime::Handle::try_current().is_err());
         let queue = PendingActivations::default();
+        // A plain relaunch must survive startup too: it requests a window
+        // without importing a system-share payload.
+        queue.push(vec!["ArcRelay.exe".into()]);
         queue.push(vec![
             "ArcRelay".into(),
             "--share".into(),
             "路径 with spaces".into(),
         ]);
         let pending = queue.take();
-        assert_eq!(pending[0][2], "路径 with spaces");
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0], vec!["ArcRelay.exe"]);
+        assert_eq!(pending[1][2], "路径 with spaces");
         assert!(queue.take().is_empty());
         assert_eq!(
             queue.push(vec!["late activation".into()]),

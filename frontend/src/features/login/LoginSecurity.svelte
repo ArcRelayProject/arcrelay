@@ -4,6 +4,9 @@
   import {
     ArrowLeft,
     CaretRight,
+    ClipboardText,
+    Clock,
+    Desktop,
     DownloadSimple,
     Fingerprint,
     LockKey,
@@ -235,7 +238,13 @@
       <h2>
         {page === "backup" ? "加密备份与恢复" : page === "password" ? "更换主密码" : "登录与安全"}
       </h2>
-      <span class="muted">剪贴板 / 登录保护{page === "backup" ? " / 备份与恢复" : ""}</span>
+      <span class="muted"
+        >剪贴板 / 登录保护{page === "backup"
+          ? " / 备份与恢复"
+          : page === "password"
+            ? " / 主密码"
+            : ""}</span
+      >
     </div>
   </header>
   {#if !status}<p class="muted">正在读取保护状态…</p>
@@ -302,7 +311,7 @@
     <h3>会话与剪贴板保护</h3>
     <div class="card">
       <label class="setting-row"
-        ><span class="grow"
+        ><Clock size={21} /><span class="grow"
           ><strong>每次解锁的有效时间</strong><small>到期后需要重新验证，使用登录不会延长会话</small
           ></span
         ><AppSelect
@@ -319,12 +328,12 @@
         /></label
       >
       <div class="setting-row">
-        <span class="grow"
+        <Desktop size={21} /><span class="grow"
           ><strong>屏幕锁定或设备休眠时锁定</strong><small>始终启用，唤醒后重新解锁</small></span
         ><span class="chip">始终启用</span>
       </div>
       <div class="setting-row">
-        <span class="grow"
+        <ClipboardText size={21} /><span class="grow"
           ><strong>关闭剪贴板时锁定</strong><small>隐藏或关闭剪贴板窗口后结束解锁会话</small></span
         ><label class="switch"
           ><input
@@ -341,7 +350,7 @@
         >
       </div>
       <label class="setting-row"
-        ><span class="grow"
+        ><Clock size={21} /><span class="grow"
           ><strong>自动清除复制的凭据</strong><small
             >到期或锁定时清除本次复制，保留之后的新复制</small
           ></span
@@ -360,7 +369,7 @@
         /></label
       >
       <div class="setting-row">
-        <span class="grow"
+        <ShieldCheck size={21} /><span class="grow"
           ><strong>动态验证码</strong><small>在本轮验证码到期时自动清除复制内容</small></span
         ><span class="muted">随验证码到期</span>
       </div>
@@ -382,17 +391,27 @@
       登录凭据不进入历史、同步或 MCP。仅本机会话可解锁；主密码与 TOTP 密钥不会回显。
     </p>
   {:else if page === "password"}
-    <div class="form-card">
-      <p class="notice">更换后重新加密登录信息，并撤销旧的系统快速解锁密钥。请保存好新主密码。</p>
+    <div class="status-card flex">
+      <span class="shield"><ShieldCheck size={24} /></span>
+      <div class="grow">
+        <strong>更换后重新加密登录信息</strong>
+        <p class="muted">旧的系统快速解锁密钥将被撤销，请妥善保存新主密码。</p>
+      </div>
+    </div>
+    <h3>密码验证</h3>
+    <div class="form-card password-form">
       <label class="field"
-        >当前主密码<input
+        ><LockKey size={21} /><span
+          ><strong>当前主密码</strong><small>输入当前使用的主密码</small></span
+        ><input
           type="password"
           bind:value={previous}
           autocomplete="current-password"
           maxlength="1024"
         /></label
       ><label class="field"
-        >新主密码<input
+        ><LockKey size={21} /><span><strong>新主密码</strong><small>至少 12 个字符</small></span
+        ><input
           type="password"
           bind:value={password}
           autocomplete="new-password"
@@ -400,7 +419,9 @@
           placeholder="至少 12 个字符"
         /></label
       ><label class="field"
-        >确认新主密码<input
+        ><ShieldCheck size={21} /><span
+          ><strong>确认新主密码</strong><small>再次输入新主密码</small></span
+        ><input
           type="password"
           bind:value={confirmation}
           autocomplete="new-password"
@@ -414,8 +435,10 @@
             clearSecrets();
             page = "security";
           }}>取消</button
-        ><button class="primary" disabled={busy || !previous || !password} on:click={changePassword}
-          >{busy ? "更新中…" : "更换主密码"}</button
+        ><button
+          class="primary"
+          disabled={busy || !previous || password.length < 12 || password !== confirmation}
+          on:click={changePassword}>{busy ? "更新中…" : "更换主密码"}</button
         >
       </div>
     </div>
@@ -428,75 +451,81 @@
       </div>
     </div>
     <div class="backup-grid">
-      <section class="form-card">
+      <section class="backup-section">
         <h3><DownloadSimple size={20} />导出加密备份</h3>
         <p class="muted">备份口令独立于主密码。保存文件和口令，换机时使用。</p>
-        <label class="field"
-          >备份口令<input
-            type="password"
-            bind:value={backupPassword}
-            autocomplete="new-password"
-            maxlength="1024"
-            placeholder="至少 12 个字符"
-          /></label
-        ><label class="field"
-          >确认备份口令<input
-            type="password"
-            bind:value={backupConfirmation}
-            autocomplete="new-password"
-            maxlength="1024"
-          /></label
-        >
-        <p class="notice">口令不会保存在备份文件中。忘记备份口令后无法恢复该文件。</p>
-        <div class="actions">
-          <button class="primary" disabled={busy} on:click={exportBackup}
-            >{busy ? "处理中…" : "选择位置并导出"}</button
+        <div class="form-card">
+          <label class="field"
+            >备份口令<input
+              type="password"
+              bind:value={backupPassword}
+              autocomplete="new-password"
+              maxlength="1024"
+              placeholder="至少 12 个字符"
+            /></label
+          ><label class="field"
+            >确认备份口令<input
+              type="password"
+              bind:value={backupConfirmation}
+              autocomplete="new-password"
+              maxlength="1024"
+            /></label
           >
+          <p class="notice">口令不会保存在备份文件中。忘记备份口令后无法恢复该文件。</p>
+          <div class="actions">
+            <button
+              class="primary"
+              disabled={busy || backupPassword.length < 12 || backupPassword !== backupConfirmation}
+              on:click={exportBackup}>{busy ? "处理中…" : "选择位置并导出"}</button
+            >
+          </div>
         </div>
       </section>
-      <section class="form-card">
+      <section class="backup-section">
         <h3><UploadSimple size={20} />从备份恢复</h3>
         <p class="muted">选择 .arclogin 文件，验证口令后预览要恢复的项目。</p>
-        <label class="field"
-          >备份口令<input
-            type="password"
-            bind:value={restorePassword}
-            autocomplete="off"
-            maxlength="1024"
-          /></label
-        ><button disabled={busy || !restorePassword} on:click={previewRestore}
-          >选择文件并预览</button
-        >
-        {#if preview}<div class="restore-preview">
-            <strong>已验证 · {preview.count} 项登录</strong>
-            <ul>
-              {#each preview.titles.slice(0, 5) as title}<li>{title}</li>{/each}
-            </ul>
-            {#if preview.count > 5}<small>还有 {preview.count - 5} 项</small>{/if}<label
-              class="field"
-              >恢复方式<AppSelect
-                aria-label="恢复方式"
-                bind:value={replace}
-                options={[
-                  { value: false, label: "合并到现有登录" },
-                  { value: true, label: "替换所有现有登录" },
-                ]}
-              /></label
-            >{#if replace}<label class="flex"
-                ><input
-                  type="checkbox"
-                  bind:checked={confirmReplace}
-                />确认删除当前登录，使用备份中的登录替换</label
-              >{/if}
-            <p class="notice">恢复后暂停应用优先规则，需逐项确认本机应用。预览 3 分钟后过期。</p>
-            <div class="actions">
-              <button
-                class="primary"
-                disabled={busy || (replace && !confirmReplace)}
-                on:click={restoreBackup}>确认恢复</button
-              >
-            </div>
-          </div>{/if}
+        <div class="form-card">
+          <label class="field"
+            >备份口令<input
+              type="password"
+              bind:value={restorePassword}
+              autocomplete="off"
+              maxlength="1024"
+            /></label
+          ><button disabled={busy || !restorePassword} on:click={previewRestore}
+            >选择文件并预览</button
+          >
+          {#if preview}<div class="restore-preview">
+              <strong>已验证 · {preview.count} 项登录</strong>
+              <ul>
+                {#each preview.titles.slice(0, 5) as title}<li>{title}</li>{/each}
+              </ul>
+              {#if preview.count > 5}<small>还有 {preview.count - 5} 项</small>{/if}<label
+                class="field"
+                >恢复方式<AppSelect
+                  aria-label="恢复方式"
+                  bind:value={replace}
+                  options={[
+                    { value: false, label: "合并到现有登录" },
+                    { value: true, label: "替换所有现有登录" },
+                  ]}
+                /></label
+              >{#if replace}<label class="flex"
+                  ><input
+                    type="checkbox"
+                    bind:checked={confirmReplace}
+                  />确认删除当前登录，使用备份中的登录替换</label
+                >{/if}
+              <p class="notice">恢复后暂停应用优先规则，需逐项确认本机应用。预览 3 分钟后过期。</p>
+              <div class="actions">
+                <button
+                  class="primary"
+                  disabled={busy || (replace && !confirmReplace)}
+                  on:click={restoreBackup}>确认恢复</button
+                >
+              </div>
+            </div>{/if}
+        </div>
       </section>
     </div>
   {/if}
@@ -511,11 +540,11 @@
 <style>
   .security {
     width: 100%;
-    max-width: 900px;
+    max-width: 1120px;
     padding-bottom: 0;
   }
   header {
-    margin-bottom: 8px;
+    margin-bottom: 24px;
   }
   h2 {
     font-size: 20px;
@@ -523,17 +552,17 @@
     margin: 0 0 5px;
   }
   h3 {
-    font-size: 13px;
-    margin: 6px 0 3px;
+    font-size: var(--settings-label-size, 15px);
+    margin: 24px 0 8px;
     display: flex;
     gap: 8px;
     align-items: center;
   }
   .status-card {
-    padding: 7px 12px;
+    padding: 16px;
     background: var(--accent-soft, #f0f0ff);
     border: 1px solid var(--border-color, #dedfe7);
-    border-radius: 12px;
+    border-radius: var(--settings-radius, 8px);
   }
   .status-card p {
     margin: 5px 0 0;
@@ -547,7 +576,7 @@
   }
   .card {
     border: 1px solid var(--border-color, #dedfe7);
-    border-radius: 11px;
+    border-radius: var(--settings-radius, 8px);
     overflow: hidden;
     background: var(--surface, white);
   }
@@ -555,30 +584,31 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    padding: 4px 12px !important;
-    min-height: 44px !important;
-    line-height: 1.2;
+    padding: 12px 16px;
+    min-height: var(--settings-row-height, 72px);
+    line-height: 1.4;
     width: 100%;
     text-align: left;
-    border: none !important;
-    border-radius: 0 !important;
-    border-bottom: 1px solid var(--border, #e8e9f0) !important;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border, #e8e9f0);
   }
   .setting-row:last-child {
-    border-bottom: none !important;
+    border-bottom: none;
   }
   .setting-row small {
     display: block;
-    margin-top: 2px;
-    font-size: 11px;
+    margin-top: 4px;
+    font-size: var(--settings-helper-size, 13px);
     line-height: 1.35;
   }
   :global(.security .small-select) {
-    max-width: 130px;
+    width: var(--settings-control-width, 180px);
+    max-width: 100%;
   }
   .backup-link {
-    border: 1px solid var(--border-color, #dedfe7) !important;
-    border-radius: 11px !important;
+    border: 1px solid var(--border-color, #dedfe7);
+    border-radius: var(--settings-radius, 8px);
   }
   .switch {
     display: inline-flex;
@@ -587,12 +617,12 @@
   .switch input {
     position: absolute;
     opacity: 0;
-    width: 36px;
-    height: 23px;
+    width: 42px;
+    height: 24px;
   }
   .switch span {
-    width: 36px;
-    height: 23px;
+    width: 42px;
+    height: 24px;
     border-radius: 14px;
     background: var(--border-color, #dedfe7);
     padding: 3px;
@@ -600,8 +630,8 @@
   .switch span:after {
     content: "";
     display: block;
-    width: 17px;
-    height: 17px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: white;
     transition: transform 0.15s;
@@ -610,7 +640,7 @@
     background: var(--accent, #5b5ff0);
   }
   .switch input:checked + span:after {
-    transform: translateX(13px);
+    transform: translateX(18px);
   }
   .switch input:focus-visible + span {
     outline: 2px solid var(--accent, #5b5ff0);
@@ -621,26 +651,34 @@
     padding: 8px 12px;
   }
   .security > .notice {
-    margin: 8px 0 0;
-    padding: 6px 12px;
-    font-size: 11px;
+    margin: 12px 0 0;
+    padding: 10px 16px;
+    font-size: var(--settings-helper-size, 13px);
     line-height: 1.5;
   }
   .form-card {
     border: 1px solid var(--border-color, #dedfe7);
-    border-radius: 12px;
-    padding: 24px;
+    border-radius: var(--settings-radius, 8px);
+    padding: 16px;
     background: var(--surface, white);
   }
-  .form-card > h3 {
+  .backup-section > h3 {
     margin-top: 0;
-    font-size: 16px;
+  }
+  .backup-section > p {
+    margin: 0 0 12px;
+    font-size: var(--settings-helper-size, 13px);
+    line-height: 1.5;
+  }
+  .backup-section > .form-card > button,
+  .backup-section :global(.actions > button) {
+    width: 100%;
   }
   .backup-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 18px;
-    margin-top: 20px;
+    gap: 24px;
+    margin-top: 24px;
   }
   .restore-preview {
     border-top: 1px solid var(--border-color, #dedfe7);
@@ -653,13 +691,55 @@
     color: var(--text-secondary, #737681);
     line-height: 1.9;
   }
+  .setting-row strong {
+    font-size: var(--settings-label-size, 15px);
+    font-weight: 600;
+  }
+  .setting-row > :global(svg) {
+    flex-shrink: 0;
+    width: 24px;
+    color: var(--text-secondary);
+  }
+  .password-form {
+    padding: 0;
+  }
+  .password-form :global(label.field) {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) minmax(180px, 320px);
+    align-items: center;
+    gap: 16px;
+    min-height: var(--settings-row-height, 72px);
+    margin: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .password-form label > :global(svg) {
+    color: var(--text-secondary);
+  }
+  .password-form label > span {
+    display: grid;
+    gap: 4px;
+  }
+  .password-form :global(.actions) {
+    margin: 0;
+    padding: 16px;
+  }
+  @media (max-width: 600px) {
+    .password-form :global(label.field) {
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 8px;
+    }
+    .password-form label > input {
+      grid-column: 2;
+    }
+  }
   @media (max-width: 800px) {
     .backup-grid {
       grid-template-columns: 1fr;
     }
     .setting-row {
       gap: 9px;
-      padding: 13px !important;
+      padding: 13px;
     }
   }
 </style>

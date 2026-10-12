@@ -77,6 +77,9 @@ fn main() {
                     return;
                 }
                 system_share::announce_pending(app, service.inner());
+                // A second launch is an explicit request to reopen the app,
+                // even when the first instance started silently in the tray.
+                windowing::request_main_window(app.clone());
             }
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -378,7 +381,9 @@ fn main() {
                 input_runtime.clone(),
                 presence_access,
             ));
-            for args in app.state::<startup::PendingActivations>().take() {
+            let pending_activations = app.state::<startup::PendingActivations>().take();
+            let reopen_requested = !pending_activations.is_empty();
+            for args in pending_activations {
                 if let Err(error) = system_share.handle_activation_args(args.into_iter().map(std::ffi::OsString::from)) {
                     tracing::warn!(%error, "Could not import queued system share request");
                 }
@@ -388,6 +393,9 @@ fn main() {
             app.state::<Arc<clipboard_drag::ClipboardDragService>>().start_maintenance(app.handle());
             windowing::setup_tray(app)?;
             windowing::setup_main_window(app.handle())?;
+            if reopen_requested {
+                windowing::ensure_main_window(app.handle())?;
+            }
             system_share.initialize().map_err(std::io::Error::other)?;
             if let Err(error) = system_share.handle_activation_args(std::env::args_os()) {
                 tracing::warn!(%error, "Could not import the launch system share request");
