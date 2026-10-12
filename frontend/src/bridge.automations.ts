@@ -4,9 +4,15 @@ import type {
   AutomationEvent,
   AutomationActivity,
   AutomationTrigger,
+  BluetoothTrigger,
   Capability,
 } from "./ipc/generated";
 export const automationsBridge = {
+  bluetoothSnapshot: (pausedAutomationId: string | null = null) =>
+    invoke("bluetooth_snapshot", { pausedAutomationId }),
+  calibrateBluetooth: (deviceId: string) => invoke("calibrate_bluetooth", { deviceId }),
+  previewBluetoothTrigger: (sessionId: string, config: BluetoothTrigger) =>
+    invoke("preview_bluetooth_trigger", { sessionId, config }),
   previewAutomationSchedule: (trigger: AutomationTrigger) =>
     invoke("preview_automation_schedule", { trigger }),
   openAutomationScreenPermission: () => invoke("open_automation_screen_permission"),

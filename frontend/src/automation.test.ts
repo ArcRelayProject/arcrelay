@@ -73,9 +73,7 @@ test("duplicates are independent, disabled drafts with a fresh identity", () => 
 test("search includes actions and conditions without changing definitions", () => {
   const d = newDefinition({ type: "manual" });
   d.name = "Meetings";
-  d.steps = [
-    { type: "quickAction", actionId: "builtin-automation-privacy-on" },
-  ];
+  d.steps = [{ type: "quickAction", actionId: "builtin-automation-privacy-on" }];
   assert.equal(matchesAutomation(d, " meetings ", []), true);
   assert.equal(matchesAutomation(d, "投屏隐私", []), true);
   assert.equal(matchesAutomation(d, "不存在", []), false);
@@ -97,14 +95,8 @@ test("real samples must match event kind and contain every referenced variable",
       sendToConnectedDevices: false,
     },
   ];
-  assert.deepEqual(referencedVariables(d), [
-    "event.device.name",
-    "event.file.directory",
-  ]);
-  const sample = (
-    kind: string,
-    values: Record<string, string>,
-  ): AutomationActivity => ({
+  assert.deepEqual(referencedVariables(d), ["event.device.name", "event.file.directory"]);
+  const sample = (kind: string, values: Record<string, string>): AutomationActivity => ({
     id: crypto.randomUUID(),
     automationId: d.id,
     definition: d,
@@ -135,23 +127,36 @@ test("real samples must match event kind and contain every referenced variable",
 test("only pending activities block duplicate running or survive completed cleanup", () => {
   for (const state of ["queued", "running", "awaitingConfirmation"] as const)
     assert.equal(isActive(state), true);
-  for (const state of [
-    "succeeded",
-    "failed",
-    "skipped",
-    "canceled",
-    "interrupted",
-  ] as const)
+  for (const state of ["succeeded", "failed", "skipped", "canceled", "interrupted"] as const)
     assert.equal(isActive(state), false);
 });
 
 test("only variables available for the selected trigger are offered", () => {
   const keys = (received: boolean) =>
-    variables({ type: "transfer", received, deviceIds: [], fileKinds: [] }).map(
-      (v) => v[1],
-    );
+    variables({ type: "transfer", received, deviceIds: [], fileKinds: [] }).map((v) => v[1]);
   assert.ok(keys(true).includes("event.file.directory"));
   assert.ok(!keys(false).includes("event.file.directory"));
   assert.deepEqual(variables({ type: "manual" }), []);
-  assert.equal(new Set(triggerChoices.map((c) => c.category)).size, 6);
+  assert.equal(new Set(triggerChoices.map((c) => c.category)).size, 7);
+});
+
+test("Bluetooth trigger keeps radio identity separate from ArcRelay connections", () => {
+  const choice = triggerChoices.find((c) => c.category === "蓝牙")!;
+  const trigger = choice.trigger();
+  assert.equal(trigger.type, "bluetooth");
+  if (trigger.type !== "bluetooth") return;
+  assert.equal(trigger.config.calibration, null);
+  assert.equal(trigger.config.signalLossSeconds, null);
+  trigger.config.deviceId = "ble-id";
+  trigger.config.deviceName = "Phone";
+  assert.match(triggerSummary(trigger, "enUs"), /Phone.*15 seconds/);
+  assert.deepEqual(
+    variables(trigger).map((v) => v[1]),
+    [
+      "event.bluetooth.deviceName",
+      "event.bluetooth.deviceId",
+      "event.bluetooth.rssi",
+      "event.bluetooth.reason",
+    ],
+  );
 });

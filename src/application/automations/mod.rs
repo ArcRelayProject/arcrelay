@@ -12,6 +12,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
+pub mod bluetooth;
 pub mod hotkeys;
 pub(crate) mod platform;
 pub(crate) mod retire_legacy;
@@ -19,9 +20,11 @@ pub(crate) mod retire_legacy;
 #[derive(Clone)]
 pub struct DesktopAutomations {
     pub engine: AutomationEngine,
+    pub bluetooth: bluetooth::BluetoothService,
     runner: Arc<DesktopRunner>,
 }
 struct DesktopRunner {
+    bluetooth: bluetooth::BluetoothService,
     actions: Arc<Mutex<ActionService>>,
     notifications: NotificationStore,
     app: OnceLock<AppHandle>,
@@ -54,7 +57,9 @@ impl DesktopAutomations {
         actions: Arc<Mutex<ActionService>>,
         notifications: NotificationStore,
     ) -> Result<Self> {
+        let bluetooth = bluetooth::BluetoothService::default();
         let runner = Arc::new(DesktopRunner {
+            bluetooth: bluetooth.clone(),
             actions,
             notifications,
             app: OnceLock::new(),
@@ -67,6 +72,7 @@ impl DesktopAutomations {
         ))?;
         Ok(Self {
             engine: AutomationEngine::new(store, runner.clone()),
+            bluetooth,
             runner,
         })
     }
@@ -137,6 +143,7 @@ impl DesktopAutomations {
             return;
         }
         self.engine.start_scheduler();
+        self.bluetooth.start(self.engine.clone());
         platform::start_session_events(self.clone());
         let owner = self.clone();
         tokio::spawn(async move {
@@ -252,6 +259,9 @@ impl DesktopAutomations {
         }
     }
     pub async fn system_event(&self, kind: &str) {
+        if matches!(kind, "system.sleeping" | "system.resumed") {
+            self.bluetooth.reset();
+        }
         if kind == "system.locked" || kind == "system.unlocked" {
             self.runner
                 .state
@@ -397,6 +407,7 @@ impl AutomationRunner for DesktopRunner {
             "presence.ownerPresent",
             "presence.absent",
             "presence.unknownPresent",
+            "bluetooth.far",
             "presence.multiplePeople",
             "presence.uncertain",
             "shell.system",
@@ -458,6 +469,12 @@ impl AutomationRunner for DesktopRunner {
         }
         for (id, available, reason, remedy) in [
             (
+                "screen.lock",
+                crate::infrastructure::screen_lock::available(),
+                "当前系统的锁屏接口不可用",
+                "platform",
+            ),
+            (
                 "input.simulate",
                 platform::input_allowed(),
                 "需要辅助功能权限：请允许 ArcRelay 模拟键盘输入",
@@ -499,6 +516,16 @@ impl AutomationRunner for DesktopRunner {
         });
         result
     }
+    async fn trigger_available(
+        &self,
+        trigger: &AutomationTrigger,
+    ) -> std::result::Result<(), String> {
+        if let AutomationTrigger::Bluetooth { config } = trigger {
+            self.bluetooth.available(config)
+        } else {
+            Ok(())
+        }
+    }
     async fn environment(&self) -> EnvironmentState {
         let mut state = self.state.read().unwrap_or_else(|e| e.into_inner()).clone();
         if let Some(app) = self.app.get() {
@@ -527,6 +554,9 @@ impl AutomationRunner for DesktopRunner {
                 }
         );
         let requirements = match &action.action_type {
+            ActionType::System {
+                operation: SystemOperation::LockScreen,
+            } => vec!["screen.lock".into()],
             ActionType::Hotkey { .. } => vec!["input.simulate".into()],
             ActionType::System {
                 operation: SystemOperation::ScreenshotRegion | SystemOperation::ScreenshotFull,

@@ -6,8 +6,9 @@ license = "AGPL-3.0-only"
 publish = false
 
 [dependencies]
+btleplug = "=0.12.0"
 arcrelay-content = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-content.git", rev = "b4b24071b70b4a81e239fb6ae76ca3ac204a4d21" }
-arcrelay-automation = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-automation.git", rev = "a878c56bf69af888bba6da807820707d7e60b0e5", features = ["schema"] }
+arcrelay-automation = { version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-automation.git", rev = "bf49859e684e16398569fb5ece86e355860985d1", features = ["schema"] }
 tokio-util = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
 iana-time-zone = "0.1"

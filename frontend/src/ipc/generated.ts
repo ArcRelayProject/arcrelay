@@ -60,7 +60,23 @@ export type AutomationIssue = { code: string, message: string, remedy: string, s
 
 export type AutomationStep = { "type": "quickAction", actionId: string, } | { "type": "shell", shell: ShellKind, script: string, workingDirectory: string | null, timeoutSeconds: number, } | { "type": "delay", durationSeconds: number, } | { "type": "notification", title: string, body: string, sendToConnectedDevices: boolean, };
 
-export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
+export type AutomationTrigger = { "type": "bluetooth", config: BluetoothTrigger, } | { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
+
+export type BluetoothCalibration = { nearRssi: number, farRssi: number, };
+
+export type BluetoothDetection = { state: string, elapsedSeconds: number, fired: boolean, };
+
+export type BluetoothDeviceView = { id: string, name: string, rssi: number | null, ageSeconds: number, history: Array<number>, readable: boolean, };
+
+export type BluetoothSample = { deviceId: string, rssi: number, sampleCount: number, };
+
+export type BluetoothSnapshot = { status: string, error: string | null, devices: Array<BluetoothDeviceView>, };
+
+export type BluetoothTrigger = { deviceId: string, deviceName: string, calibration: BluetoothCalibration | null, durationSeconds: number,
+/**
+ * Explicit opt-in. Loss of advertisements is not proof of departure.
+ */
+signalLossSeconds: number | null, };
 
 export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
@@ -552,6 +568,8 @@ export interface CommandMap {
   automation_capabilities: { args: { }; result: Array<Capability> };
   begin_gaze_calibration: { args: { cameraId: string; displayId: string | null; }; result: GazeStatusView };
   begin_presence_enrollment: { args: { displayName: string; }; result: GazeStatusView };
+  bluetooth_snapshot: { args: { pausedAutomationId: string | null; }; result: BluetoothSnapshot };
+  calibrate_bluetooth: { args: { deviceId: string; }; result: BluetoothSample };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_presence_enrollment: { args: { }; result: GazeStatusView };
@@ -709,6 +727,7 @@ export interface CommandMap {
   pick_transfer_files: { args: { }; result: Array<string> };
   prepare_remote_drag: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileDragPreparation };
   preview_automation_schedule: { args: { trigger: AutomationTrigger; }; result: string | null };
+  preview_bluetooth_trigger: { args: { config: BluetoothTrigger; sessionId: string; }; result: BluetoothDetection };
   preview_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   preview_sound: { args: { event: SoundEvent; }; result: null };
   publish_printer: { args: { localPrinterId: string; }; result: PrinterSharingSnapshot };

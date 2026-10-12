@@ -201,3 +201,29 @@ pub async fn check_automations(
     }
     Ok(results)
 }
+
+#[arcrelay_desktop_ipc::command]
+pub async fn bluetooth_snapshot(
+    state: State<'_, DesktopState>,
+    paused_automation_id: Option<String>,
+) -> Result<crate::application::automations::bluetooth::BluetoothSnapshot, String> {
+    Ok(state
+        .automations
+        .bluetooth
+        .snapshot(paused_automation_id.as_deref()))
+}
+#[arcrelay_desktop_ipc::command]
+pub async fn calibrate_bluetooth(
+    state: State<'_, DesktopState>,
+    device_id: String,
+) -> Result<crate::application::automations::bluetooth::BluetoothSample, String> {
+    state.automations.bluetooth.calibrate(device_id).await
+}
+#[arcrelay_desktop_ipc::command]
+pub async fn preview_bluetooth_trigger(
+    state: State<'_, DesktopState>,
+    session_id: String,
+    config: arcrelay_automation::BluetoothTrigger,
+) -> Result<arcrelay_automation::BluetoothDetection, String> {
+    state.automations.bluetooth.preview(session_id, config)
+}

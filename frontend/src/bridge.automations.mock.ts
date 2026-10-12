@@ -151,6 +151,12 @@ function validation(d: AutomationDefinition): AutomationIssue[] {
     remedy = "edit",
   ) => issues.push({ message, stepIndex, code, remedy });
   if (!d.steps.length) add("请添加至少一个动作");
+  if (d.trigger.type === "bluetooth") {
+    if (!d.trigger.config.deviceId) add("请选择蓝牙设备");
+    if (!d.trigger.config.calibration) add("请先完成蓝牙校准");
+    else if (d.trigger.config.calibration.nearRssi - d.trigger.config.calibration.farRssi < 10)
+      add("两个位置的信号差异不足，请重新校准");
+  }
   if (d.trigger.type === "application" && !d.trigger.apps.length) add("请从已安装应用中选择应用");
   if (d.trigger.type === "hotkey" && !d.trigger.shortcut.trim()) add("请录入全局快捷键");
   if (
@@ -351,7 +357,54 @@ if (scenario) {
     meeting.steps = [{ type: "quickAction", actionId: "automation-capture" }];
   }
 }
+let bluetoothCalibrationCount = 0;
+const bluetoothPreviewStarts = new Map<string, number>();
 export const automationMock: typeof automationsBridge = {
+  async bluetoothSnapshot() {
+    const unavailable =
+      new URLSearchParams(window.location.search).get("bluetoothScenario") === "unavailable";
+    return {
+      status: unavailable ? "unavailable" : "scanning",
+      error: unavailable ? "Bluetooth is off; monitoring is paused" : null,
+      devices: unavailable
+        ? []
+        : [
+            {
+              id: "preview-phone",
+              name: "我的 iPhone（演示）",
+              rssi: -56,
+              ageSeconds: 0,
+              readable: true,
+              history: [-57, -55, -58, -56, -57, -55, -56],
+            },
+            {
+              id: "preview-watch",
+              name: "我的手环（演示）",
+              rssi: -64,
+              ageSeconds: 0,
+              readable: true,
+              history: [-65, -63, -64, -65, -64],
+            },
+            {
+              id: "preview-unknown",
+              name: "等待广播的设备（演示）",
+              rssi: null,
+              ageSeconds: 30,
+              readable: false,
+              history: [],
+            },
+          ],
+    };
+  },
+  async calibrateBluetooth(deviceId) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return { deviceId, rssi: bluetoothCalibrationCount++ % 2 === 0 ? -55 : -80, sampleCount: 10 };
+  },
+  async previewBluetoothTrigger(sessionId, config) {
+    if (!bluetoothPreviewStarts.has(sessionId)) bluetoothPreviewStarts.set(sessionId, Date.now());
+    const elapsed = Math.floor((Date.now() - bluetoothPreviewStarts.get(sessionId)!) / 1000);
+    return { state: elapsed < 3 ? "waitingNear" : "near", elapsedSeconds: 0, fired: false };
+  },
   async pickAutomationPath() {
     return "/Users/demo/Projects";
   },
