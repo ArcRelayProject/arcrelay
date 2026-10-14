@@ -176,6 +176,7 @@
 
 .clipboard-preview-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
@@ -245,6 +246,22 @@
   user-select: text;
 }
 
+.clipboard-preview-body.files-preview {
+  min-height: 0;
+  padding: 0;
+  background: var(--surface-raised);
+  overscroll-behavior: contain;
+}
+
+.file-preview-paste-error {
+  flex: 0 0 auto;
+  padding: 8px 20px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .clipboard-preview-body.structured-preview,
 .clipboard-preview-body.image-preview {
   padding: 0;
@@ -261,6 +278,7 @@
 }
 
 .clipboard-preview-dialog .dialog-actions {
+  flex: 0 0 auto;
   padding: 12px 20px 16px;
   border-top: 1px solid var(--border);
 }
@@ -280,7 +298,6 @@
 }
 
 .clipboard-preview-body .html-preview,
-.clipboard-preview-body .file-preview,
 .clipboard-preview-body .sensitive-preview {
   height: auto;
   min-height: 120px;

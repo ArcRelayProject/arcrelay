@@ -45,6 +45,7 @@
   import { filterClipboardLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
   import { clearHtmlPreviewCache } from "./htmlPreviewCache";
+  import { clearFilePreviewCache } from "./filePreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
   import {
     resolveClipboardKeyboardAction,
@@ -314,6 +315,7 @@
 
   function estimatedRowHeight(item: ClipboardItem) {
     if (item.kind === "image") return 140;
+    if (item.kind === "files") return item.itemCount > 2 ? 164 : item.itemCount > 1 ? 141 : 112;
     if (item.kind === "html") return 126;
     if (
       item.kind === "text" &&
@@ -540,6 +542,7 @@
             clearThumbnailCache();
             resetRestoredFocus();
             clearHtmlPreviewCache();
+            clearFilePreviewCache();
             keyboardMode = "search";
             closeLabelFilter();
             selectedLabelFilter = null;
@@ -1374,6 +1377,7 @@
     previewingItem = item;
     previewModel = null;
     previewError = "";
+    pasteError = "";
     previewActionBusy = false;
     previewLoading = (item.kind === "text" || item.kind === "html") && !item.sensitive;
     previewDialogOpen = true;
@@ -1527,6 +1531,8 @@
     if (editingTarget && target !== searchInput) return;
     const element = target instanceof Element ? target : null;
     const rowTarget = element?.closest(".clipboard-row");
+    if (element?.closest(".file-preview button") && (event.key === "Enter" || event.key === " "))
+      return;
     if (!editingTarget && !rowTarget && element?.closest("button, select, [role='option']")) return;
 
     if (
@@ -2230,6 +2236,7 @@
                 timelineTarget={nearby?.anchor.id === entry.item.id}
                 edited={editOrigins.has(entry.item.id)}
                 onEdit={() => void beginEdit(entry.item)}
+                onPreview={() => void beginPreview(entry.item)}
                 exactTime={Boolean(nearby)}
                 previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
                   entry.index < visibleEndIndex + 2}
@@ -2408,6 +2415,7 @@
             (previewingItem.kind === "text" || previewingItem.kind === "html") &&
             !previewingItem.sensitive}
           class:image-preview={previewingItem?.kind === "image" && !previewingItem.sensitive}
+          class:files-preview={previewingItem?.kind === "files" && !previewingItem.sensitive}
           class="clipboard-preview-body"
         >
           {#if previewLoading}
@@ -2446,6 +2454,7 @@
               item={previewingItem}
               {language}
               interactiveImage={true}
+              detailedFiles={true}
               imageSelectionBusy={previewActionBusy}
               onCopyImageText={copySegment}
               onPasteImageText={pasteSegment}
@@ -2453,6 +2462,9 @@
             />
           {/if}
         </div>
+        {#if previewingItem?.kind === "files" && pasteError}
+          <div class="file-preview-paste-error" role="alert">{pasteError}</div>
+        {/if}
         {#if !imagePreviewReady && (!previewingItem || previewLoading || (previewError && !previewModel) || previewingItem.sensitive || (previewingItem.kind !== "text" && previewingItem.kind !== "html"))}
           <div class="dialog-actions">
             <Dialog.Close class="dialog-button">{uiTranslate("返回", $uiLanguage)}</Dialog.Close>
@@ -2460,12 +2472,21 @@
               <button
                 class="dialog-button primary"
                 type="button"
-                disabled={previewActionBusy}
-                on:click={() => pasteItem(previewingItem!)}
+                disabled={previewActionBusy ||
+                  pasteInFlight ||
+                  dragBusy ||
+                  !previewingItem.available ||
+                  (previewingItem.kind === "files" && previewingItem.itemCount === 0)}
+                on:click={async () => {
+                  await pasteItem(previewingItem!);
+                  if (previewingItem?.kind === "files" && !pasteError) previewDialogOpen = false;
+                }}
               >
-                {previewingItem.kind === "text" || previewingItem.kind === "html"
-                  ? uiTranslate("粘贴全文", $uiLanguage)
-                  : uiTranslate("插入", $uiLanguage)}
+                {previewingItem.kind === "files" && previewingItem.itemCount > 1
+                  ? t("插入全部 {count} 个文件", language, { count: previewingItem.itemCount })
+                  : previewingItem.kind === "text" || previewingItem.kind === "html"
+                    ? uiTranslate("粘贴全文", $uiLanguage)
+                    : uiTranslate("插入", $uiLanguage)}
               </button>
             {/if}
           </div>

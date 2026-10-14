@@ -603,6 +603,7 @@ export interface CommandMap {
   clipboard_editor_preview: { args: { format: ClipboardTextFormat; source: string; }; result: ClipboardTextPreview };
   clipboard_editor_save: { args: { draft: ClipboardEditorDraft; }; result: number };
   clipboard_editor_snapshot: { args: { }; result: ClipboardEditorSnapshot };
+  clipboard_file_names: { args: { id: number; }; result: Array<string> };
   clipboard_history: { args: { cursor: ClipboardCursorInput | null; favoriteOnly: boolean; kind: ClipboardContentKind | null; labelIds: Array<string> | null; limit: number | null; search: string | null; }; result: ClipboardHistoryView };
   clipboard_html_preview: { args: { id: number; }; result: string | null };
   clipboard_image_ocr: { args: { id: number; }; result: ClipboardImageOcr | null };

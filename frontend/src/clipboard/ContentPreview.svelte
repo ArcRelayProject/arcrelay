@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { t } from "../localization";
-  import { FileText, LinkSimpleHorizontal, LockSimple } from "phosphor-svelte";
+  import { LinkSimpleHorizontal, LockSimple } from "phosphor-svelte";
 
   import type { LanguagePreference } from "../types";
   import { cachedHtmlPreview, loadCachedHtmlPreview } from "./htmlPreviewCache";
   import ImagePreview from "./ImagePreview.svelte";
+  import FilePreview from "./FilePreview.svelte";
   import { tr } from "./i18n";
   import Thumbnail from "./Thumbnail.svelte";
   import type { ClipboardItem } from "./types";
@@ -13,6 +13,8 @@
   export let language: LanguagePreference;
   export let interactiveImage = false;
   export let active = true;
+  export let detailedFiles = false;
+  export let onPreviewFiles: () => void = () => {};
   export let imageSelectionBusy = false;
   export let onCopyImageText: (content: string) => Promise<void> | void = () => undefined;
   export let onPasteImageText: (content: string) => Promise<void> | void = () => undefined;
@@ -80,17 +82,7 @@
     <div class="html-preview html-preview-placeholder"><span>{item.preview}</span></div>
   {/if}
 {:else if item.kind === "files"}
-  <div class="file-preview">
-    <FileText size={23} />
-    <div>
-      <strong>{item.preview}</strong>
-      <span
-        >{item.itemCount > 1
-          ? t("{count} 个文件", language, { count: item.itemCount })
-          : tr("文件", language)}</span
-      >
-    </div>
-  </div>
+  <FilePreview {item} {language} {active} detailed={detailedFiles} onPreview={onPreviewFiles} />
 {:else if looksLikeCode(item.preview)}
   <pre class="code-preview">{item.preview}</pre>
 {:else}

@@ -2825,5 +2825,10 @@
   "启用自动化前，请先校准蓝牙设备": "calibrate the Bluetooth device before enabling this automation",
   "校准需要两个稳定位置且信号至少相差 10 dBm，请重新校准": "Bluetooth calibration needs two stable positions at least 10 dBm apart; recalibrate the device",
   "蓝牙持续时间应为 5–300 秒，信号丢失等待时间应为 15–300 秒": "Bluetooth duration must be 5–300 seconds; signal-loss timeout must be 15–300 seconds",
-  "没有匹配的蓝牙设备": "No matching Bluetooth devices"
+  "没有匹配的蓝牙设备": "No matching Bluetooth devices",
+  "无法读取文件列表": "Dateiliste kann nicht gelesen werden",
+  "文件列表为空": "Die Dateiliste ist leer",
+  "文件列表": "Dateiliste",
+  "{type} 文件": "{type}-Datei",
+  "插入全部 {count} 个文件": "Alle {count} Dateien einfügen"
 }
