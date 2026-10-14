@@ -218,7 +218,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=83cd0b49f1f120de030de5c7af38b5cb163b94b5#83cd0b49f1f120de030de5c7af38b5cb163b94b5"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=6a63dcb8ee7b365ad137ad938004385d4a18e076#6a63dcb8ee7b365ad137ad938004385d4a18e076"
 dependencies = [
  "ammonia",
  "arcrelay-content",
@@ -512,7 +512,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=a560de1edc1598ea5804f861831524e284d9b02f#a560de1edc1598ea5804f861831524e284d9b02f"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=a80842492510818b7d251a141d47a19fdfabd359#a80842492510818b7d251a141d47a19fdfabd359"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",

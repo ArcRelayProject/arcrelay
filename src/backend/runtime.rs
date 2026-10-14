@@ -510,9 +510,7 @@ pub(super) async fn run_backend(
                 if let Some(window) =
                     clipboard_app.get_webview_window(crate::windowing::CLIPBOARD_WINDOW_LABEL)
                 {
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.emit("clipboard-changed", ());
-                    }
+                    let _ = window.emit("clipboard-changed", ());
                 }
             }
         });

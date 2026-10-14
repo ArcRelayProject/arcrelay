@@ -449,6 +449,18 @@
     }
 
     void (async () => {
+      // Attach history listeners before visibility queries and other initialization.
+      await scope.add(
+        clipboardBridge.onChanged(() => {
+          historyChangeCount += 1;
+          requestHistoryRefresh();
+        }),
+      );
+      await scope.add(
+        clipboardBridge.onOcrChanged(() => {
+          if (debouncedSearch.trim()) requestHistoryRefresh();
+        }),
+      );
       await scope.add(clipboardBridge.onDragEnded((event) => dragSession.ended(event)));
       if (windowsClipboard) {
         await scope.add(
@@ -595,18 +607,6 @@
           error = reason;
         }),
       );
-      await scope.add(
-        clipboardBridge.onChanged(() => {
-          historyChangeCount += 1;
-          if (nearby) nearby = { ...nearby, updated: true };
-          else if (!locating) requestHistoryRefresh();
-        }),
-      );
-      await scope.add(
-        clipboardBridge.onOcrChanged(() => {
-          if (!nearby && !locating && debouncedSearch.trim()) requestHistoryRefresh();
-        }),
-      );
     })().catch((reason) => {
       if (!disposed) error = String(reason);
     });
@@ -710,11 +710,26 @@
   function requestHistoryRefresh() {
     historyRefreshPending = true;
     window.clearTimeout(historyRefreshTimer);
-    if (!windowVisible || pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu)
+    if (
+      !windowVisible ||
+      locating ||
+      pasteInFlight ||
+      dragBusy ||
+      openingContextMenu ||
+      $inlineContextMenu
+    )
       return;
     historyRefreshTimer = window.setTimeout(
       () => {
-        if (pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu) return;
+        if (
+          !windowVisible ||
+          locating ||
+          pasteInFlight ||
+          dragBusy ||
+          openingContextMenu ||
+          $inlineContextMenu
+        )
+          return;
         historyRefreshPending = false;
         void load({ preservePosition: true });
       },
@@ -786,7 +801,7 @@
     append ? (loadingMore = true) : (loading = true);
     try {
       const target = append ? targetApplication : await clipboardBridge.targetApplication();
-      const [page, pins] = await Promise.all([
+      const [firstPage, pins] = await Promise.all([
         clipboardBridge.history({
           search: debouncedSearch,
           kind: kindForFilter(filter),
@@ -805,8 +820,31 @@
               )
             : Promise.resolve([]),
       ]);
+      // Reload the loaded range so an automatic update also reaches paginated rows.
+      let page = firstPage;
+      const refreshedEntries = [...page.entries];
+      const seen = new Set(refreshedEntries.map((item) => item.id));
+      const refreshSize = preservePosition ? history.entries.length : FETCH_SIZE;
+      while (!append && refreshedEntries.length < refreshSize && page.nextCursor) {
+        if (generation !== loadGeneration) return;
+        page = await clipboardBridge.history({
+          search: debouncedSearch,
+          kind: kindForFilter(filter),
+          favoriteOnly: filter === "favorites",
+          labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
+          cursor: page.nextCursor,
+          limit: FETCH_SIZE,
+        });
+        for (const item of page.entries) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            refreshedEntries.push(item);
+          }
+        }
+        if (!page.entries.length) break;
+      }
       const entries = mergeAppPinnedEntries(
-        append ? [...history.entries, ...page.entries] : page.entries,
+        append ? [...history.entries, ...page.entries] : refreshedEntries,
         filter === "all" ? pins : [],
       );
       if (generation !== loadGeneration) return;
@@ -819,17 +857,8 @@
         requestHistoryRefresh();
         return;
       }
-      const anchor = preservePosition ? viewportAnchor() : null;
+      const anchor = preservePosition && scrollTop > 0 ? viewportAnchor() : null;
       const previousSelection = selectedId;
-      // A first-page update cannot replace a user's paginated view when its
-      // anchor has fallen outside that page. Reopening loads the latest order.
-      if (
-        preservePosition &&
-        [anchor?.id, previousSelection].some(
-          (id) => id != null && !entries.some((item) => item.id === id),
-        )
-      )
-        return;
       targetApplication = target;
       applicationPins = pins;
       applicationPinIds = new Set(pins.map((item) => item.id));
@@ -846,7 +875,11 @@
             return height === undefined ? [] : [[item.id, height] as const];
           }),
         );
-        selectedId = preservePosition ? previousSelection : (entries[0]?.id ?? null);
+        selectedId =
+          preservePosition && entries.some((item) => item.id === previousSelection)
+            ? previousSelection
+            : (entries[0]?.id ?? null);
+        selectedIds = selectedIds.filter((id) => entries.some((item) => item.id === id));
         if (preservePosition) {
           await restorePosition(anchor, scrollTop, generation);
         } else {
@@ -961,7 +994,10 @@
     } catch (reason) {
       if (generation === loadGeneration) navigationError = String(reason);
     } finally {
-      if (generation === loadGeneration) locating = false;
+      if (generation === loadGeneration) {
+        locating = false;
+        if (historyRefreshPending) requestHistoryRefresh();
+      }
     }
   }
 
@@ -986,6 +1022,7 @@
       await load();
     }
     if (generation !== loadGeneration) return;
+    requestHistoryRefresh();
     if (keyboardMode === "search") await focusSearch();
     else if (!windowsClipboard) {
       await tick();
@@ -1017,7 +1054,7 @@
         return;
       }
       if (!page) {
-        navigationError = tr("这条记录已被删除或清理，请返回搜索重新选择。", language);
+        await returnToSearch();
         return;
       }
       nearby = {
