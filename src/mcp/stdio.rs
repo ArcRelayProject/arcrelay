@@ -90,6 +90,10 @@ where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
+    // Stdio runs in a separate process before desktop initialization. Reqwest's
+    // rustls-no-provider backend needs an explicit provider even for local HTTP.
+    // An existing process-wide provider is retained on repeated calls.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -155,6 +159,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_stdio_bridge_initializes_crypto_in_a_fresh_process() {
+        const CHILD: &str = "ARCRELAY_TEST_STDIO_CRYPTO_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            // Other tests may install a process-wide provider and hide a cold-start failure.
+            let module = module_path!().split_once("::").unwrap().1;
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    &format!(
+                        "{module}::startup_stdio_bridge_initializes_crypto_in_a_fresh_process"
+                    ),
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "stdio cold start failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+            return;
+        }
+
+        assert!(tokio::runtime::Handle::try_current().is_err());
+        assert!(rustls::crypto::CryptoProvider::get_default().is_none());
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n";
+        for _ in 0..2 {
+            let mut output = vec![];
+            runtime
+                .block_on(bridge(
+                    &input[..],
+                    &mut output,
+                    directory.path(),
+                    "example-secret",
+                ))
+                .unwrap();
+            let reply: Value = serde_json::from_slice(&output).unwrap();
+            assert_eq!(reply["id"], 1);
+            assert!(reply.get("error").is_some());
+            assert!(!String::from_utf8(output)
+                .unwrap()
+                .contains("example-secret"));
+        }
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+        assert!(tokio::runtime::Handle::try_current().is_err());
+    }
+
     #[test]
     fn stdio_mode_is_selected_before_any_runtime_or_app_initialization() {
         assert!(requested(["ArcRelay".into(), "--mcp-stdio".into()]));
