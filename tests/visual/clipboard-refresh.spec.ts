@@ -74,6 +74,35 @@ test("a hidden copy is loaded when the window is shown", async ({ page }) => {
   await expect(page.locator('[data-clipboard-id="999"]')).toBeVisible();
 });
 
+test("waking the clipboard resets the page, search, and scroll position", async ({ page }) => {
+  await installHistory(page);
+  await page.getByRole("button", { name: "收藏", exact: true }).click();
+  await expect(page.getByRole("button", { name: "收藏", exact: true })).toHaveClass(/active/);
+  const reads = await page.evaluate(() => (window as any).__clipboardRefresh.reads);
+  await page.getByRole("textbox", { name: "⌘F", exact: true }).fill("record");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__clipboardRefresh.reads))
+    .toBeGreaterThan(reads);
+  await page.locator(".clipboard-list").evaluate((node) => {
+    node.scrollTop = 1200;
+  });
+  await expect
+    .poll(() => page.locator(".clipboard-list").evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+
+  await page.evaluate(() => (window as any).__clipboardRefresh.hidden());
+  await expect(page.locator("[data-clipboard-id]")).toHaveCount(0);
+  await page.evaluate(() => (window as any).__clipboardRefresh.shown());
+
+  await expect(page.getByRole("button", { name: "最近", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("button", { name: "收藏", exact: true })).not.toHaveClass(/active/);
+  await expect(page.getByRole("textbox", { name: "⌘F", exact: true })).toHaveValue("");
+  await expect(page.locator('[data-clipboard-id="1000"]')).toBeVisible();
+  await expect
+    .poll(() => page.locator(".clipboard-list").evaluate((node) => node.scrollTop))
+    .toBe(0);
+});
+
 test("an update refreshes paginated rows and keeps the viewport", async ({ page }) => {
   await installHistory(page);
   await page.locator(".clipboard-list").evaluate((node) => {

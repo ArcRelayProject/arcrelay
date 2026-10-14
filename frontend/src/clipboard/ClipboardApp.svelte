@@ -487,7 +487,15 @@
           clipboardBridge,
           () => {
             windowVisible = true;
+            // Every wake starts at the default page, without a saved query or anchor.
+            abandonNearby();
+            setSearchState("", "all", null);
+            selectedId = null;
+            selectedIds = [];
+            scrollTop = 0;
+            scrollElement?.scrollTo({ top: 0 });
             pasteError = "";
+            window.clearTimeout(historyRefreshTimer);
             historyRefreshPending = false;
             const shouldFocusSearch = autoFocusSearch(
               windowsClipboard,
