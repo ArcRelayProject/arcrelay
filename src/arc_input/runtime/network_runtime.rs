@@ -696,6 +696,9 @@ impl ArcInputRuntime {
                         .can_inject_native_quartz_events,
                     can_inject_precision_touchpad_events = domain_capabilities
                         .can_inject_precision_touchpad_events,
+                    can_capture_system_gestures = domain_capabilities.can_capture_system_gestures,
+                    can_inject_system_gestures = domain_capabilities.can_inject_system_gestures,
+                    system_gesture_format_version = domain_capabilities.system_gesture_format_version,
                     target_ready = domain_capabilities.can_target(),
                     "Arc Input capability snapshot received"
                 );

@@ -259,6 +259,12 @@ impl CaptureGate {
                 if format_version >= arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION {
                     event.finger_count = if incremental {
                         2
+                    } else if event.axis == 3 {
+                        // v3 reserves axis-3/count-2 for app magnification.
+                        // System pinch keeps count 0, including a physical
+                        // four-finger pinch; count 4 would violate the existing
+                        // wire contract and silently leave the gesture local.
+                        0
                     } else if matches!(observed_fingers, 3 | 4) {
                         observed_fingers
                     } else {
@@ -301,8 +307,15 @@ impl CaptureGate {
     }
 }
 
-pub(super) fn post(event: SystemGestureEvent) -> Result<(), PlatformError> {
-    macos_system_gesture::post(event).map_err(|error| PlatformError::Operation(error.to_string()))
+pub(super) type Injector = macos_system_gesture::Injector;
+
+pub(super) fn post(
+    injector: &mut Injector,
+    event: SystemGestureEvent,
+) -> Result<(), PlatformError> {
+    injector
+        .post(event)
+        .map_err(|error| PlatformError::Operation(error.to_string()))
 }
 
 #[cfg(test)]
@@ -534,6 +547,25 @@ mod tests {
                 .route(Some(magnification(2, 0.1)), false, true, 0, 2, 3)
                 .0
         );
+    }
+
+    #[test]
+    fn v3_four_finger_system_pinch_is_forwarded_without_becoming_app_magnification() {
+        let mut gate = CaptureGate::default();
+        for phase in [1, 2, 4] {
+            let pinch = SystemGestureEvent {
+                axis: 3,
+                phase,
+                ..event(phase)
+            };
+            let (blocked, forwarded) = gate.route(Some(pinch), false, false, 4, 1, 3);
+            assert!(blocked);
+            let forwarded = forwarded.unwrap();
+            assert_eq!(forwarded.finger_count, 0);
+            assert_eq!(forwarded.axis, 3);
+            assert!(forwarded.validate_format(3).is_ok());
+            assert!(gate.route(None, true, false, 4, 1, 3).0);
+        }
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Experimental legacy DockSwipe fields, NOT the Universal Control protocol.
+//! Local DockSwipe diagnostics using the shared versioned native injector.
 //! Field references / compatibility notes: https://github.com/joshuarli/iss
 //! and Mac Mouse Fix's Helper/Core/Touch/TouchSimulator.m. See README.md.
 
@@ -24,7 +24,6 @@ const MASK: u64 = (1 << GESTURE) | (1 << DOCK_CONTROL);
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrusted() -> u8;
-    fn CGEventCreate(source: CfRef) -> Event;
     fn CGEventTapCreate(
         tap: u32,
         place: u32,
@@ -37,9 +36,6 @@ extern "C" {
     fn CGEventTapIsEnabled(tap: CfMut) -> bool;
     fn CGEventGetIntegerValueField(event: Event, field: u32) -> i64;
     fn CGEventGetDoubleValueField(event: Event, field: u32) -> f64;
-    fn CGEventSetIntegerValueField(event: Event, field: u32, value: i64);
-    fn CGEventSetDoubleValueField(event: Event, field: u32, value: f64);
-    fn CGEventPost(tap: u32, event: Event);
     fn CFMachPortCreateRunLoopSource(allocator: CfRef, tap: CfMut, order: isize) -> CfMut;
     fn CFRunLoopGetCurrent() -> CfMut;
     fn CFRunLoopAddSource(run_loop: CfMut, source: CfMut, mode: CfRef);
@@ -84,13 +80,8 @@ pub(super) fn ensure_injection_supported() -> Result<(), String> {
             "enable macOS accessibility permission for the current ArcRelay application".into(),
         );
     }
-    if os_version()
-        .split('.')
-        .next()
-        .and_then(|value| value.parse::<u32>().ok())
-        .is_none_or(|major| major >= 27)
-    {
-        return Err("this experiment implements legacy DockSwipe synthesis only through macOS 26; observation may work on this version, but synthesis is not adapted".into());
+    if !arcrelay_core::infrastructure::input_control::macos_system_gesture::supported() {
+        return Err("native system gesture backend is unavailable on this macOS version".into());
     }
     Ok(())
 }
@@ -299,76 +290,55 @@ pub(super) fn start_capture(
     }
 }
 
-struct OwnedEvent(Event);
-impl OwnedEvent {
-    fn new() -> Result<Self, String> {
-        let event = unsafe { CGEventCreate(std::ptr::null()) };
-        if event.is_null() {
-            Err("failed to allocate Quartz gesture event".into())
-        } else {
-            Ok(Self(event))
-        }
+// Reuse the production injector so diagnostics exercise the same legacy/HID
+// backend, validation and direction normalization as cross-screen input.
+fn planned_event(
+    motion: i64,
+    phase: i64,
+    progress: f64,
+    velocity: f64,
+) -> Result<arcrelay_input::SystemGestureEvent, String> {
+    arcrelay_input::SystemGestureEvent {
+        axis: u32::try_from(motion).map_err(|_| "invalid gesture axis")?,
+        phase: u32::try_from(phase).map_err(|_| "invalid gesture phase")?,
+        progress,
+        velocity_x: velocity,
+        velocity_y: velocity,
+        inverted_from_device: false,
+        finger_count: 0,
     }
-}
-impl Drop for OwnedEvent {
-    fn drop(&mut self) {
-        unsafe {
-            CFRelease(self.0);
-        }
-    }
+    .validate()
+    .map_err(str::to_string)
 }
 
-// All events are generated from bounded, whitelisted parameters. No arbitrary
-// serialized native payload can be supplied by the frontend or a peer.
 fn post_phase(
     shared: &Shared,
+    injector: &mut arcrelay_core::infrastructure::input_control::macos_system_gesture::Injector,
     motion: i64,
     phase: i64,
     progress: f64,
     velocity: f64,
 ) -> Result<(), String> {
-    let (dock, companion) = make_phase(motion, phase, progress, velocity)?;
-    unsafe {
-        CGEventPost(1, dock.0);
-        CGEventPost(1, companion.0);
-        shared.record(sample(dock.0, DOCK_CONTROL, "posted", false));
-    }
+    let event = planned_event(motion, phase, progress, velocity)?;
+    injector.post(event).map_err(|error| error.to_string())?;
+    shared.record(GestureDebugSample {
+        id: 0,
+        batch_id: 0,
+        elapsed_ms: 0,
+        source: "posted".into(),
+        event_type: DOCK_CONTROL,
+        subtype: DOCK_SWIPE,
+        motion,
+        phase,
+        progress,
+        velocity_x: velocity,
+        velocity_y: velocity,
+        magnification: 0.0,
+        rotation: 0.0,
+        swipe_mask: 0,
+        suppressed: false,
+    });
     Ok(())
-}
-
-// Kept separate from posting so unit tests can inspect the native event layout
-// without sending any input to the user's desktop.
-fn make_phase(
-    motion: i64,
-    phase: i64,
-    progress: f64,
-    velocity: f64,
-) -> Result<(OwnedEvent, OwnedEvent), String> {
-    let dock = OwnedEvent::new()?;
-    let companion = OwnedEvent::new()?;
-    unsafe {
-        for (field, value) in [
-            (55, DOCK_CONTROL as i64),
-            (110, DOCK_SWIPE),
-            (132, phase),
-            (134, phase),
-            (123, motion),
-            (165, motion),
-            (135, (progress as f32).to_bits() as i64),
-            (136, 0),
-        ] {
-            CGEventSetIntegerValueField(dock.0, field, value);
-        }
-        CGEventSetDoubleValueField(dock.0, 124, progress);
-        // These private fields encode the axis as float32 bits, not a delta.
-        let encoded_axis = f32::from_bits(motion as u32) as f64;
-        CGEventSetDoubleValueField(dock.0, 119, encoded_axis);
-        CGEventSetDoubleValueField(dock.0, 139, encoded_axis);
-        CGEventSetDoubleValueField(dock.0, 129, velocity);
-        CGEventSetDoubleValueField(dock.0, 130, velocity);
-        CGEventSetIntegerValueField(companion.0, 55, GESTURE as i64);
-    }
-    Ok((dock, companion))
 }
 
 fn interruptible_wait(shared: &Shared, duration: Duration) -> bool {
@@ -404,11 +374,19 @@ pub(super) fn inject(shared: &Shared, request: &GestureDebugTrigger) -> Result<(
         motion: i64,
         progress: f64,
         active: bool,
+        injector: arcrelay_core::infrastructure::input_control::macos_system_gesture::Injector,
     }
     impl Drop for Sequence<'_> {
         fn drop(&mut self) {
             if self.active {
-                let _ = post_phase(self.shared, self.motion, CANCELLED, self.progress, 0.0);
+                let _ = post_phase(
+                    self.shared,
+                    &mut self.injector,
+                    self.motion,
+                    CANCELLED,
+                    self.progress,
+                    0.0,
+                );
             }
         }
     }
@@ -417,8 +395,9 @@ pub(super) fn inject(shared: &Shared, request: &GestureDebugTrigger) -> Result<(
         motion,
         progress: 0.0,
         active: true,
+        injector: Default::default(),
     };
-    post_phase(shared, motion, BEGAN, 0.0, 0.0)?;
+    post_phase(shared, &mut sequence.injector, motion, BEGAN, 0.0, 0.0)?;
     let steps = request.duration_ms.div_ceil(16);
     for step in 1..=steps {
         if !interruptible_wait(
@@ -432,7 +411,14 @@ pub(super) fn inject(shared: &Shared, request: &GestureDebugTrigger) -> Result<(
             return Err("accessibility permission was lost during synthesis; gesture cancellation was attempted".into());
         }
         sequence.progress = target * f64::from(step) / f64::from(steps);
-        post_phase(shared, motion, CHANGED, sequence.progress, 0.0)?;
+        post_phase(
+            shared,
+            &mut sequence.injector,
+            motion,
+            CHANGED,
+            sequence.progress,
+            0.0,
+        )?;
     }
     let phase = if request.cancel_at_end {
         CANCELLED
@@ -441,6 +427,7 @@ pub(super) fn inject(shared: &Shared, request: &GestureDebugTrigger) -> Result<(
     };
     post_phase(
         shared,
+        &mut sequence.injector,
         motion,
         phase,
         sequence.progress,
@@ -460,21 +447,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builds_native_phase_without_posting_or_tokio() {
-        let (dock, companion) = make_phase(2, CANCELLED, -0.25, 0.0).unwrap();
-        unsafe {
-            let record = sample(dock.0, DOCK_CONTROL, "test", false);
-            assert_eq!(CGEventGetIntegerValueField(dock.0, 55), 30);
-            assert_eq!(CGEventGetIntegerValueField(companion.0, 55), 29);
-            assert_eq!(record.subtype, DOCK_SWIPE);
-            assert_eq!(record.motion, 2);
-            assert_eq!(record.phase, CANCELLED);
-            assert_eq!(record.progress, -0.25);
-            assert_eq!(
-                CGEventGetIntegerValueField(dock.0, 135),
-                (-0.25f32).to_bits() as i64
-            );
-        }
+    fn planned_phases_validate_without_posting_or_tokio() {
+        let event = planned_event(2, CANCELLED, -0.25, 0.0).unwrap();
+        assert_eq!((event.axis, event.phase, event.progress), (2, 8, -0.25));
+        assert!(planned_event(-1, BEGAN, 0.0, 0.0).is_err());
+        assert!(planned_event(4, BEGAN, 0.0, 0.0).is_err());
+        assert!(planned_event(2, 16, 0.0, 0.0).is_err());
+        assert!(planned_event(2, BEGAN, f64::NAN, 0.0).is_err());
     }
 
     #[test]

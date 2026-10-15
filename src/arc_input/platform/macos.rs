@@ -551,6 +551,7 @@ struct InjectionState {
     scroll_gesture_active: bool,
     scroll_momentum_active: bool,
     system_gesture: arcrelay_input::SystemGestureSequence,
+    gesture_injector: gesture::Injector,
     system_gesture_updated: Option<Instant>,
 }
 
@@ -699,7 +700,7 @@ impl NativePlatform {
         state.consumer.clear();
         self.brightness.cancel();
         if let Some(cancel) = state.system_gesture.cancel() {
-            if let Err(error) = gesture::post(cancel) {
+            if let Err(error) = gesture::post(&mut state.gesture_injector, cancel) {
                 tracing::warn!(%error, "Arc Input could not cancel the system gesture");
             }
         }
@@ -848,6 +849,12 @@ impl InputCapturePort for NativePlatform {
         if active.is_some() {
             return Err(PlatformError::Operation("capture is already active".into()));
         }
+        tracing::info!(
+            event = "input.gesture.backend",
+            backend =
+                arcrelay_core::infrastructure::input_control::macos_system_gesture::backend_name(),
+            "native system gesture backend selected"
+        );
         let (events_tx, events_rx) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
         let (started_tx, started_rx) = mpsc::sync_channel(1);
         self.set_suppress_local(options.suppress_local)?;
@@ -1266,9 +1273,9 @@ impl InputInjectionPort for NativePlatform {
             state.system_gesture_updated = state.system_gesture.is_active().then(Instant::now);
         }
         for phase in phases {
-            if let Err(error) = gesture::post(phase) {
+            if let Err(error) = gesture::post(&mut state.gesture_injector, phase) {
                 if let Some(cancel) = state.system_gesture.cancel() {
-                    let _ = gesture::post(cancel);
+                    let _ = gesture::post(&mut state.gesture_injector, cancel);
                 }
                 return Err(error);
             }
@@ -1284,7 +1291,7 @@ impl InputInjectionPort for NativePlatform {
         {
             state.system_gesture_updated = None;
             if let Some(cancel) = state.system_gesture.cancel() {
-                gesture::post(cancel)?;
+                gesture::post(&mut state.gesture_injector, cancel)?;
                 return Ok(true);
             }
         }
