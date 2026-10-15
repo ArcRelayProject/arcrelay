@@ -169,7 +169,7 @@ pub async fn collection_request(
                 if value.expires_at_ms != 0
                     && value.expires_at_ms - chrono::Utc::now().timestamp_millis() < 5000
                 {
-                    return Err("验证码即将刷新，请稍后再试".to_owned());
+                    return Err("TOTP 即将更新，请稍后再试".to_owned());
                 }
                 crate::presence_access::require_clipboard_access(&state)?;
                 if let Some(target) = &target {
@@ -184,7 +184,7 @@ pub async fn collection_request(
                     if value.expires_at_ms != 0
                         && value.expires_at_ms <= chrono::Utc::now().timestamp_millis()
                     {
-                        return Err("验证码已刷新，请重新复制".to_owned());
+                        return Err("TOTP 已更新，请重新复制".to_owned());
                     }
                     clipboard::ensure_paste_target_unchanged(&app, target)?;
                     state

@@ -407,7 +407,7 @@
                             ? "••••••••"
                             : entry.value || "空内容"}</span
                       >{#if entry.totp}<small
-                          >{remaining < 5 ? "即将刷新" : remaining + " 秒"}</small
+                          >{remaining < 5 ? "即将更新" : remaining + " 秒后更新"}</small
                         >{/if}</span
                     ></button
                   >

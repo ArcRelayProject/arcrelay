@@ -5,9 +5,10 @@ import type {
   ClipboardCollection,
 } from "../../ipc/generated";
 import { item } from "./model";
-const key = "arcrelay-collection-preview-v1";
+import { previewTotp } from "./previewTotp";
+const key = "arcrelay-collection-preview-v2";
 const initial: ClipboardCollection[] = [
-  ["工作账号", ["用户名", "密码", "验证码"]],
+  ["工作账号", ["用户名", "密码", "TOTP"]],
   ["家庭地址", ["收件人", "电话", "详细地址"]],
   ["开票资料", ["公司名称", "税号", "开户信息"]],
   ["常用回复", ["问候语", "工作时间", "签名"]],
@@ -16,14 +17,18 @@ const initial: ClipboardCollection[] = [
   name: name as string,
   items: (labels as string[]).map((label) => ({
     ...item(label),
-    value:
-      label === "用户名"
-        ? "hello@example.com"
-        : label === "密码"
-          ? "example-password"
-          : label === "验证码"
-            ? "482196"
-            : "",
+    value: label === "用户名" ? "hello@example.com" : label === "密码" ? "example-password" : "",
+    // Public RFC 6238 test key, exclusively for the browser demo.
+    ...(label === "TOTP"
+      ? {
+          totp: {
+            secret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+            algorithm: "SHA1",
+            digits: 6,
+            period: 30,
+          },
+        }
+      : {}),
   })),
   revision: 1,
   updatedByDeviceId: "preview",
@@ -61,6 +66,9 @@ export async function previewRequest(request: CollectionRequest): Promise<Collec
     )
       throw Error("COLLECTION_STALE");
     if (!d.name.trim() || d.items.some((i) => !i.label.trim())) throw Error("请填写名称和字段名称");
+    for (const entry of d.items) {
+      if (entry.totp) await previewTotp(entry.totp, Date.now());
+    }
     const value: ClipboardCollection = {
       ...(old ?? {
         id: crypto.randomUUID(),
@@ -92,10 +100,14 @@ export async function previewRequest(request: CollectionRequest): Promise<Collec
   if (request.type === "value" || request.type === "use") {
     const i = records.find((r) => r.id === request.id)?.items.find((i) => i.id === request.item);
     if (!i) throw Error("内容不存在");
-    response.value = { code: i.value, expiresAtMs: 0 };
+    response.value = i.totp
+      ? await previewTotp(i.totp, Date.now())
+      : { code: i.value, expiresAtMs: 0 };
     if (request.type === "use") {
       if (request.paste) throw Error("浏览器预览请使用复制；原生粘贴需在桌面应用验证");
-      await navigator.clipboard.writeText(i.value);
+      if (i.totp && response.value.expiresAtMs - Date.now() < 5000)
+        throw Error("TOTP 即将更新，请稍后再试");
+      await navigator.clipboard.writeText(response.value.code);
     }
   }
   if (request.type === "retry") throw Error("浏览器预览未连接设备");

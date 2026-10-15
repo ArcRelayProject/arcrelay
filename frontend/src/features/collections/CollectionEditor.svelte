@@ -148,7 +148,7 @@
                 disabled={busy}
                 options={[
                   { value: "text", label: "文本" },
-                  { value: "totp", label: "动态验证码" },
+                  { value: "totp", label: "TOTP" },
                 ]}
               />
             {/key}

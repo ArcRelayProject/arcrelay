@@ -1,7 +1,7 @@
 import type { CollectionDraft, CollectionItem, ClipboardCollection } from "../../ipc/generated";
 export const templates = [
   { name: "空白集合", labels: [] },
-  { name: "账号", labels: ["用户名", "密码", "验证码"] },
+  { name: "账号", labels: ["用户名", "密码", "TOTP"] },
   { name: "收件地址", labels: ["收件人", "电话", "详细地址"] },
   { name: "银行卡", labels: ["卡号", "有效期", "安全码"] },
   { name: "开票资料", labels: ["公司名称", "税号", "地址", "开户行", "账号"] },
@@ -11,7 +11,7 @@ export const item = (label = "内容"): CollectionItem => ({
   label,
   value: "",
   masked: ["密码", "安全码"].includes(label),
-  totp: null,
+  totp: label === "TOTP" ? { secret: "", algorithm: "SHA1", digits: 6, period: 30 } : null,
 });
 export function fromTemplate(index: number): CollectionDraft {
   const template = templates[index];
