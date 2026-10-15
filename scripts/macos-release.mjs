@@ -103,6 +103,11 @@ function requireSuccess(command, args) {
   if (run(command, args) !== 0) throw new Error(`${command} failed`);
 }
 
+export function verifyArchitecture(binary, architecture) {
+  // Older Xcode lipo treats everything after -verify_arch as an architecture.
+  requireSuccess("lipo", [binary, "-verify_arch", architecture]);
+}
+
 function verifyPackage(target) {
   const arch = { "aarch64-apple-darwin": "aarch64", "x86_64-apple-darwin": "x64" }[target];
   if (!arch) throw new Error(`Unsupported macOS target: ${target}`);
@@ -129,7 +134,7 @@ function verifyPackage(target) {
     const machoArch = arch === "aarch64" ? "arm64" : "x86_64";
     for (const name of [executable.stdout.trim(), "sniptra", "sniptra-ocr-worker"]) {
       if (basename(name) !== name) throw new Error("Invalid packaged executable name");
-      requireSuccess("lipo", ["-verify_arch", machoArch, join(app, "Contents/MacOS", name)]);
+      verifyArchitecture(join(app, "Contents/MacOS", name), machoArch);
     }
     requireSuccess("codesign", ["--verify", "--deep", "--strict", "--verbose=4", app]);
     const signature = spawnSync("codesign", ["-d", "--verbose=4", app], { encoding: "utf8" });
