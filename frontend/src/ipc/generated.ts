@@ -60,11 +60,29 @@ export type AutomationIssue = { code: string, message: string, remedy: string, s
 
 export type AutomationStep = { "type": "quickAction", actionId: string, } | { "type": "shell", shell: ShellKind, script: string, workingDirectory: string | null, timeoutSeconds: number, } | { "type": "delay", durationSeconds: number, } | { "type": "notification", title: string, body: string, sendToConnectedDevices: boolean, };
 
-export type AutomationTrigger = { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
+export type AutomationTrigger = { "type": "bluetooth", config: BluetoothTrigger, } | { "type": "manual" } | { "type": "schedule", time: string, weekdays: Array<number>, timezone: string, catchUp: boolean, } | { "type": "application", event: ApplicationEvent, apps: Array<ApplicationIdentity>, } | { "type": "system", event: SessionEvent, } | { "type": "device", connected: boolean, deviceIds: Array<string>, } | { "type": "transfer", received: boolean, deviceIds: Array<string>, fileKinds: Array<string>, } | { "type": "hotkey", shortcut: string, } | { "type": "presence", state: PresenceEvent, };
+
+export type BluetoothCalibration = { nearRssi: number, farRssi: number, };
+
+export type BluetoothDetection = { state: string, elapsedSeconds: number, fired: boolean, };
+
+export type BluetoothDeviceView = { id: string, name: string, rssi: number | null, ageSeconds: number, history: Array<number>, readable: boolean, };
+
+export type BluetoothSample = { deviceId: string, rssi: number, sampleCount: number, };
+
+export type BluetoothSnapshot = { status: string, error: string | null, devices: Array<BluetoothDeviceView>, };
+
+export type BluetoothTrigger = { deviceId: string, deviceName: string, calibration: BluetoothCalibration | null, durationSeconds: number,
+/**
+ * Explicit opt-in. Loss of advertisements is not proof of departure.
+ */
+signalLossSeconds: number | null, };
 
 export type BootstrapState = { actions: Array<ActionView>, revision: number, port: number, localDeviceName: string, localPlatform: string, serverRunning: boolean, connectedDevices: Array<ConnectedDeviceView>, pairedDevices: Array<ConnectedDeviceView>, pendingPairing: PendingPairingView | null, outgoingPairings: Array<OutgoingPairingView>, inputPermission: InputPermissionState, activeInputDevice: ConnectedDeviceView | null, inputMetrics: InputMetricsView | null, activity: Array<string>, unreadNotificationCount: number, mcpRunning: boolean, mcpPort: number, privacy: PrivacySnapshot, };
 
 export type Capability = { id: string, available: boolean, reason: string | null, remedy: string | null, };
+
+export type ClipboardCollection = { id: string, name: string, items: Array<CollectionItem>, revision: number, updatedByDeviceId: string, favorite: boolean, favoriteRevision: number, favoriteUpdatedByDeviceId: string, deleted: boolean, };
 
 export type ClipboardContentKind = "text" | "html" | "image" | "files";
 
@@ -136,6 +154,18 @@ export type ClipboardTextSyntax = "plain" | "json" | "yaml" | "markdown" | { "co
 export type ClipboardTimelinePositionInput = { "type": "around", id: number, } | { "type": "newer", cursor: ClipboardCursorInput, } | { "type": "older", cursor: ClipboardCursorInput, };
 
 export type ClipboardTimelineView = { revision: number, entries: Array<ClipboardItemView>, anchor: ClipboardCursorView | null, newerCursor: ClipboardCursorView | null, olderCursor: ClipboardCursorView | null, totalCount: number, };
+
+export type CollectionDraft = { id: string | null, base: CollectionVersion | null, name: string, items: Array<CollectionItem>, };
+
+export type CollectionItem = { id: string, label: string, value: string, masked: boolean, totp: Totp | null, };
+
+export type CollectionPeerState = { deviceName: string, status: string, };
+
+export type CollectionRequest = { "type": "list", after: string, } | { "type": "save", draft: CollectionDraft, } | { "type": "remove", id: string, base: CollectionVersion, } | { "type": "favorite", id: string, favorite: boolean, } | { "type": "value", id: string, item: string, } | { "type": "use", id: string, item: string, paste: boolean, } | { "type": "fromHistory", ids: Array<number>, } | { "type": "openSettings" } | { "type": "retry" } | { "type": "sync", id: string, };
+
+export type CollectionResponse = { peers: Array<CollectionPeerState>, records: Array<ClipboardCollection>, saved: ClipboardCollection | null, value: TotpCode | null, items: Array<CollectionItem>, syncEnabled: boolean, syncEdits: boolean, syncFavorites: boolean, };
+
+export type CollectionVersion = { revision: number, deviceId: string, };
 
 export type ColorMode = "monochrome" | "color";
 
@@ -280,30 +310,6 @@ export type LocalSharedDirectory = { id: string, name: string, path: string, wri
 export type LogStatus = { enabled: boolean, runId: string, startedAtMs: number, logDirectory: string, currentLogFile: string | null, droppedLines: number, schemaVersion: number, maxFileBytes: number, maxTotalBytes: number, retentionDays: number, currentFilter: string, detailedUntilMs: number | null, };
 
 export type LogicalRect = { x: number, y: number, width: number, height: number, };
-
-export type LoginAppRule = { id: string, name: string, enabled: boolean, priority: number, };
-
-export type LoginContext = { id: string | null, name: string | null, token: string, };
-
-export type LoginDraft = { id: string | null, title: string, address: string, username: string, password: string | null, totp: LoginTotp | null, keepTotp: boolean, tags: Array<string>, favorite: boolean, apps: Array<LoginAppRule>, };
-
-export type LoginField = "username" | "password" | "totp";
-
-export type LoginOtp = { code: string, expiresAtMs: number, };
-
-export type LoginRequest = { "type": "status" } | { "type": "context" } | { "type": "openSettings" } | { "type": "copyDraft", value: string, } | { "type": "pickApp" } | { "type": "initialize", password: string, } | { "type": "unlock", password: string, } | { "type": "unlockDevice" } | { "type": "lock" } | { "type": "list", search: string, tag: string | null, } | { "type": "save", draft: LoginDraft, } | { "type": "remove", id: string, } | { "type": "otp", id: string, } | { "type": "reveal", id: string, } | { "type": "use", id: string, field: LoginField, paste: boolean, token: string, } | { "type": "settings", settings: LoginSettings, } | { "type": "device", enabled: boolean, } | { "type": "changePassword", previous: string, password: string, } | { "type": "export", password: string, } | { "type": "previewRestore", password: string, recovery: boolean, } | { "type": "restore", token: string, replace: boolean, } | { "type": "recover", token: string, password: string, confirmed: boolean, };
-
-export type LoginResponse = { status: LoginVaultStatus | null, context: LoginContext | null, entries: Array<LoginSummary> | null, tags: Array<string> | null, otp: LoginOtp | null, value: string | null, preview: LoginRestorePreview | null, token: string | null, count: number | null, file: string | null, application: LoginAppRule | null, deviceAvailable: boolean, deviceEnabled: boolean, };
-
-export type LoginRestorePreview = { count: number, titles: Array<string>, };
-
-export type LoginSettings = { unlockSeconds: number, lockOnClose: boolean, clearSeconds: number, };
-
-export type LoginSummary = { id: string, title: string, address: string, username: string, hasPassword: boolean, hasTotp: boolean, totpAlgorithm: string | null, totpDigits: number | null, totpPeriod: number | null, tags: Array<string>, favorite: boolean, apps: Array<LoginAppRule>, matched: boolean, priority: number, lastUsedAtMs: number, };
-
-export type LoginTotp = { secret: string, algorithm: string, digits: number, period: number, };
-
-export type LoginVaultStatus = { sessionVersion: number, configured: boolean, unlocked: boolean, expiresInSeconds: number, settings: LoginSettings, vaultId: string | null, error: string | null, };
 
 export type MaskStyle = "frosted" | "solid";
 
@@ -502,6 +508,10 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type TopologyRevision = number;
 
+export type Totp = { secret: string, algorithm: string, digits: number, period: number, };
+
+export type TotpCode = { code: string, expiresAtMs: number, };
+
 export type TransferDirection = "sending" | "receiving";
 
 export type TransferDraftFile = { path: string, canonicalPath: string | null, name: string, size: number | null, modifiedAtMs: number | null, kind: FileKind, thumbnailDataUrl: string | null, error: string | null, };
@@ -552,6 +562,8 @@ export interface CommandMap {
   automation_capabilities: { args: { }; result: Array<Capability> };
   begin_gaze_calibration: { args: { cameraId: string; displayId: string | null; }; result: GazeStatusView };
   begin_presence_enrollment: { args: { displayName: string; }; result: GazeStatusView };
+  bluetooth_snapshot: { args: { pausedAutomationId: string | null; }; result: BluetoothSnapshot };
+  calibrate_bluetooth: { args: { deviceId: string; }; result: BluetoothSample };
   cancel_automation_activity: { args: { activityId: string; }; result: null };
   cancel_gaze_calibration: { args: { }; result: GazeStatusView };
   cancel_presence_enrollment: { args: { }; result: GazeStatusView };
@@ -585,6 +597,7 @@ export interface CommandMap {
   clipboard_editor_preview: { args: { format: ClipboardTextFormat; source: string; }; result: ClipboardTextPreview };
   clipboard_editor_save: { args: { draft: ClipboardEditorDraft; }; result: number };
   clipboard_editor_snapshot: { args: { }; result: ClipboardEditorSnapshot };
+  clipboard_file_names: { args: { id: number; }; result: Array<string> };
   clipboard_history: { args: { cursor: ClipboardCursorInput | null; favoriteOnly: boolean; kind: ClipboardContentKind | null; labelIds: Array<string> | null; limit: number | null; search: string | null; }; result: ClipboardHistoryView };
   clipboard_html_preview: { args: { id: number; }; result: string | null };
   clipboard_image_ocr: { args: { id: number; }; result: ClipboardImageOcr | null };
@@ -614,6 +627,7 @@ export interface CommandMap {
   clipboard_update_label: { args: { color: string; labelId: string; name: string; }; result: null };
   close_gaze_calibration_windows: { args: { }; result: null };
   close_input_permission_guide: { args: { }; result: null };
+  collection_request: { args: { request: CollectionRequest; }; result: CollectionResponse };
   confirm_automation_activity: { args: { activityId: string; }; result: null };
   connect_desktop_address: { args: { host: string; port: number | null; }; result: string };
   connect_desktop_device: { args: { deviceId: string; }; result: string };
@@ -684,7 +698,6 @@ export interface CommandMap {
   list_remote_file_transfers: { args: { }; result: Array<RemoteFileTransferSession> };
   list_system_folders: { args: { }; result: Array<SystemFolder> };
   list_system_share_requests: { args: { }; result: Array<SystemShareRequest> };
-  login_request: { args: { request: LoginRequest; }; result: LoginResponse };
   mark_notification_read: { args: { notificationId: string; }; result: Array<NotificationView> };
   observe_action_output: { args: { actionId: string | null; }; result: null };
   observe_print_jobs: { args: { enabled: boolean; }; result: null };
@@ -709,6 +722,7 @@ export interface CommandMap {
   pick_transfer_files: { args: { }; result: Array<string> };
   prepare_remote_drag: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileDragPreparation };
   preview_automation_schedule: { args: { trigger: AutomationTrigger; }; result: string | null };
+  preview_bluetooth_trigger: { args: { config: BluetoothTrigger; sessionId: string; }; result: BluetoothDetection };
   preview_input_workspace: { args: { configuration: WorkspaceConfiguration; }; result: WorkspaceConfiguration };
   preview_sound: { args: { event: SoundEvent; }; result: null };
   publish_printer: { args: { localPrinterId: string; }; result: PrinterSharingSnapshot };

@@ -29,7 +29,7 @@
     "lint": "eslint frontend/src",
     "format": "node scripts/format.mjs --write",
     "format:check": "node scripts/format.mjs",
-    "test:runtime-ui": "playwright test --config playwright.visual.config.ts runtime-performance.spec.ts clipboard-editor.spec.ts"
+    "test:runtime-ui": "playwright test --config playwright.visual.config.ts runtime-performance.spec.ts clipboard-editor.spec.ts clipboard-files.spec.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

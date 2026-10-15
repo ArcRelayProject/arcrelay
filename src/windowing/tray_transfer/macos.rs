@@ -36,7 +36,7 @@ define_class!(
         #[unsafe(method(draggingEntered:))]
         fn dragging_entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
             if accepts(sender) {
-                enter(&self.ivars().app);
+                enter(&self.ivars().app, DropTarget::Tray);
                 NSDragOperation::Copy
             } else { NSDragOperation::None }
         }
@@ -45,9 +45,9 @@ define_class!(
             if accepts(sender) { NSDragOperation::Copy } else { NSDragOperation::None }
         }
         #[unsafe(method(draggingExited:))]
-        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) { leave(&self.ivars().app); }
+        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) { leave(&self.ivars().app, DropTarget::Tray, true); }
         #[unsafe(method(draggingEnded:))]
-        fn dragging_ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) { leave(&self.ivars().app); }
+        fn dragging_ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) { leave(&self.ivars().app, DropTarget::Tray, false); }
         #[unsafe(method(prepareForDragOperation:))]
         fn prepare_drop(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool { accepts(sender) }
         #[unsafe(method(performDragOperation:))]
@@ -74,6 +74,10 @@ define_class!(
         fn right_mouse_up(&self, event: &NSEvent) { if let Some(button) = unsafe { self.superview() } { button.rightMouseUp(event); } }
     }
 );
+
+pub(super) fn left_mouse_button_down() -> bool {
+    NSEvent::pressedMouseButtons() & 1 != 0
+}
 
 fn accepts(sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool {
     sender

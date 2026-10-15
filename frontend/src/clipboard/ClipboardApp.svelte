@@ -25,8 +25,14 @@
     X,
   } from "phosphor-svelte";
 
-  import LoginPanel from "../features/login/LoginPanel.svelte";
-  let loginEditing = false;
+  import CollectionPanel from "../features/collections/CollectionPanel.svelte";
+  let collectionEditing = false;
+  let collectionHistoryIds: number[] = [];
+  function collectHistory(ids: number[]) {
+    collectionHistoryIds = [...ids];
+    selectedIds = [];
+    changeFilter("collections");
+  }
   import BrandLogo from "../BrandLogo.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
@@ -45,6 +51,7 @@
   import { filterClipboardLabels } from "./labelFilters";
   import { clearThumbnailCache } from "./thumbnailCache";
   import { clearHtmlPreviewCache } from "./htmlPreviewCache";
+  import { clearFilePreviewCache } from "./filePreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
   import {
     resolveClipboardKeyboardAction,
@@ -102,7 +109,7 @@
     { id: "text", label: "文本", icon: TextT, size: 20 },
     { id: "image", label: "图片", icon: ImageSquare, size: 20 },
     { id: "files", label: "文件", icon: FileText, size: 19 },
-    { id: "login", label: "登录", icon: LockKey, size: 20 },
+    { id: "collections", label: "集合", icon: StackSimple, size: 20 },
     { id: "favorites", label: "收藏", icon: Star, size: 20, weight: "fill" },
   ];
 
@@ -307,13 +314,14 @@
   function changeFilter(value: ClipboardFilter) {
     abandonNearby();
     filter = value;
-    if (value === "login") selectedLabelFilter = null;
+    if (value === "collections") selectedLabelFilter = null;
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
 
   function estimatedRowHeight(item: ClipboardItem) {
     if (item.kind === "image") return 140;
+    if (item.kind === "files") return item.itemCount > 2 ? 164 : item.itemCount > 1 ? 141 : 112;
     if (item.kind === "html") return 126;
     if (
       item.kind === "text" &&
@@ -449,6 +457,18 @@
     }
 
     void (async () => {
+      // Attach history listeners before visibility queries and other initialization.
+      await scope.add(
+        clipboardBridge.onChanged(() => {
+          historyChangeCount += 1;
+          requestHistoryRefresh();
+        }),
+      );
+      await scope.add(
+        clipboardBridge.onOcrChanged(() => {
+          if (debouncedSearch.trim()) requestHistoryRefresh();
+        }),
+      );
       await scope.add(clipboardBridge.onDragEnded((event) => dragSession.ended(event)));
       if (windowsClipboard) {
         await scope.add(
@@ -475,7 +495,15 @@
           clipboardBridge,
           () => {
             windowVisible = true;
+            // Every wake starts at the default page, without a saved query or anchor.
+            abandonNearby();
+            setSearchState("", "all", null);
+            selectedId = null;
+            selectedIds = [];
+            scrollTop = 0;
+            scrollElement?.scrollTo({ top: 0 });
             pasteError = "";
+            window.clearTimeout(historyRefreshTimer);
             historyRefreshPending = false;
             const shouldFocusSearch = autoFocusSearch(
               windowsClipboard,
@@ -520,6 +548,7 @@
             clearThumbnailCache();
             resetRestoredFocus();
             clearHtmlPreviewCache();
+            clearFilePreviewCache();
             keyboardMode = "search";
             closeLabelFilter();
             selectedLabelFilter = null;
@@ -593,18 +622,6 @@
       await scope.add(
         clipboardBridge.onContinuousPasteError((reason) => {
           error = reason;
-        }),
-      );
-      await scope.add(
-        clipboardBridge.onChanged(() => {
-          historyChangeCount += 1;
-          if (nearby) nearby = { ...nearby, updated: true };
-          else if (!locating) requestHistoryRefresh();
-        }),
-      );
-      await scope.add(
-        clipboardBridge.onOcrChanged(() => {
-          if (!nearby && !locating && debouncedSearch.trim()) requestHistoryRefresh();
         }),
       );
     })().catch((reason) => {
@@ -710,11 +727,26 @@
   function requestHistoryRefresh() {
     historyRefreshPending = true;
     window.clearTimeout(historyRefreshTimer);
-    if (!windowVisible || pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu)
+    if (
+      !windowVisible ||
+      locating ||
+      pasteInFlight ||
+      dragBusy ||
+      openingContextMenu ||
+      $inlineContextMenu
+    )
       return;
     historyRefreshTimer = window.setTimeout(
       () => {
-        if (pasteInFlight || dragBusy || openingContextMenu || $inlineContextMenu) return;
+        if (
+          !windowVisible ||
+          locating ||
+          pasteInFlight ||
+          dragBusy ||
+          openingContextMenu ||
+          $inlineContextMenu
+        )
+          return;
         historyRefreshPending = false;
         void load({ preservePosition: true });
       },
@@ -786,7 +818,7 @@
     append ? (loadingMore = true) : (loading = true);
     try {
       const target = append ? targetApplication : await clipboardBridge.targetApplication();
-      const [page, pins] = await Promise.all([
+      const [firstPage, pins] = await Promise.all([
         clipboardBridge.history({
           search: debouncedSearch,
           kind: kindForFilter(filter),
@@ -805,8 +837,31 @@
               )
             : Promise.resolve([]),
       ]);
+      // Reload the loaded range so an automatic update also reaches paginated rows.
+      let page = firstPage;
+      const refreshedEntries = [...page.entries];
+      const seen = new Set(refreshedEntries.map((item) => item.id));
+      const refreshSize = preservePosition ? history.entries.length : FETCH_SIZE;
+      while (!append && refreshedEntries.length < refreshSize && page.nextCursor) {
+        if (generation !== loadGeneration) return;
+        page = await clipboardBridge.history({
+          search: debouncedSearch,
+          kind: kindForFilter(filter),
+          favoriteOnly: filter === "favorites",
+          labelIds: selectedLabelFilter ? [selectedLabelFilter] : [],
+          cursor: page.nextCursor,
+          limit: FETCH_SIZE,
+        });
+        for (const item of page.entries) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            refreshedEntries.push(item);
+          }
+        }
+        if (!page.entries.length) break;
+      }
       const entries = mergeAppPinnedEntries(
-        append ? [...history.entries, ...page.entries] : page.entries,
+        append ? [...history.entries, ...page.entries] : refreshedEntries,
         filter === "all" ? pins : [],
       );
       if (generation !== loadGeneration) return;
@@ -819,17 +874,8 @@
         requestHistoryRefresh();
         return;
       }
-      const anchor = preservePosition ? viewportAnchor() : null;
+      const anchor = preservePosition && scrollTop > 0 ? viewportAnchor() : null;
       const previousSelection = selectedId;
-      // A first-page update cannot replace a user's paginated view when its
-      // anchor has fallen outside that page. Reopening loads the latest order.
-      if (
-        preservePosition &&
-        [anchor?.id, previousSelection].some(
-          (id) => id != null && !entries.some((item) => item.id === id),
-        )
-      )
-        return;
       targetApplication = target;
       applicationPins = pins;
       applicationPinIds = new Set(pins.map((item) => item.id));
@@ -846,7 +892,11 @@
             return height === undefined ? [] : [[item.id, height] as const];
           }),
         );
-        selectedId = preservePosition ? previousSelection : (entries[0]?.id ?? null);
+        selectedId =
+          preservePosition && entries.some((item) => item.id === previousSelection)
+            ? previousSelection
+            : (entries[0]?.id ?? null);
+        selectedIds = selectedIds.filter((id) => entries.some((item) => item.id === id));
         if (preservePosition) {
           await restorePosition(anchor, scrollTop, generation);
         } else {
@@ -961,7 +1011,10 @@
     } catch (reason) {
       if (generation === loadGeneration) navigationError = String(reason);
     } finally {
-      if (generation === loadGeneration) locating = false;
+      if (generation === loadGeneration) {
+        locating = false;
+        if (historyRefreshPending) requestHistoryRefresh();
+      }
     }
   }
 
@@ -986,6 +1039,7 @@
       await load();
     }
     if (generation !== loadGeneration) return;
+    requestHistoryRefresh();
     if (keyboardMode === "search") await focusSearch();
     else if (!windowsClipboard) {
       await tick();
@@ -1017,7 +1071,7 @@
         return;
       }
       if (!page) {
-        navigationError = tr("这条记录已被删除或清理，请返回搜索重新选择。", language);
+        await returnToSearch();
         return;
       }
       nearby = {
@@ -1329,6 +1383,7 @@
     previewingItem = item;
     previewModel = null;
     previewError = "";
+    pasteError = "";
     previewActionBusy = false;
     previewLoading = (item.kind === "text" || item.kind === "html") && !item.sensitive;
     previewDialogOpen = true;
@@ -1419,9 +1474,9 @@
 
   function handleKeyDown(event: KeyboardEvent) {
     if (
-      filter === "login" ||
-      loginEditing ||
-      (event.target instanceof Element && event.target.closest(".login-panel"))
+      filter === "collections" ||
+      collectionEditing ||
+      (event.target instanceof Element && event.target.closest(".collection-panel"))
     )
       return;
     // Native navigation keys call this directly instead of dispatching a DOM event.
@@ -1482,6 +1537,8 @@
     if (editingTarget && target !== searchInput) return;
     const element = target instanceof Element ? target : null;
     const rowTarget = element?.closest(".clipboard-row");
+    if (element?.closest(".file-preview button") && (event.key === "Enter" || event.key === " "))
+      return;
     if (!editingTarget && !rowTarget && element?.closest("button, select, [role='option']")) return;
 
     if (
@@ -1646,6 +1703,7 @@
           !loading && !locating && search === debouncedSearch && debouncedSearch.trim()
             ? () => viewNearby(item)
             : undefined,
+        collect: () => collectHistory([item.id]),
         reload: load,
         edit: () => beginEdit(item),
         original: editOrigins.has(item.id)
@@ -1850,9 +1908,8 @@
 
 <main
   class="clipboard-window"
-  class:login-editing={loginEditing}
-  class:login-mode={filter === "login"}
-  class:login-recent={filter === "all"}
+  class:collection-editing={collectionEditing}
+  class:collection-mode={filter === "collections"}
 >
   <header class="clipboard-header drag-region" use:windowDrag>
     <button
@@ -2106,18 +2163,14 @@
     {/if}
   </div>
 
-  {#if filter === "login"}
-    <LoginPanel
+  {#if filter === "collections"}
+    <CollectionPanel
+      targetName={targetApplication?.name ?? ""}
       search={debouncedSearch}
-      tag={selectedLabel?.name ?? null}
-      bind:editing={loginEditing}
+      bind:editing={collectionEditing}
+      bind:historyIds={collectionHistoryIds}
     />
   {:else}
-    {#if filter === "all"}<LoginPanel
-        search={debouncedSearch}
-        tag={selectedLabel?.name ?? null}
-        compact
-      />{/if}
     <section
       class:keyboard-active={keyboardMode === "results"}
       class="clipboard-list"
@@ -2185,6 +2238,7 @@
                 timelineTarget={nearby?.anchor.id === entry.item.id}
                 edited={editOrigins.has(entry.item.id)}
                 onEdit={() => void beginEdit(entry.item)}
+                onPreview={() => void beginPreview(entry.item)}
                 exactTime={Boolean(nearby)}
                 previewActive={entry.index >= Math.max(0, visibleStartIndex - 2) &&
                   entry.index < visibleEndIndex + 2}
@@ -2240,6 +2294,15 @@
         <span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span>
         <StackSimple size={21} weight="bold" />
       </button>
+      <button
+        class="multi-action"
+        type="button"
+        disabled={selectedItems.length > 64 ||
+          selectedItems.some((item) => !item.available || !["text", "html"].includes(item.kind))}
+        on:click={() => collectHistory(selectedIds)}
+        aria-label="存为集合"
+        title="存为集合"><StackSimple size={21} /></button
+      >
       <div class="multi-action-divider" aria-hidden="true"></div>
       <button
         class="multi-action delete-action"
@@ -2265,7 +2328,7 @@
     </div>
   {/if}
 
-  {#if filter !== "login"}
+  {#if filter !== "collections"}
     <footer class="clipboard-footer drag-region" use:windowDrag>
       <div class:busy={ocrPasting} class="record-count">
         <strong>
@@ -2363,6 +2426,7 @@
             (previewingItem.kind === "text" || previewingItem.kind === "html") &&
             !previewingItem.sensitive}
           class:image-preview={previewingItem?.kind === "image" && !previewingItem.sensitive}
+          class:files-preview={previewingItem?.kind === "files" && !previewingItem.sensitive}
           class="clipboard-preview-body"
         >
           {#if previewLoading}
@@ -2401,6 +2465,7 @@
               item={previewingItem}
               {language}
               interactiveImage={true}
+              detailedFiles={true}
               imageSelectionBusy={previewActionBusy}
               onCopyImageText={copySegment}
               onPasteImageText={pasteSegment}
@@ -2408,6 +2473,9 @@
             />
           {/if}
         </div>
+        {#if previewingItem?.kind === "files" && pasteError}
+          <div class="file-preview-paste-error" role="alert">{pasteError}</div>
+        {/if}
         {#if !imagePreviewReady && (!previewingItem || previewLoading || (previewError && !previewModel) || previewingItem.sensitive || (previewingItem.kind !== "text" && previewingItem.kind !== "html"))}
           <div class="dialog-actions">
             <Dialog.Close class="dialog-button">{uiTranslate("返回", $uiLanguage)}</Dialog.Close>
@@ -2415,12 +2483,21 @@
               <button
                 class="dialog-button primary"
                 type="button"
-                disabled={previewActionBusy}
-                on:click={() => pasteItem(previewingItem!)}
+                disabled={previewActionBusy ||
+                  pasteInFlight ||
+                  dragBusy ||
+                  !previewingItem.available ||
+                  (previewingItem.kind === "files" && previewingItem.itemCount === 0)}
+                on:click={async () => {
+                  await pasteItem(previewingItem!);
+                  if (previewingItem?.kind === "files" && !pasteError) previewDialogOpen = false;
+                }}
               >
-                {previewingItem.kind === "text" || previewingItem.kind === "html"
-                  ? uiTranslate("粘贴全文", $uiLanguage)
-                  : uiTranslate("插入", $uiLanguage)}
+                {previewingItem.kind === "files" && previewingItem.itemCount > 1
+                  ? t("插入全部 {count} 个文件", language, { count: previewingItem.itemCount })
+                  : previewingItem.kind === "text" || previewingItem.kind === "html"
+                    ? uiTranslate("粘贴全文", $uiLanguage)
+                    : uiTranslate("插入", $uiLanguage)}
               </button>
             {/if}
           </div>
@@ -2465,21 +2542,18 @@
 <InlineContextMenu />
 
 <style>
-  .clipboard-window.login-mode :global(.label-filter-toolbar) {
+  .clipboard-window.collection-mode :global(.label-filter-toolbar) {
     display: none;
   }
-  .clipboard-window.login-mode {
+  .clipboard-window.collection-mode {
     grid-template-rows: 60px 60px auto minmax(0, 1fr);
   }
-  .clipboard-window.login-recent {
-    grid-template-rows: 60px 60px auto auto minmax(0, 1fr) 48px;
-  }
-  .clipboard-window.login-editing {
+  .clipboard-window.collection-editing {
     grid-template-rows: minmax(0, 1fr);
   }
-  .clipboard-window.login-editing :global(.clipboard-header),
-  .clipboard-window.login-editing :global(.clipboard-filters),
-  .clipboard-window.login-editing :global(.clipboard-navigation) {
+  .clipboard-window.collection-editing :global(.clipboard-header),
+  .clipboard-window.collection-editing :global(.clipboard-filters),
+  .clipboard-window.collection-editing :global(.clipboard-navigation) {
     display: none;
   }
 </style>

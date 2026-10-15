@@ -25,16 +25,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "aead"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d122413f284cf2d62fb1b7db97e02edb8cda96d769b16e443a4f6195e35662b0"
-dependencies = [
- "crypto-common 0.1.7",
- "generic-array",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -182,7 +172,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-automation"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=a878c56bf69af888bba6da807820707d7e60b0e5#a878c56bf69af888bba6da807820707d7e60b0e5"
+source = "git+https://github.com/ArcRelayProject/arcrelay-automation.git?rev=cc29e6782704a8d44d0033fbf5feeccad0d96afd#cc29e6782704a8d44d0033fbf5feeccad0d96afd"
 dependencies = [
  "async-trait",
  "chrono",
@@ -218,22 +208,19 @@ dependencies = [
 [[package]]
 name = "arcrelay-core"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=83cd0b49f1f120de030de5c7af38b5cb163b94b5#83cd0b49f1f120de030de5c7af38b5cb163b94b5"
+source = "git+https://github.com/ArcRelayProject/arcrelay-core.git?rev=084ed1ee264eb7e8c14b77e1c4c0bd53893f7b97#084ed1ee264eb7e8c14b77e1c4c0bd53893f7b97"
 dependencies = [
  "ammonia",
  "arcrelay-content",
  "arcrelay-input",
- "argon2",
  "async-trait",
  "block2 0.6.2",
- "chacha20poly1305",
  "chrono",
  "clipboard-rs",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "data-encoding",
  "dispatch",
- "fs2",
  "hmac",
  "hostname",
  "image",
@@ -288,11 +275,12 @@ dependencies = [
  "arcrelay-transfer",
  "arcrelay-transport",
  "arcrelay-web-gateway",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=3b972140a7dcf1af921f457516f9f29b9d83e91a)",
+ "arcrelay-wire",
  "async-trait",
  "axum",
  "base64 0.22.1",
  "block2 0.6.2",
+ "btleplug",
  "chrono",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
@@ -360,7 +348,6 @@ dependencies = [
  "uuid",
  "windows 0.61.3",
  "windows-core 0.61.2",
- "windows-future 0.2.1",
  "x11rb",
  "zeroize",
  "zip 7.2.0",
@@ -402,7 +389,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-gaze"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-gaze.git?rev=5a6e8ca7c9c8dea713abb6db081414b198967db6#5a6e8ca7c9c8dea713abb6db081414b198967db6"
+source = "git+https://github.com/ArcRelayProject/arcrelay-gaze.git?rev=d953572a1109225918a1a7721d28084a15caaf2b#d953572a1109225918a1a7721d28084a15caaf2b"
 dependencies = [
  "arcrelay-input",
  "camera-rs",
@@ -420,12 +407,12 @@ dependencies = [
 [[package]]
 name = "arcrelay-input"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=edb2888b5400a0b5cd34c82ce125df9d2a13c94a#edb2888b5400a0b5cd34c82ce125df9d2a13c94a"
+source = "git+https://github.com/ArcRelayProject/arcrelay-input.git?rev=74faeae5cf01c19ede4495088aff951e7ac7d124#74faeae5cf01c19ede4495088aff951e7ac7d124"
 dependencies = [
  "arc-swap",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=845b2e5fec81e186fbf74a32f14acf505c145326)",
+ "arcrelay-wire",
  "prost",
  "prost-build",
  "protoc-bin-vendored",
@@ -439,11 +426,11 @@ dependencies = [
 [[package]]
 name = "arcrelay-network"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=3ee41ae12f0fc2fb7cb836a9f62099820776a18b#3ee41ae12f0fc2fb7cb836a9f62099820776a18b"
+source = "git+https://github.com/ArcRelayProject/arcrelay-network.git?rev=d89e17976678182cfb3ce1d8b09fb2006b6ba1a3#d89e17976678182cfb3ce1d8b09fb2006b6ba1a3"
 dependencies = [
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=845b2e5fec81e186fbf74a32f14acf505c145326)",
+ "arcrelay-wire",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -481,13 +468,13 @@ dependencies = [
 [[package]]
 name = "arcrelay-print"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=69d50cdbd14e432629bb6f88988c66c09568d949#69d50cdbd14e432629bb6f88988c66c09568d949"
+source = "git+https://github.com/ArcRelayProject/arcrelay-print.git?rev=e195255e22a552591db724fb7bc6378c576c3b9d#e195255e22a552591db724fb7bc6378c576c3b9d"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=845b2e5fec81e186fbf74a32f14acf505c145326)",
+ "arcrelay-wire",
  "async-trait",
  "axum",
  "http-body-util",
@@ -511,13 +498,13 @@ dependencies = [
 [[package]]
 name = "arcrelay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=a560de1edc1598ea5804f861831524e284d9b02f#a560de1edc1598ea5804f861831524e284d9b02f"
+source = "git+https://github.com/ArcRelayProject/arcrelay-protocol.git?rev=f6fb4d799ce714114c352b5972366cbb089fec0b#f6fb4d799ce714114c352b5972366cbb089fec0b"
 dependencies = [
  "arcrelay-core",
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=3b972140a7dcf1af921f457516f9f29b9d83e91a)",
+ "arcrelay-wire",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -538,13 +525,13 @@ dependencies = [
 [[package]]
 name = "arcrelay-transfer"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=1c95ddf9b9d468f6a8c4ed238739e4635e7f44ba#1c95ddf9b9d468f6a8c4ed238739e4635e7f44ba"
+source = "git+https://github.com/ArcRelayProject/arcrelay-transfer.git?rev=a0310f482277d6815e1f9dc1cd0b652c48eb4b0a#a0310f482277d6815e1f9dc1cd0b652c48eb4b0a"
 dependencies = [
  "arcrelay-content",
  "arcrelay-network",
  "arcrelay-peer",
  "arcrelay-transport",
- "arcrelay-wire 0.1.0 (git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=845b2e5fec81e186fbf74a32f14acf505c145326)",
+ "arcrelay-wire",
  "async-trait",
  "base64 0.22.1",
  "bytes",
@@ -603,18 +590,7 @@ dependencies = [
 [[package]]
 name = "arcrelay-wire"
 version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=3b972140a7dcf1af921f457516f9f29b9d83e91a#3b972140a7dcf1af921f457516f9f29b9d83e91a"
-dependencies = [
- "bytes",
- "prost",
- "prost-build",
- "protoc-bin-vendored",
-]
-
-[[package]]
-name = "arcrelay-wire"
-version = "0.1.0"
-source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=845b2e5fec81e186fbf74a32f14acf505c145326#845b2e5fec81e186fbf74a32f14acf505c145326"
+source = "git+https://github.com/ArcRelayProject/arcrelay-wire.git?rev=6f5c58460439382f43489f92c572d9dc52f87e59#6f5c58460439382f43489f92c572d9dc52f87e59"
 dependencies = [
  "bytes",
  "prost",
@@ -1130,6 +1106,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "bluez-async"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84ae4213cc2a8dc663acecac67bbdad05142be4d8ef372b6903abf878b0c690a"
+dependencies = [
+ "bitflags 2.13.1",
+ "bluez-generated",
+ "dbus",
+ "dbus-tokio",
+ "futures",
+ "itertools 0.14.0",
+ "log",
+ "serde",
+ "serde-xml-rs",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "bluez-generated"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9676783265eadd6f11829982792c6f303f3854d014edfba384685dcf237dd062"
+dependencies = [
+ "dbus",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1157,6 +1162,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
 dependencies = [
  "tinyvec",
+]
+
+[[package]]
+name = "btleplug"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c3264dbe2c8e29381e4e95aa2d2783ad0b9192b511240f3755b7e5e3cee87e"
+dependencies = [
+ "async-trait",
+ "bitflags 2.13.1",
+ "bluez-async",
+ "dashmap",
+ "dbus",
+ "futures",
+ "jni 0.19.0",
+ "log",
+ "objc2 0.5.2",
+ "objc2-core-bluetooth",
+ "objc2-foundation 0.2.2",
+ "once_cell",
+ "static_assertions",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+ "windows 0.62.2",
+ "windows-future 0.3.2",
 ]
 
 [[package]]
@@ -1352,17 +1384,6 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
 name = "chacha20"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
-dependencies = [
- "cfg-if",
- "cipher",
- "cpufeatures 0.2.17",
-]
-
-[[package]]
-name = "chacha20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
@@ -1370,19 +1391,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "chacha20poly1305"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
-dependencies = [
- "aead",
- "chacha20 0.9.1",
- "cipher",
- "poly1305",
- "zeroize",
 ]
 
 [[package]]
@@ -1407,17 +1415,6 @@ checksum = "a6139a8597ed92cf816dfb33f5dd6cf0bb93a6adc938f11039f371bc5bcd26c3"
 dependencies = [
  "chrono",
  "phf 0.12.1",
-]
-
-[[package]]
-name = "cipher"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
-dependencies = [
- "crypto-common 0.1.7",
- "inout",
- "zeroize",
 ]
 
 [[package]]
@@ -1718,7 +1715,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
- "rand_core 0.6.4",
  "typenum",
 ]
 
@@ -1912,6 +1908,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1929,9 +1939,22 @@ version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ab69f03cc8c4340c9c8e315114e1658e6775a9b16a04357973aa21cec22b32e"
 dependencies = [
+ "futures-channel",
+ "futures-util",
  "libc",
  "libdbus-sys",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "dbus-tokio"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007688d459bc677131c063a3a77fb899526e17b7980f390b69644bdbc41fad13"
+dependencies = [
+ "dbus",
+ "libc",
+ "tokio",
 ]
 
 [[package]]
@@ -3111,6 +3134,12 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+
+[[package]]
+name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
@@ -3611,15 +3640,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inout"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
-dependencies = [
- "generic-array",
-]
-
-[[package]]
 name = "interpolate_name"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3745,6 +3765,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
 dependencies = [
  "jiff-tzdb",
+]
+
+[[package]]
+name = "jni"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6df18c2e3db7e453d3c6ac5b3e9d5182664d28788126d39b91f2d1e22b017ec"
+dependencies = [
+ "cesu8",
+ "combine",
+ "jni-sys 0.3.1",
+ "log",
+ "thiserror 1.0.69",
+ "walkdir",
 ]
 
 [[package]]
@@ -4749,6 +4783,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-bluetooth"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a644b62ffb826a5277f536cf0f701493de420b13d40e700c452c36567771111"
+dependencies = [
+ "bitflags 2.13.1",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
+]
+
+[[package]]
 name = "objc2-core-data"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5087,12 +5132,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "opaque-debug"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openssl-probe"
@@ -5443,17 +5482,6 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
-
-[[package]]
-name = "poly1305"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf"
-dependencies = [
- "cpufeatures 0.2.17",
- "opaque-debug",
- "universal-hash",
-]
 
 [[package]]
 name = "portable-atomic"
@@ -5904,7 +5932,7 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
- "chacha20 0.10.2",
+ "chacha20",
  "getrandom 0.4.3",
  "rand_core 0.10.1",
 ]
@@ -6786,6 +6814,18 @@ dependencies = [
  "serde",
  "serde_core",
  "typeid",
+]
+
+[[package]]
+name = "serde-xml-rs"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc2215ce3e6a77550b80a1c37251b7d294febaf42e36e21b7b411e0bf54d540d"
+dependencies = [
+ "log",
+ "serde",
+ "thiserror 2.0.20",
+ "xml",
 ]
 
 [[package]]
@@ -8190,6 +8230,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -8645,16 +8686,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "universal-hash"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
-dependencies = [
- "crypto-common 0.1.7",
- "subtle",
-]
 
 [[package]]
 name = "unsafe-libyaml"
@@ -9901,6 +9932,12 @@ name = "xkeysym"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
+
+[[package]]
+name = "xml"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f45bb2c13fec6a6cb4c0f76a7e94839e110a14ec803ec2940777a94c347bc52"
 
 [[package]]
 name = "xxhash-rust"

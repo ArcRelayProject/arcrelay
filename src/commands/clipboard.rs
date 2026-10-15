@@ -669,6 +669,47 @@ pub async fn clipboard_text_preview(
 }
 
 #[arcrelay_desktop_ipc::command]
+pub async fn clipboard_file_names(
+    state: State<'_, DesktopState>,
+    id: u64,
+) -> Result<Vec<String>, String> {
+    crate::presence_access::require_clipboard_access(&state)?;
+    // Read the stored snapshot without probing the filesystem, activating the
+    // record, or extending retention. Missing files still have useful names.
+    let record = state
+        .clipboard
+        .export_records(vec![id])
+        .await
+        .map_err(|error| error.to_string())?
+        .pop()
+        .ok_or("clipboard source is unavailable")?;
+    crate::presence_access::require_clipboard_access(&state)?;
+    clipboard_file_names_from_record(record)
+}
+
+fn clipboard_file_names_from_record(
+    record: arcrelay_core::domain::clipboard::ClipboardExportRecord,
+) -> Result<Vec<String>, String> {
+    if record.sensitive {
+        return Err("sensitive clipboard content is hidden".into());
+    }
+    let arcrelay_core::domain::clipboard::ClipboardPayload::Files(paths) = record.payload else {
+        return Err("clipboard record does not contain files".into());
+    };
+    // These are source-device paths: use the host's path semantics and expose
+    // only the basename, never the private parent directory.
+    Ok(paths
+        .into_iter()
+        .map(|path| {
+            Path::new(&path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "File".to_string())
+        })
+        .collect())
+}
+
+#[arcrelay_desktop_ipc::command]
 pub async fn clipboard_html_preview(
     state: State<'_, DesktopState>,
     id: u64,
@@ -1691,7 +1732,61 @@ pub async fn clipboard_join_segments(
 
 #[cfg(test)]
 mod tests {
-    use super::join_clipboard_text;
+    use super::{clipboard_file_names_from_record, join_clipboard_text};
+    use arcrelay_core::domain::clipboard::{ClipboardExportRecord, ClipboardPayload};
+
+    fn file_record(payload: ClipboardPayload, sensitive: bool) -> ClipboardExportRecord {
+        ClipboardExportRecord {
+            id: 1,
+            content_hash: "test".into(),
+            sensitive,
+            payload,
+        }
+    }
+
+    #[test]
+    fn file_preview_preserves_complete_names_and_order_without_accessing_files() {
+        let names = vec![
+            "报告,终稿.apk",
+            "report.zip",
+            "报告,终稿.apk",
+            "长名称-v1.0.16.apk",
+        ];
+        let paths = names
+            .iter()
+            .map(|name| {
+                std::path::Path::new("private-directory-that-does-not-exist")
+                    .join(name)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(
+            clipboard_file_names_from_record(file_record(ClipboardPayload::Files(paths), false))
+                .unwrap(),
+            names
+        );
+    }
+
+    #[test]
+    fn file_preview_rejects_sensitive_and_non_file_records() {
+        assert!(clipboard_file_names_from_record(file_record(
+            ClipboardPayload::Files(vec!["private-name.apk".into()]),
+            true
+        ))
+        .is_err());
+        assert!(clipboard_file_names_from_record(file_record(
+            ClipboardPayload::Text("private text".into()),
+            false
+        ))
+        .is_err());
+        assert!(clipboard_file_names_from_record(file_record(
+            ClipboardPayload::Files(vec![]),
+            false
+        ))
+        .unwrap()
+        .is_empty());
+    }
 
     #[test]
     fn combined_paste_joins_in_order_with_one_newline_separator() {

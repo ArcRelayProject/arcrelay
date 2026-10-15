@@ -43,9 +43,7 @@ export const presenceLabels: Record<PresenceEvent, string> = {
   multiplePeople: "多人在场",
   uncertain: "无法确认身份",
 };
-export function newDefinition(
-  trigger: AutomationTrigger,
-): AutomationDefinition {
+export function newDefinition(trigger: AutomationTrigger): AutomationDefinition {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
@@ -63,56 +61,108 @@ export function newDefinition(
 }
 export function triggerSummary(trigger: AutomationTrigger, language: LanguagePreference = "zhCn") {
   switch (trigger.type) {
+    case "bluetooth":
+      return t("当 {device} 持续远离 {seconds} 秒时", language, {
+        device: trigger.config.deviceName || translate("所选蓝牙设备", language),
+        seconds: trigger.config.durationSeconds,
+      });
     case "manual":
       return translate("手动运行", language);
     case "schedule":
       return `${weekSummary(trigger.weekdays, language)} ${trigger.time}`;
     case "application":
-      return t("当 {apps} {event}时", language, { apps: trigger.apps.length ? (language === "zhCn" ? trigger.apps.map(a => a.name).join(" 或 ") : new Intl.ListFormat(localeFor(language), { type: "disjunction" }).format(trigger.apps.map(a => a.name))) : translate("所选应用", language), event: translate(applicationLabels[trigger.event], language) });
+      return t("当 {apps} {event}时", language, {
+        apps: trigger.apps.length
+          ? language === "zhCn"
+            ? trigger.apps.map((a) => a.name).join(" 或 ")
+            : new Intl.ListFormat(localeFor(language), { type: "disjunction" }).format(
+                trigger.apps.map((a) => a.name),
+              )
+          : translate("所选应用", language),
+        event: translate(applicationLabels[trigger.event], language),
+      });
     case "system":
-      return t("当{event}时", language, { event: translate(systemLabels[trigger.event], language) });
+      return t("当{event}时", language, {
+        event: translate(systemLabels[trigger.event], language),
+      });
     case "device":
-      return t("当{devices}{event}时", language, { devices: translate(trigger.deviceIds.length ? "所选设备" : "任意已配对设备", language), event: translate(trigger.connected ? "连接" : "断开", language) });
+      return t("当{devices}{event}时", language, {
+        devices: translate(trigger.deviceIds.length ? "所选设备" : "任意已配对设备", language),
+        event: translate(trigger.connected ? "连接" : "断开", language),
+      });
     case "transfer":
-      return t("当文件{event}完成时", language, { event: translate(trigger.received ? "接收" : "发送", language) });
+      return t("当文件{event}完成时", language, {
+        event: translate(trigger.received ? "接收" : "发送", language),
+      });
     case "hotkey":
-      return t("当按下 {shortcut} 时", language, { shortcut: trigger.shortcut || translate("快捷键", language) });
+      return t("当按下 {shortcut} 时", language, {
+        shortcut: trigger.shortcut || translate("快捷键", language),
+      });
     case "presence":
-      return t("当{state}时", language, { state: translate(presenceLabels[trigger.state], language) });
+      return t("当{state}时", language, {
+        state: translate(presenceLabels[trigger.state], language),
+      });
   }
 }
-export function conditionSummary(condition: AutomationCondition, language: LanguagePreference = "zhCn") {
+export function conditionSummary(
+  condition: AutomationCondition,
+  language: LanguagePreference = "zhCn",
+) {
   switch (condition.type) {
     case "timeRange":
       return `${weekSummary(condition.weekdays, language)} ${condition.start}–${condition.end <= condition.start ? translate("次日 ", language) : ""}${condition.end}`;
     case "applicationRunning":
-      return t("{app} {state}", language, { app: condition.app.name, state: translate(condition.running ? "正在运行" : "未运行", language) });
+      return t("{app} {state}", language, {
+        app: condition.app.name,
+        state: translate(condition.running ? "正在运行" : "未运行", language),
+      });
     case "deviceConnected":
       return translate(condition.connected ? "所选设备已连接" : "所选设备未连接", language);
     case "presence":
-      return t("在场状态为{state}", language, { state: translate(presenceLabels[condition.state], language) });
+      return t("在场状态为{state}", language, {
+        state: translate(presenceLabels[condition.state], language),
+      });
   }
 }
-export function stepSummary(step: AutomationStep, actions: ActionView[], language: LanguagePreference = "zhCn") {
+export function stepSummary(
+  step: AutomationStep,
+  actions: ActionView[],
+  language: LanguagePreference = "zhCn",
+) {
   switch (step.type) {
     case "quickAction":
       return (
-        (builtinNames[step.actionId] ? translate(builtinNames[step.actionId], language) : undefined) ??
+        (builtinNames[step.actionId]
+          ? translate(builtinNames[step.actionId], language)
+          : undefined) ??
         actions.find((a) => a.id === step.actionId)?.name ??
         translate("快捷动作已被删除", language)
       );
     case "shell":
       return translate("运行 Shell 脚本", language);
     case "delay":
-      return step.durationSeconds >= 60 && step.durationSeconds % 60 === 0 ? t("等待 {count} 分钟", language, { count: step.durationSeconds / 60 }) : t("等待 {count} 秒", language, { count: step.durationSeconds });
+      return step.durationSeconds >= 60 && step.durationSeconds % 60 === 0
+        ? t("等待 {count} 分钟", language, { count: step.durationSeconds / 60 })
+        : t("等待 {count} 秒", language, { count: step.durationSeconds });
     case "notification":
       return t("显示“{title}”", language, { title: step.title });
   }
 }
-export function generatedName(d: AutomationDefinition, actions: ActionView[], language: LanguagePreference = "zhCn") {
+export function generatedName(
+  d: AutomationDefinition,
+  actions: ActionView[],
+  language: LanguagePreference = "zhCn",
+) {
   return `${triggerSummary(d.trigger, language)} · ${d.steps[0] ? stepSummary(d.steps[0], actions, language) : translate("新自动化", language)}`;
 }
 export function variables(trigger: AutomationTrigger): [string, string][] {
+  if (trigger.type === "bluetooth")
+    return [
+      ["蓝牙设备", "event.bluetooth.deviceName"],
+      ["蓝牙设备标识", "event.bluetooth.deviceId"],
+      ["信号强度", "event.bluetooth.rssi"],
+      ["触发原因", "event.bluetooth.reason"],
+    ];
   if (trigger.type === "application")
     return [
       ["应用名称", "event.app.name"],
@@ -166,22 +216,33 @@ export const triggerChoices: {
   capability: string;
   trigger: () => AutomationTrigger;
 }[] = [
-  ...(["foreground", "started", "exited", "background"] as const).map(
-    (event) => ({
-      category: "应用",
-      label: `应用${applicationLabels[event]}`,
-      capability: `application.${event}`,
-      trigger: () => ({ type: "application" as const, event, apps: [] }),
+  {
+    category: "蓝牙",
+    label: "设备持续远离",
+    capability: "bluetooth.far",
+    trigger: () => ({
+      type: "bluetooth",
+      config: {
+        deviceId: "",
+        deviceName: "",
+        calibration: null,
+        durationSeconds: 15,
+        signalLossSeconds: null,
+      },
     }),
-  ),
-  ...(["locked", "unlocked", "sleeping", "resumed", "started"] as const).map(
-    (event) => ({
-      category: "系统",
-      label: systemLabels[event],
-      capability: `system.${event}`,
-      trigger: () => ({ type: "system" as const, event }),
-    }),
-  ),
+  },
+  ...(["foreground", "started", "exited", "background"] as const).map((event) => ({
+    category: "应用",
+    label: `应用${applicationLabels[event]}`,
+    capability: `application.${event}`,
+    trigger: () => ({ type: "application" as const, event, apps: [] }),
+  })),
+  ...(["locked", "unlocked", "sleeping", "resumed", "started"] as const).map((event) => ({
+    category: "系统",
+    label: systemLabels[event],
+    capability: `system.${event}`,
+    trigger: () => ({ type: "system" as const, event }),
+  })),
   ...(["ownerPresent", "absent", "unknownPresent", "multiplePeople", "uncertain"] as const).map(
     (state) => ({
       category: "在场",
@@ -242,7 +303,14 @@ export function weekSummary(days: number[], language: LanguagePreference = "zhCn
   if (sorted === "1,2,3,4,5") return translate("工作日", language);
   if (sorted === "1,2,3,4,5,6,7") return translate("每天", language);
   if (sorted === "6,7") return translate("周末", language);
-  return days.length ? t("每周{days}", language, { days: [...days].sort((a, b) => a - b).map(day => language === "zhCn" ? dayNames[day] : weekdayName(day, language)).join(language === "zhCn" ? "、" : ", ") }) : translate("未选择日期", language);
+  return days.length
+    ? t("每周{days}", language, {
+        days: [...days]
+          .sort((a, b) => a - b)
+          .map((day) => (language === "zhCn" ? dayNames[day] : weekdayName(day, language)))
+          .join(language === "zhCn" ? "、" : ", "),
+      })
+    : translate("未选择日期", language);
 }
 export function isActive(status: ActivityStatus) {
   return ["queued", "running", "awaitingConfirmation"].includes(status);
@@ -250,18 +318,25 @@ export function isActive(status: ActivityStatus) {
 export function formatDate(value: string | null, timezone?: string) {
   if (!value) return "尚未运行";
   try {
-    return new Intl.DateTimeFormat(typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", {
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      ...(timezone ? { timeZone: timezone } : {}),
-    }).format(new Date(value));
+    return new Intl.DateTimeFormat(
+      typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US",
+      {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...(timezone ? { timeZone: timezone } : {}),
+      },
+    ).format(new Date(value));
   } catch {
     return value;
   }
 }
-export function ruleSummary(d: AutomationDefinition, actions: ActionView[], language: LanguagePreference = "zhCn") {
+export function ruleSummary(
+  d: AutomationDefinition,
+  actions: ActionView[],
+  language: LanguagePreference = "zhCn",
+) {
   return `${triggerSummary(d.trigger, language)} → ${d.steps.map((s) => stepSummary(s, actions, language)).join(" → ") || translate("尚未添加动作", language)}`;
 }
 export function matchesAutomation(
@@ -270,11 +345,14 @@ export function matchesAutomation(
   actions: ActionView[],
   language: LanguagePreference = "zhCn",
 ) {
-  return `${d.name} ${ruleSummary(d, actions, language)} ${d.conditions.map(c => conditionSummary(c, language)).join(" ")}`
+  return `${d.name} ${ruleSummary(d, actions, language)} ${d.conditions.map((c) => conditionSummary(c, language)).join(" ")}`
     .toLocaleLowerCase()
     .includes(query.trim().toLocaleLowerCase());
 }
-export function copyDefinition(d: AutomationDefinition, language: LanguagePreference = "zhCn"): AutomationDefinition {
+export function copyDefinition(
+  d: AutomationDefinition,
+  language: LanguagePreference = "zhCn",
+): AutomationDefinition {
   return {
     ...structuredClone(d),
     id: crypto.randomUUID(),
@@ -289,21 +367,12 @@ export function copyDefinition(d: AutomationDefinition, language: LanguagePrefer
 export function referencedVariables(d: AutomationDefinition): string[] {
   const text = d.steps
     .map((s) =>
-      s.type === "shell"
-        ? s.script
-        : s.type === "notification"
-          ? `${s.title}\n${s.body}`
-          : "",
+      s.type === "shell" ? s.script : s.type === "notification" ? `${s.title}\n${s.body}` : "",
     )
     .join("\n");
-  return [
-    ...new Set([...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1])),
-  ];
+  return [...new Set([...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]))];
 }
-export function samplesFor(
-  d: AutomationDefinition,
-  activities: AutomationActivity[],
-) {
+export function samplesFor(d: AutomationDefinition, activities: AutomationActivity[]) {
   const keys = referencedVariables(d);
   const prefix =
     d.trigger.type === "application"
@@ -316,11 +385,16 @@ export function samplesFor(
             ? `system.${d.trigger.event}`
             : d.trigger.type;
   return activities.filter(
-    (a) =>
-      a.event.kind === prefix && keys.every((key) => key in a.event.variables),
+    (a) => a.event.kind === prefix && keys.every((key) => key in a.event.variables),
   );
 }
 
-export function weekdayName(day: number, language: LanguagePreference, width: "short" | "long" = "short") {
-  return new Intl.DateTimeFormat(localeFor(language), { weekday: width, timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, day)));
+export function weekdayName(
+  day: number,
+  language: LanguagePreference,
+  width: "short" | "long" = "short",
+) {
+  return new Intl.DateTimeFormat(localeFor(language), { weekday: width, timeZone: "UTC" }).format(
+    new Date(Date.UTC(2024, 0, day)),
+  );
 }

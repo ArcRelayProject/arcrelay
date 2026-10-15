@@ -20,8 +20,9 @@ mod infrastructure;
 mod ipc;
 #[cfg(test)]
 mod ipc_contract;
+mod legacy_collection_cleanup;
 mod localization;
-mod login;
+
 mod mcp;
 mod notification;
 mod observability;
@@ -235,6 +236,9 @@ fn main() {
             commands::rotate_mcp_client_token,
             commands::get_mcp_client_config,
             commands::list_mcp_configuration_changes,
+            commands::bluetooth_snapshot,
+            commands::calibrate_bluetooth,
+            commands::preview_bluetooth_trigger,
             commands::list_automations,
             commands::pick_automation_path,
             commands::save_automation,
@@ -292,6 +296,7 @@ fn main() {
             commands::clipboard_image_preview,
             commands::clipboard_image_ocr,
             commands::clipboard_html_preview,
+            commands::clipboard_file_names,
             commands::clipboard_text_preview,
             commands::clipboard_copy_record,
             commands::clipboard_copy_text,
@@ -330,7 +335,7 @@ fn main() {
             commands::clipboard_send_files,
             commands::clipboard_clear_history,
             commands::hide_clipboard_window,
-            commands::login_request,
+            commands::collection_request,
             commands::get_clipboard_window_pinned,
             commands::set_clipboard_window_pinned,
             commands::start_clipboard_window_drag,

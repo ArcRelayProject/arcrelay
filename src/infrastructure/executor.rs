@@ -438,13 +438,7 @@ fn execute_power_operation(
 ) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     let command = match operation {
-        SystemOperation::LockScreen => {
-            let mut command = Command::new(
-                "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
-            );
-            command.arg("-suspend");
-            command
-        }
+        SystemOperation::LockScreen => return super::screen_lock::lock(),
         SystemOperation::Sleep => {
             let mut command = Command::new("pmset");
             command.arg("sleepnow");

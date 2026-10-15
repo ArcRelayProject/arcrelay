@@ -65,6 +65,7 @@ export const clipboardBridge = {
     format: import("../ipc/generated").ClipboardTextFormat | null = null,
   ) => invoke("clipboard_text_preview", { id: item.id, format }),
   htmlPreview: (item: ClipboardItem) => invoke("clipboard_html_preview", { id: item.id }),
+  fileNames: (item: ClipboardItem) => invoke("clipboard_file_names", { id: item.id }),
   copy: (id: number) => invoke("clipboard_copy_record", { id }),
   copyText: (content: string) => invoke("clipboard_copy_text", { content }),
   pasteText: (content: string) => invoke("clipboard_paste_text", { content }),

@@ -248,6 +248,6 @@ pub fn request_main_window(app: AppHandle) {
     }
 }
 
-pub fn open_login_settings(app: &AppHandle) -> Result<(), String> {
-    tray::navigate(app, "settings:clipboard-login")
+pub fn open_clipboard_settings(app: &AppHandle) -> Result<(), String> {
+    tray::navigate(app, "settings:clipboard")
 }

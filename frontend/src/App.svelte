@@ -121,7 +121,6 @@
   const previewParams = new URLSearchParams(window.location.search);
   const requestedPage = previewParams.get("page");
   const requestedSettingsTab = previewParams.get("settingsTab");
-  let loginSecurityRequested = previewParams.has("login-security") ? 1 : 0;
   const settingsTabs = new Set<SettingsTab>([
     "connection",
     "files",
@@ -480,9 +479,8 @@
   async function consumeTrayNavigation() {
     try {
       const destination = parseTrayDestination(await bridge.takePendingTrayNavigation());
-      if (destination?.page === "settings:clipboard-login") {
+      if (destination?.page === "settings:clipboard") {
         openSettings("clipboard");
-        loginSecurityRequested++;
       } else if (destination?.page === "settings") openSettings("general");
       else if (destination?.page === "devices") openSettings("connection");
       else if (destination?.page === "transfers")
@@ -1253,7 +1251,6 @@
       />
     {:else}
       <SettingsView
-        {loginSecurityRequested}
         {snapshot}
         bind:settingsTab
         {appSettings}

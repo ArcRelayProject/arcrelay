@@ -15,6 +15,7 @@ impl ClipboardSyncManager {
             network,
             commands: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             replica_connections: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            collection_receipts: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             replica_gates: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             manual_merge_gate: Arc::new(tokio::sync::Mutex::new(())),
             remote_file_peers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
@@ -587,7 +588,7 @@ impl ClipboardSyncManager {
         }
     }
 
-    async fn connection_candidates(
+    pub(super) async fn connection_candidates(
         &self,
         network: &NetworkRuntime,
     ) -> Result<(Vec<PeerAdvertisement>, HashSet<String>), String> {

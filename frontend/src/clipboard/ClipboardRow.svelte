@@ -11,6 +11,7 @@
   export let pinnedApplication: string | null = null;
   export let edited = false;
   export let onEdit: () => void = () => {};
+  export let onPreview: () => void = () => {};
   export let shortcutIndex: number | null;
   export let selected: boolean;
   export let multiSelected = false;
@@ -43,6 +44,7 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") onSelect();
   }
 
@@ -119,7 +121,7 @@
     >
   {/if}
   <div class="clipboard-content">
-    <ContentPreview {item} {language} active={previewActive} />
+    <ContentPreview {item} {language} active={previewActive} onPreviewFiles={onPreview} />
   </div>
   <div class="clipboard-meta">
     {#if timelineTarget}<span class="timeline-target-badge">{tr("定位记录", language)}</span>{/if}

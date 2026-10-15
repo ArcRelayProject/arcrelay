@@ -74,12 +74,10 @@
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
-.au-page
-  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])),
+.au-page :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])),
 .au-page .app-select-trigger,
 .au-page textarea,
-.au-modal
-  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])),
+.au-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])),
 .au-modal .app-select-trigger,
 .au-modal textarea {
   min-width: 0;
@@ -828,7 +826,7 @@
 }
 .au-categories {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   gap: 10px;
   margin-bottom: 22px;
 }

@@ -46,6 +46,7 @@ pub struct ClipboardSyncManager {
     network: Arc<tokio::sync::OnceCell<Arc<NetworkRuntime>>>,
     commands: Arc<tokio::sync::Mutex<HashMap<String, mpsc::Sender<ConnectionCommand>>>>,
     replica_connections: Arc<tokio::sync::Mutex<HashMap<String, quinn::Connection>>>,
+    collection_receipts: Arc<tokio::sync::Mutex<HashMap<String, HashMap<String, String>>>>,
     replica_gates: Arc<tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     manual_merge_gate: Arc<tokio::sync::Mutex<()>>,
     remote_file_peers: Arc<tokio::sync::Mutex<HashSet<String>>>,
@@ -236,7 +237,7 @@ async fn wait_for_available<T>(
 }
 
 mod manager;
-mod replication;
+pub(crate) mod replication;
 pub use replication::ClipboardMergeSummary;
 mod remote_files;
 mod transfer;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BluetoothTriggerEditor from "./BluetoothTriggerEditor.svelte";
   import AppSelect from "../components/AppSelect.svelte";
   import { weekdayName } from "../automation";
   import { translate as uiTranslate, language as uiLanguage } from "../i18n";
@@ -13,6 +14,7 @@
     CheckCircle,
     Info,
     Eye,
+    Bluetooth,
   } from "phosphor-svelte";
   import { bridge } from "../bridge";
   import InstalledAppIcon from "../InstalledAppIcon.svelte";
@@ -27,12 +29,9 @@
   } from "../automation";
   import { captureActionShortcut } from "../actionShortcutCapture";
   import { errorMessage } from "../app_helpers";
-  import type {
-    AutomationTrigger,
-    Capability,
-    ConnectedDeviceView,
-  } from "../ipc/generated";
+  import type { AutomationTrigger, Capability, ConnectedDeviceView } from "../ipc/generated";
   import type { InstalledApp } from "../types";
+  export let automationId = "";
   export let trigger: AutomationTrigger;
   export let apps: InstalledApp[];
   export let devices: ConnectedDeviceView[];
@@ -48,25 +47,26 @@
     { name: "系统", icon: Desktop },
     { name: "时间", icon: Clock },
     { name: "在场", icon: Eye },
+    { name: "蓝牙", icon: Bluetooth },
     { name: "ArcRelay", icon: Devices },
     { name: "手动", icon: Keyboard },
   ];
   $: category =
-    trigger.type === "application"
-      ? "应用"
-      : trigger.type === "system"
-        ? "系统"
-        : trigger.type === "schedule"
-          ? "时间"
-          : trigger.type === "presence"
-            ? "在场"
-          : ["device", "transfer"].includes(trigger.type)
-            ? "ArcRelay"
-            : "手动";
+    trigger.type === "bluetooth"
+      ? "蓝牙"
+      : trigger.type === "application"
+        ? "应用"
+        : trigger.type === "system"
+          ? "系统"
+          : trigger.type === "schedule"
+            ? "时间"
+            : trigger.type === "presence"
+              ? "在场"
+              : ["device", "transfer"].includes(trigger.type)
+                ? "ArcRelay"
+                : "手动";
   $: matching = apps.filter((a) =>
-    `${a.name} ${a.path}`
-      .toLocaleLowerCase()
-      .includes(search.toLocaleLowerCase()),
+    `${a.name} ${a.path}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
   );
   $: queuePreview(JSON.stringify(trigger));
   onDestroy(() => {
@@ -140,13 +140,25 @@
     >
   {/each}
 </div>
-{#if trigger.type === "application"}
+{#if trigger.type === "bluetooth"}
+  <BluetoothTriggerEditor bind:config={trigger.config} {automationId} />
+{:else if trigger.type === "application"}
   <label class="au-field"
-    >{uiTranslate("何时触发", $uiLanguage)}<AppSelect bind:value={trigger.event} aria-label={uiTranslate("何时触发", $uiLanguage)}
+    >{uiTranslate("何时触发", $uiLanguage)}<AppSelect
+      bind:value={trigger.event}
+      aria-label={uiTranslate("何时触发", $uiLanguage)}
       options={[
-        ...(Object.entries(applicationLabels)).map(([value, label]) => ({ value: value, disabled: (!capability(`application.${value}`)?.available), label: [uiTranslate(label, $uiLanguage), (uiTranslate(!capability(`application.${value}`)?.available
-            ? " · 当前环境不支持"
-            : "", $uiLanguage))].join("") })),
+        ...Object.entries(applicationLabels).map(([value, label]) => ({
+          value: value,
+          disabled: !capability(`application.${value}`)?.available,
+          label: [
+            uiTranslate(label, $uiLanguage),
+            uiTranslate(
+              !capability(`application.${value}`)?.available ? " · 当前环境不支持" : "",
+              $uiLanguage,
+            ),
+          ].join(""),
+        })),
       ]}
     /></label
   >
@@ -176,9 +188,10 @@
           />{/if}</button
       >
     {:else}<p class="au-muted">
-        {uiTranslate(search
-          ? "没有找到匹配的应用"
-          : "没有可选应用。请确认应用已安装后重新加载页面。", $uiLanguage)}
+        {uiTranslate(
+          search ? "没有找到匹配的应用" : "没有可选应用。请确认应用已安装后重新加载页面。",
+          $uiLanguage,
+        )}
       </p>{/each}
   </div>
   {#if trigger.apps.length}<div class="au-chips">
@@ -194,9 +207,10 @@
         >{/each}
     </div>{/if}
   <p class="au-note">
-    <Info
-      size={16}
-    />{uiTranslate("按应用身份识别，不读取窗口标题。切换同一应用的窗口不会重复触发。", $uiLanguage)}
+    <Info size={16} />{uiTranslate(
+      "按应用身份识别，不读取窗口标题。切换同一应用的窗口不会重复触发。",
+      $uiLanguage,
+    )}
   </p>
 {:else if trigger.type === "schedule"}
   <div class="au-two-fields">
@@ -211,11 +225,10 @@
     >
   </div>
   <datalist id="automation-timezones"
-    ><option value="Asia/Shanghai"></option><option value="Asia/Tokyo"
-    ></option><option value="Europe/London"></option><option
-      value="America/New_York"
-    ></option><option value="America/Los_Angeles"></option><option value="UTC"
-    ></option></datalist
+    ><option value="Asia/Shanghai"></option><option value="Asia/Tokyo"></option><option
+      value="Europe/London"
+    ></option><option value="America/New_York"></option><option value="America/Los_Angeles"
+    ></option><option value="UTC"></option></datalist
   >
   <div class="au-label-row">
     <h3>{uiTranslate("重复日期", $uiLanguage)}</h3>
@@ -251,23 +264,30 @@
     <div>
       <strong>{uiTranslate("下一次运行", $uiLanguage)}</strong>
       <p>
-        {uiTranslate(next
-          ? `${formatDate(next, trigger.timezone)} · ${trigger.timezone}`
-          : previewError ||
-            (bridge.isTauri()
-              ? "请填写有效时间、日期和时区"
-              : "下次运行时间由桌面调度服务计算"), $uiLanguage)}
+        {uiTranslate(
+          next
+            ? `${formatDate(next, trigger.timezone)} · ${trigger.timezone}`
+            : previewError ||
+                (bridge.isTauri()
+                  ? "请填写有效时间、日期和时区"
+                  : "下次运行时间由桌面调度服务计算"),
+          $uiLanguage,
+        )}
       </p>
     </div>
   </div>
   <fieldset class="au-radio-list">
     <legend>{uiTranslate("电脑休眠或 ArcRelay 未运行，错过时间时", $uiLanguage)}</legend><label
       ><input type="radio" bind:group={trigger.catchUp} value={false} /><span
-        >{uiTranslate("跳过这一次", $uiLanguage)}<small>{uiTranslate("等到下一个计划时间再运行。", $uiLanguage)}</small></span
+        >{uiTranslate("跳过这一次", $uiLanguage)}<small
+          >{uiTranslate("等到下一个计划时间再运行。", $uiLanguage)}</small
+        ></span
       ></label
     ><label
       ><input type="radio" bind:group={trigger.catchUp} value={true} /><span
-        >{uiTranslate("恢复后补跑一次", $uiLanguage)}<small>{uiTranslate("错过多次也只补一次，仍检查附加条件。", $uiLanguage)}</small></span
+        >{uiTranslate("恢复后补跑一次", $uiLanguage)}<small
+          >{uiTranslate("错过多次也只补一次，仍检查附加条件。", $uiLanguage)}</small
+        ></span
       ></label
     >
   </fieldset>
@@ -283,8 +303,10 @@
         ><Desktop size={21} /><span
           ><strong>{uiTranslate(choice.label, $uiLanguage)}</strong
           >{#if !capability(choice.capability)?.available}<small
-              >{uiTranslate(capability(choice.capability)?.reason ||
-                "当前系统不支持", $uiLanguage)}</small
+              >{uiTranslate(
+                capability(choice.capability)?.reason || "当前系统不支持",
+                $uiLanguage,
+              )}</small
             >{/if}</span
         ></button
       >{/each}
@@ -295,22 +317,34 @@
         class:chosen={choice.capability === `presence.${trigger.state}`}
         disabled={!capability(choice.capability)?.available}
         on:click={() => (trigger = choice.trigger())}
-        ><Eye size={21} /><span><strong>{uiTranslate(choice.label, $uiLanguage)}</strong><small>{uiTranslate("状态稳定后触发；原始人脸特征不会写入自动化。", $uiLanguage)}</small></span></button
+        ><Eye size={21} /><span
+          ><strong>{uiTranslate(choice.label, $uiLanguage)}</strong><small
+            >{uiTranslate("状态稳定后触发；原始人脸特征不会写入自动化。", $uiLanguage)}</small
+          ></span
+        ></button
       >{/each}
   </div>
-  <p class="au-note"><Info size={16} />{uiTranslate(`当前选择：${presenceLabels[trigger.state]}。需要先在眼动设置中录入本机用户。`, $uiLanguage)}</p>
+  <p class="au-note">
+    <Info size={16} />{uiTranslate(
+      `当前选择：${presenceLabels[trigger.state]}。需要先在眼动设置中录入本机用户。`,
+      $uiLanguage,
+    )}
+  </p>
 {:else if trigger.type === "device" || trigger.type === "transfer"}
   <label class="au-field"
-    >{uiTranslate("何时触发", $uiLanguage)}<AppSelect value={trigger.type === "device"
+    >{uiTranslate("何时触发", $uiLanguage)}<AppSelect
+      value={trigger.type === "device"
         ? `device.${trigger.connected ? "connected" : "disconnected"}`
-        : `transfer.${trigger.received ? "received" : "sent"}`} onValueChange={(e) => {
-        const choice = triggerChoices.find(
-          (c) => c.capability === e,
-        );
+        : `transfer.${trigger.received ? "received" : "sent"}`}
+      onValueChange={(e) => {
+        const choice = triggerChoices.find((c) => c.capability === e);
         if (choice) trigger = choice.trigger();
-      }} aria-label={uiTranslate("何时触发", $uiLanguage)}
+      }}
+      aria-label={uiTranslate("何时触发", $uiLanguage)}
       options={[
-        ...(triggerChoices.filter((c) => c.category === "ArcRelay")).map((c) => ({ value: c.capability, label: uiTranslate(c.label, $uiLanguage) })),
+        ...triggerChoices
+          .filter((c) => c.category === "ArcRelay")
+          .map((c) => ({ value: c.capability, label: uiTranslate(c.label, $uiLanguage) })),
       ]}
     /></label
   >
@@ -319,15 +353,17 @@
     <button
       class="au-text"
       on:click={() => {
-        if (trigger.type === "device" || trigger.type === "transfer")
-          trigger.deviceIds = [];
+        if (trigger.type === "device" || trigger.type === "transfer") trigger.deviceIds = [];
       }}>{uiTranslate("任意已配对设备", $uiLanguage)}</button
     >
   </div>
   <p class="au-muted">
-    {uiTranslate(trigger.deviceIds.length
-      ? "仅以下设备，任意一个匹配即可。"
-      : "未限定设备：匹配任意已配对设备。", $uiLanguage)}
+    {uiTranslate(
+      trigger.deviceIds.length
+        ? "仅以下设备，任意一个匹配即可。"
+        : "未限定设备：匹配任意已配对设备。",
+      $uiLanguage,
+    )}
   </p>
   <div class="au-choice-list">
     {#each devices as device}<button
@@ -335,9 +371,7 @@
         class:chosen={trigger.deviceIds.includes(device.id)}
         on:click={() => pickDevice(device.id)}
         ><Devices size={22} /><span>{device.name}</span
-        >{#if trigger.deviceIds.includes(device.id)}<CheckCircle
-            size={20}
-          />{/if}</button
+        >{#if trigger.deviceIds.includes(device.id)}<CheckCircle size={20} />{/if}</button
       >{:else}<p class="au-note">
         {uiTranslate("尚无已配对设备。可先保存，配对设备后再指定范围。", $uiLanguage)}
       </p>{/each}
@@ -351,7 +385,8 @@
       >
     </div>{/each}
   {#if trigger.type === "transfer"}<label class="au-field"
-      >{uiTranslate("文件类型", $uiLanguage)} <span class="au-muted">{uiTranslate("可选，以逗号分隔扩展名", $uiLanguage)}</span><input
+      >{uiTranslate("文件类型", $uiLanguage)}
+      <span class="au-muted">{uiTranslate("可选，以逗号分隔扩展名", $uiLanguage)}</span><input
         placeholder={uiTranslate("全部类型；例如 pdf, png, docx", $uiLanguage)}
         value={trigger.fileKinds.join(", ")}
         on:change={(e) => {
@@ -380,7 +415,10 @@
       /></label
     >
     <p class="au-note">
-      {uiTranslate("使用 Command / Control / Option 等修饰键。Backspace 清除，Tab\n      移动焦点。保存时检查快捷键占用。", $uiLanguage)}
+      {uiTranslate(
+        "使用 Command / Control / Option 等修饰键。Backspace 清除，Tab\n      移动焦点。保存时检查快捷键占用。",
+        $uiLanguage,
+      )}
     </p>
     {#if shortcutError}<p role="alert" class="au-error">
         {shortcutError}

@@ -25,6 +25,7 @@
     Briefcase,
     FileArrowDown,
     Moon,
+    Bluetooth,
     ShieldCheck,
     Clock,
     FunnelSimple,
@@ -174,6 +175,12 @@
       icon: Moon,
       color: "purple",
       detail: "锁定电脑时，暂停音乐并静音麦克风",
+    },
+    {
+      name: "离开锁屏",
+      icon: Bluetooth,
+      color: "purple",
+      detail: "随身蓝牙设备远离后，自动锁定电脑",
     },
   ];
   $: dirty = editor !== null && JSON.stringify(editor) !== initial;
@@ -380,16 +387,34 @@
               event: name === "会议模式" ? "foreground" : "exited",
               apps: meeting.map(identity),
             }
-          : name === "锁屏安静模式"
-            ? { type: "system", event: "locked" }
-            : {
-                type: "transfer",
-                received: true,
-                deviceIds: [],
-                fileKinds: [],
-              };
+          : name === "离开锁屏"
+            ? {
+                type: "bluetooth",
+                config: {
+                  deviceId: "",
+                  deviceName: "",
+                  calibration: null,
+                  durationSeconds: 15,
+                  signalLossSeconds: null,
+                },
+              }
+            : name === "锁屏安静模式"
+              ? { type: "system", event: "locked" }
+              : {
+                  type: "transfer",
+                  received: true,
+                  deviceIds: [],
+                  fileKinds: [],
+                };
       const d = newDefinition(trigger);
       d.name = name;
+      if (name === "离开锁屏")
+        d.steps = [
+          {
+            type: "quickAction",
+            actionId: await installAction("锁定电脑", { type: "System", operation: "lock_screen" }),
+          },
+        ];
       if (name === "会议模式")
         d.steps = [
           {
@@ -440,7 +465,10 @@
             timeoutSeconds: 30,
           },
         ];
-      edit(d, trigger.type === "application" && !meeting.length ? 1 : 3);
+      edit(
+        d,
+        trigger.type === "bluetooth" || (trigger.type === "application" && !meeting.length) ? 1 : 3,
+      );
       initial = "";
     });
   }
@@ -988,9 +1016,13 @@
             size={18}
           /></button
         >{#if expanded === 1}<div class="au-section-body">
-            <TriggerEditor bind:trigger={editor.trigger} {apps} {devices} {capabilities} /><button
-              class="au-button primary au-section-next"
-              on:click={() => (expanded = 2)}
+            <TriggerEditor
+              bind:trigger={editor.trigger}
+              automationId={editor.id}
+              {apps}
+              {devices}
+              {capabilities}
+            /><button class="au-button primary au-section-next" on:click={() => (expanded = 2)}
               >{uiTranslate("继续：附加条件", $uiLanguage)} <CaretRight size={17} /></button
             >
           </div>{/if}

@@ -242,7 +242,51 @@ function mockHistory(
   return { revision: 1, entries, nextCursor: null, totalCount: entries.length };
 }
 const appPins = new Map<string, Set<number>>();
+const fileFixture = new URLSearchParams(window.location.search).get("preview-files");
+const sampleFileNames = [
+  "烘焙演示版-安卓-RK3568-v1.0.16.apk",
+  "烘焙演示版-安卓-RK3576-v1.0.16.apk",
+  "烘焙演示版-Windows64位-v1.0.15.zip",
+  "小碗菜演示版-安卓-RK3568-v1.0.16.apk",
+  "小碗菜演示版-安卓-RK3576-v1.0.16.apk",
+  "小碗菜演示版-Windows64位-v1.0.15.zip",
+];
+const fileNames =
+  fileFixture === "many"
+    ? Array.from({ length: 48 }, (_, index) => `${index + 1}-${sampleFileNames[index % 6]}`)
+    : fileFixture === "single"
+      ? sampleFileNames.slice(0, 1)
+      : fileFixture === "long"
+        ? ["报告,终稿-".repeat(24) + "v1.0.16.apk", ...sampleFileNames.slice(1)]
+        : fileFixture === "empty"
+          ? []
+          : sampleFileNames;
+if (fileFixture !== null) {
+  mockItems.unshift({
+    ...mockItems[0],
+    id: 107,
+    kind: "files",
+    preview: `${fileNames.length} files · ${fileNames.slice(0, 3).join(", ")}`,
+    sourceApp: "Apple Handoff",
+    sourceDeviceName: null,
+    syncId: "mock-files-107",
+    firstCapturedAtMs: now,
+    capturedAtMs: now,
+    updatedAtMs: now,
+    sizeBytes: 399_067_873,
+    itemCount: fileNames.length,
+    width: null,
+    height: null,
+    available: fileFixture !== "unavailable",
+    sensitive: fileFixture === "sensitive",
+  });
+}
+
 export const clipboardBridge = {
+  fileNames: async (_item: ClipboardItem): Promise<string[]> => {
+    if (fileFixture === "error") throw new Error("File list unavailable");
+    return [...fileNames];
+  },
   targetApplication: () => Promise.resolve({ id: "mock:safari", name: "Safari" }),
   appPins: async (appId: string, search = "", labelIds: string[] = []) => {
     const entries = mockHistory(search, null, false, labelIds).entries;
