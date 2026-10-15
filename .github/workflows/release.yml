@@ -88,7 +88,9 @@ jobs:
             target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin --bundles app,dmg
           - name: macOS Intel
-            platform: macos-15-intel
+            # Cross-compile Intel on the Apple Silicon pool; the Intel pool
+            # repeatedly loses connections to Apple's ticket service.
+            platform: macos-15
             os: macos
             target: x86_64-apple-darwin
             args: --target x86_64-apple-darwin --bundles app,dmg
@@ -113,6 +115,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ${{ matrix.target }}
       - name: Download and verify locked Sniptra component
         env:
           SNIPTRA_LOCK: ${{ needs.prepare.outputs.sniptra_lock }}

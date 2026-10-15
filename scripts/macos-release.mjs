@@ -118,6 +118,19 @@ function verifyPackage(target) {
     requireSuccess("hdiutil", ["attach", dmg, "-nobrowse", "-readonly", "-mountpoint", mount]);
     mounted = true;
     const app = join(mount, "ArcRelay.app");
+    const executable = spawnSync(
+      "/usr/libexec/PlistBuddy",
+      ["-c", "Print:CFBundleExecutable", join(app, "Contents/Info.plist")],
+      { encoding: "utf8" },
+    );
+    if (executable.status !== 0 || !executable.stdout.trim()) {
+      throw new Error("Cannot determine the packaged application executable");
+    }
+    const machoArch = arch === "aarch64" ? "arm64" : "x86_64";
+    for (const name of [executable.stdout.trim(), "sniptra", "sniptra-ocr-worker"]) {
+      if (basename(name) !== name) throw new Error("Invalid packaged executable name");
+      requireSuccess("lipo", ["-verify_arch", machoArch, join(app, "Contents/MacOS", name)]);
+    }
     requireSuccess("codesign", ["--verify", "--deep", "--strict", "--verbose=4", app]);
     const signature = spawnSync("codesign", ["-d", "--verbose=4", app], { encoding: "utf8" });
     if (signature.status !== 0 || !signature.stderr.split("\n").includes(`Authority=${identity}`)) {
