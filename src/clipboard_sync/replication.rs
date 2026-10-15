@@ -15,7 +15,71 @@ pub struct ClipboardMergeSummary {
     pub failures: Vec<String>,
 }
 
+#[derive(serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionPeerState {
+    pub device_name: String,
+    pub status: String,
+}
+
 impl ClipboardSyncManager {
+    pub async fn collection_states(&self, id: &str) -> Result<Vec<CollectionPeerState>, String> {
+        let Some(network) = self.network.get() else {
+            return Ok(vec![]);
+        };
+        let (peers, paired) = self.connection_candidates(network).await?;
+        let transports = self.replica_transports().await;
+        let mut online = self.active.lock().await.clone();
+        if let Some(registry) = self.incoming_connections.get() {
+            online.extend(registry.list_connected().await);
+        }
+        let local = self
+            .clipboard
+            .collection(id.to_owned())
+            .await
+            .map_err(|e| e.to_string())?;
+        let fingerprint = local.as_ref().map(replica::collections::fingerprint);
+        let preferences = self.clipboard.sync_preferences();
+        let receipts = self.collection_receipts.lock().await;
+        let mut states = Vec::new();
+        for peer in peers {
+            let key = peer.device_id.to_string();
+            if !paired.contains(&key) {
+                continue;
+            }
+            let grants = network
+                .grants(&peer.device_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            if !grants
+                .iter()
+                .any(|g| g.capability == CapabilityId::ClipboardSync)
+            {
+                continue;
+            }
+            let status = if !preferences.enabled {
+                "同步已暂停"
+            } else if !online.contains(&key) && !transports.contains_key(&key) {
+                "等待设备上线"
+            } else if !preferences.sync_edits_and_deletes {
+                "修改同步已关闭"
+            } else if fingerprint
+                .as_ref()
+                .is_some_and(|f| receipts.get(&key).and_then(|r| r.get(id)) == Some(f))
+            {
+                "已同步"
+            } else {
+                "等待设备确认"
+            };
+            states.push(CollectionPeerState {
+                device_name: peer.metadata.name,
+                status: status.into(),
+            });
+        }
+        states.sort_by(|a, b| a.device_name.cmp(&b.device_name));
+        Ok(states)
+    }
+
     async fn replica_transports(&self) -> HashMap<String, quinn::Connection> {
         let mut outgoing = self.replica_connections.lock().await;
         outgoing.retain(|_, c| c.close_reason().is_none());
@@ -56,7 +120,17 @@ impl ClipboardSyncManager {
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
             .clone();
         let _guard = gate.lock().await;
-        replica::reconcile(self.clipboard.clone(), PeerClient::new(connection)).await
+        let result =
+            replica::reconcile(self.clipboard.clone(), PeerClient::new(connection)).await?;
+        if result.converged {
+            self.collection_receipts
+                .lock()
+                .await
+                .insert(id.to_owned(), result.collection_receipts.clone());
+        } else {
+            self.collection_receipts.lock().await.remove(id);
+        }
+        Ok(result)
     }
 
     pub async fn merge_all(&self) -> Result<ClipboardMergeSummary, String> {

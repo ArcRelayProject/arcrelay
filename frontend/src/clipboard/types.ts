@@ -23,7 +23,7 @@ export type ClipboardOcrBlock = import("../ipc/generated").ClipboardOcrBlock;
 
 export type ClipboardImageOcr = import("../ipc/generated").ClipboardImageOcr;
 
-export type ClipboardFilter = "all" | "text" | "image" | "files" | "favorites" | "login";
+export type ClipboardFilter = "all" | "text" | "image" | "files" | "favorites" | "collections";
 
 export interface NearbyClipboardPeer {
   id: string;

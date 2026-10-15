@@ -1,7 +1,7 @@
 import type { SystemShareRequest } from "./types";
 
 export type TrayDestination =
-  | { page: "settings" | "devices" | "transfers" | "settings:clipboard-login" }
+  | { page: "settings" | "devices" | "transfers" | "settings:clipboard" }
   | { page: "files"; peerId: string };
 
 export function parseTrayDestination(value: string | null): TrayDestination | null {
@@ -9,7 +9,7 @@ export function parseTrayDestination(value: string | null): TrayDestination | nu
     value === "settings" ||
     value === "devices" ||
     value === "transfers" ||
-    value === "settings:clipboard-login"
+    value === "settings:clipboard"
   )
     return { page: value };
   if (value?.startsWith("files:") && value.length > 6)

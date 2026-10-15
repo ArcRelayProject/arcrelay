@@ -6,6 +6,7 @@ pub(super) async fn run_backend(
     input_sessions: oneshot::Sender<broadcast::Receiver<Arc<arcrelay_network::Session>>>,
     workspace_input_router: Arc<dyn arcrelay_protocol::server::WorkspaceInputRouter>,
 ) {
+    let _ = tokio::task::spawn_blocking(crate::legacy_collection_cleanup::run).await;
     let PreparedBackend {
         state,
         service,
@@ -18,8 +19,6 @@ pub(super) async fn run_backend(
         action_provider,
         mcp_server,
     } = prepared;
-
-    crate::login::start_guard(state.clone(), app.clone());
 
     crate::sound::initialize(state.settings.snapshot().sounds, state.privacy.clone());
 

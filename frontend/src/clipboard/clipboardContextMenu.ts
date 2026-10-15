@@ -22,6 +22,7 @@ interface ContextMenuCallbacks {
   appPinned: boolean;
   pinApplication: (pinned: boolean) => Promise<void> | void;
   error: (reason: unknown) => void;
+  collect?: () => void;
   nearby?: () => Promise<void> | void;
   original?: () => Promise<void> | void;
   reload: () => Promise<void> | void;
@@ -102,6 +103,9 @@ export async function showClipboardContextMenu(
 
   const pairedPeers = nearbyPeers.filter((peer) => peer.paired);
   const items: ContextMenuEntry[] = [
+    ...(callbacks.collect && ["text", "html"].includes(item.kind)
+      ? [{ text: "存为集合", enabled: item.available, action: action(callbacks.collect) }]
+      : []),
     {
       text: tr("插入到当前应用", language),
       icon: "insert",

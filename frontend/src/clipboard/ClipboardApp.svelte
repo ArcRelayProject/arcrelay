@@ -25,8 +25,14 @@
     X,
   } from "phosphor-svelte";
 
-  import LoginPanel from "../features/login/LoginPanel.svelte";
-  let loginEditing = false;
+  import CollectionPanel from "../features/collections/CollectionPanel.svelte";
+  let collectionEditing = false;
+  let collectionHistoryIds: number[] = [];
+  function collectHistory(ids: number[]) {
+    collectionHistoryIds = [...ids];
+    selectedIds = [];
+    changeFilter("collections");
+  }
   import BrandLogo from "../BrandLogo.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
@@ -103,7 +109,7 @@
     { id: "text", label: "文本", icon: TextT, size: 20 },
     { id: "image", label: "图片", icon: ImageSquare, size: 20 },
     { id: "files", label: "文件", icon: FileText, size: 19 },
-    { id: "login", label: "登录", icon: LockKey, size: 20 },
+    { id: "collections", label: "集合", icon: StackSimple, size: 20 },
     { id: "favorites", label: "收藏", icon: Star, size: 20, weight: "fill" },
   ];
 
@@ -308,7 +314,7 @@
   function changeFilter(value: ClipboardFilter) {
     abandonNearby();
     filter = value;
-    if (value === "login") selectedLabelFilter = null;
+    if (value === "collections") selectedLabelFilter = null;
     loadedQueryKey = null;
     reloadForQuery(filter, debouncedSearch, selectedLabelFilter);
   }
@@ -1468,9 +1474,9 @@
 
   function handleKeyDown(event: KeyboardEvent) {
     if (
-      filter === "login" ||
-      loginEditing ||
-      (event.target instanceof Element && event.target.closest(".login-panel"))
+      filter === "collections" ||
+      collectionEditing ||
+      (event.target instanceof Element && event.target.closest(".collection-panel"))
     )
       return;
     // Native navigation keys call this directly instead of dispatching a DOM event.
@@ -1697,6 +1703,7 @@
           !loading && !locating && search === debouncedSearch && debouncedSearch.trim()
             ? () => viewNearby(item)
             : undefined,
+        collect: () => collectHistory([item.id]),
         reload: load,
         edit: () => beginEdit(item),
         original: editOrigins.has(item.id)
@@ -1901,9 +1908,8 @@
 
 <main
   class="clipboard-window"
-  class:login-editing={loginEditing}
-  class:login-mode={filter === "login"}
-  class:login-recent={filter === "all"}
+  class:collection-editing={collectionEditing}
+  class:collection-mode={filter === "collections"}
 >
   <header class="clipboard-header drag-region" use:windowDrag>
     <button
@@ -2157,18 +2163,14 @@
     {/if}
   </div>
 
-  {#if filter === "login"}
-    <LoginPanel
+  {#if filter === "collections"}
+    <CollectionPanel
+      targetName={targetApplication?.name ?? ""}
       search={debouncedSearch}
-      tag={selectedLabel?.name ?? null}
-      bind:editing={loginEditing}
+      bind:editing={collectionEditing}
+      bind:historyIds={collectionHistoryIds}
     />
   {:else}
-    {#if filter === "all"}<LoginPanel
-        search={debouncedSearch}
-        tag={selectedLabel?.name ?? null}
-        compact
-      />{/if}
     <section
       class:keyboard-active={keyboardMode === "results"}
       class="clipboard-list"
@@ -2292,6 +2294,15 @@
         <span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span>
         <StackSimple size={21} weight="bold" />
       </button>
+      <button
+        class="multi-action"
+        type="button"
+        disabled={selectedItems.length > 64 ||
+          selectedItems.some((item) => !item.available || !["text", "html"].includes(item.kind))}
+        on:click={() => collectHistory(selectedIds)}
+        aria-label="存为集合"
+        title="存为集合"><StackSimple size={21} /></button
+      >
       <div class="multi-action-divider" aria-hidden="true"></div>
       <button
         class="multi-action delete-action"
@@ -2317,7 +2328,7 @@
     </div>
   {/if}
 
-  {#if filter !== "login"}
+  {#if filter !== "collections"}
     <footer class="clipboard-footer drag-region" use:windowDrag>
       <div class:busy={ocrPasting} class="record-count">
         <strong>
@@ -2531,21 +2542,18 @@
 <InlineContextMenu />
 
 <style>
-  .clipboard-window.login-mode :global(.label-filter-toolbar) {
+  .clipboard-window.collection-mode :global(.label-filter-toolbar) {
     display: none;
   }
-  .clipboard-window.login-mode {
+  .clipboard-window.collection-mode {
     grid-template-rows: 60px 60px auto minmax(0, 1fr);
   }
-  .clipboard-window.login-recent {
-    grid-template-rows: 60px 60px auto auto minmax(0, 1fr) 48px;
-  }
-  .clipboard-window.login-editing {
+  .clipboard-window.collection-editing {
     grid-template-rows: minmax(0, 1fr);
   }
-  .clipboard-window.login-editing :global(.clipboard-header),
-  .clipboard-window.login-editing :global(.clipboard-filters),
-  .clipboard-window.login-editing :global(.clipboard-navigation) {
+  .clipboard-window.collection-editing :global(.clipboard-header),
+  .clipboard-window.collection-editing :global(.clipboard-filters),
+  .clipboard-window.collection-editing :global(.clipboard-navigation) {
     display: none;
   }
 </style>
