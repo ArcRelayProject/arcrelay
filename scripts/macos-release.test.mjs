@@ -1,15 +1,35 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { retry, runTauri, runXcrun } from "./macos-release.mjs";
+import { retry, runTauri, runXcrun, verifyArchitecture } from "./macos-release.mjs";
 
 function stateFor(t) {
   const state = mkdtempSync(join(tmpdir(), "arcrelay-ticket-test-"));
   t.after(() => rmSync(state, { recursive: true, force: true }));
   return state;
 }
+
+test(
+  "the installed Xcode accepts target checks and rejects the wrong architecture",
+  { skip: process.platform !== "darwin" },
+  (t) => {
+    const state = stateFor(t);
+    const source = join(state, "architecture.c");
+    writeFileSync(source, "int architecture_fixture(void) { return 0; }\n");
+    for (const architecture of ["arm64", "x86_64"]) {
+      const binary = join(state, `${architecture} with spaces.o`);
+      execFileSync("clang", ["-arch", architecture, "-c", source, "-o", binary]);
+      verifyArchitecture(binary, architecture);
+      assert.throws(
+        () => verifyArchitecture(binary, architecture === "arm64" ? "x86_64" : "arm64"),
+        /lipo failed/,
+      );
+    }
+  },
+);
 
 test("ticket service connection failures recover within a bounded retry budget", () => {
   const responses = [68, 68, 0];
