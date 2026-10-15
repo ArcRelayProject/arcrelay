@@ -605,7 +605,10 @@ async fn manual_replication_uses_incoming_transport_and_reports_actual_changes()
         .register_transport_with_features(
             left.device_id().as_str(),
             incoming.transport_handle(),
-            HashMap::from([(proto::Feature::ClipboardSync as i32, 2)]),
+            HashMap::from([(
+                proto::Feature::ClipboardSync as i32,
+                arcrelay_protocol::clipboard_replication::VERSION,
+            )]),
         )
         .await;
     let (events, _rx) = mpsc::channel(16);

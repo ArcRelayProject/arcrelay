@@ -156,7 +156,11 @@ pub async fn collection_request(
                 None
             };
             let restore = if let Some(target) = target.as_ref() {
-                clipboard::prepare_window_and_wait_for_paste(&app, target.clone()).await?
+                #[cfg(target_os = "macos")]
+                let prepare_target = target.clone();
+                #[cfg(not(target_os = "macos"))]
+                let prepare_target = *target;
+                clipboard::prepare_window_and_wait_for_paste(&app, prepare_target).await?
             } else {
                 false
             };
