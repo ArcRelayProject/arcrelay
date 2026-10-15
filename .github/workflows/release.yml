@@ -137,7 +137,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         with:
-          tauriScript: npm run tauri
+          tauriScript: ${{ matrix.os == 'macos' && 'node scripts/macos-release.mjs tauri' || 'npm run tauri' }}
           releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseDraft: true
@@ -149,24 +149,7 @@ jobs:
         if: matrix.os == 'macos'
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
-        run: |
-          dmg_path="$(find target -type f -path '*/release/bundle/dmg/*.dmg' | head -n 1)"
-          test -n "$dmg_path"
-          codesign --verify --strict --verbose=4 "$dmg_path"
-
-          mount_dir="$(mktemp -d)"
-          cleanup() {
-            hdiutil detach "$mount_dir"
-            rmdir "$mount_dir"
-          }
-          trap cleanup EXIT
-          hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_dir"
-          app_path="$mount_dir/ArcRelay.app"
-          test -d "$app_path"
-          codesign --verify --deep --strict --verbose=4 "$app_path"
-          codesign -d --verbose=4 "$app_path" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
-          xcrun stapler validate "$app_path"
-          spctl --assess --type execute --verbose=4 "$app_path"
+        run: node scripts/macos-release.mjs verify "${{ matrix.target }}"
       - name: Remove temporary Apple signing keychain
         if: always() && matrix.os == 'macos'
         run: scripts/cleanup-apple-signing-certificate.sh
