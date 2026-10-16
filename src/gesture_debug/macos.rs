@@ -305,6 +305,8 @@ fn planned_event(
         velocity_x: velocity,
         velocity_y: velocity,
         inverted_from_device: false,
+        delta_x: 0.0,
+        delta_y: 0.0,
         finger_count: 0,
     }
     .validate()

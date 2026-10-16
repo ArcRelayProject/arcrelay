@@ -384,7 +384,7 @@ unsafe extern "C" fn capture_callback(
         }
         return event;
     }
-    if matches!(event_type, 29 | 30) {
+    if matches!(event_type, 29..=31) {
         let subtype = CGEventGetIntegerValueField(event, 110);
         let generation =
             if context.options.capture_pointer && context.suppress_local.load(Ordering::Acquire) {
@@ -404,6 +404,21 @@ unsafe extern "C" fn capture_callback(
             generation,
             format_version,
         );
+        if generation != 0 && matches!(event_type, 30 | 31) {
+            let phase = CGEventGetIntegerValueField(event, 132);
+            if matches!(phase, 1 | 4 | 8) {
+                tracing::debug!(
+                    target: "input.gesture.capture",
+                    subtype,
+                    motion = CGEventGetIntegerValueField(event, 123),
+                    phase,
+                    fingers = gesture::contact_count(),
+                    inverted = CGEventGetIntegerValueField(event, 136),
+                    blocked,
+                    "Native system gesture capture decision"
+                );
+            }
+        }
         if blocked {
             if let Some(event) = routed {
                 context.emit(CapturedInputEvent::SystemGesture { event, generation });
@@ -817,7 +832,11 @@ impl InputCapturePort for NativePlatform {
                 && gesture::supported()
                 && self.system_gesture_available.load(Ordering::Acquire),
             can_inject_system_gestures: permission && gesture::supported(),
-            system_gesture_format_version: arcrelay_input::MAX_SYSTEM_GESTURE_FORMAT_VERSION,
+            system_gesture_format_version: if arcrelay_core::infrastructure::input_control::macos_system_gesture::notification_center_supported() {
+                arcrelay_input::SYSTEM_NOTIFICATION_CENTER_FORMAT_VERSION
+            } else {
+                arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION
+            },
             consumer_capture_mask: if permission
                 && self.system_gesture_available.load(Ordering::Acquire)
             {
@@ -1739,7 +1758,7 @@ mod emergency_shortcut_tests {
             overflowed: AtomicBool::new(false),
         };
         unsafe {
-            for event_type in [29, 30] {
+            for event_type in [29, 30, 31] {
                 let event = CGEventCreate(std::ptr::null());
                 assert!(!event.is_null());
                 CGEventSetIntegerValueField(
