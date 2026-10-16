@@ -978,6 +978,8 @@ async fn system_gesture_requires_current_owner_epoch_and_negotiated_capabilities
                     velocity_x: 0.0,
                     velocity_y: 0.0,
                     inverted_from_device: false,
+                    delta_x: 0.0,
+                    delta_y: 0.0,
                     finger_count: 0,
                 }
                 .into(),

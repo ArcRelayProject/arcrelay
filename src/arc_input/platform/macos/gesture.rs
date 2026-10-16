@@ -8,7 +8,7 @@ use arcrelay_input::SystemGestureEvent;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub(super) const MASK: u64 = (1 << 29) | (1 << 30);
+pub(super) const MASK: u64 = (1 << 29) | (1 << 30) | (1 << 31);
 
 const MAGNIFICATION_SUBTYPE: i64 = 8;
 const MIN_TRACKPAD_SENSOR_ROWS: i32 = 10;
@@ -177,6 +177,11 @@ pub(super) fn supported() -> bool {
 pub(super) unsafe fn decode(event: CGEventRef) -> Option<SystemGestureEvent> {
     let event_type = CGEventGetIntegerValueField(event, 55);
     let subtype = CGEventGetIntegerValueField(event, 110);
+    if event_type == 31 {
+        // The typed payload is authoritative on macOS 27. Legacy 15 traces
+        // round-trip the same route and both displacement axes through it.
+        return macos_system_gesture::decode_notification_event(event);
+    }
     let magnification = event_type == 29 && subtype == MAGNIFICATION_SUBTYPE;
     if !magnification && (event_type != 30 || subtype != 23) {
         return None;
@@ -204,6 +209,8 @@ pub(super) unsafe fn decode(event: CGEventRef) -> Option<SystemGestureEvent> {
         // Horizontal direction is normalized below so it remains a v1 swipe.
         // Pinch retains its versioned native direction metadata.
         inverted_from_device: !magnification && axis == 3 && native_inverted,
+        delta_x: 0.0,
+        delta_y: 0.0,
         finger_count: 0,
     }
     .validate()
@@ -257,7 +264,7 @@ impl CaptureGate {
             }
             if event.phase == 1 {
                 if format_version >= arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION {
-                    event.finger_count = if incremental {
+                    event.finger_count = if incremental || event.axis == 4 {
                         2
                     } else if event.axis == 3 {
                         // v3 reserves axis-3/count-2 for app magnification.
@@ -290,7 +297,7 @@ impl CaptureGate {
             if event.validate_format(format_version).is_err() {
                 return (false, None);
             }
-            self.companion_pending = !incremental;
+            self.companion_pending = !incremental && event.axis != 4;
             if matches!(event.phase, 4 | 8) {
                 self.gesture = None;
             } else {
@@ -369,6 +376,8 @@ mod tests {
             velocity_x: -4.5,
             velocity_y: -4.5,
             inverted_from_device: false,
+            delta_x: 0.0,
+            delta_y: 0.0,
             finger_count: 0,
         }
     }
@@ -381,6 +390,41 @@ mod tests {
         version: u32,
     ) -> bool {
         gate.route(event, marker, false, 0, generation, version).0
+    }
+
+    #[test]
+    fn notification_edge_is_v4_only_and_does_not_swallow_legacy_companions() {
+        let edge = |phase| SystemGestureEvent {
+            axis: 4,
+            finger_count: 2,
+            delta_x: -0.08203125,
+            delta_y: 0.0280303955078125,
+            ..event(phase)
+        };
+        let mut gate = CaptureGate::default();
+        for version in [0, 1, 2, 3] {
+            assert!(!gate.route(Some(edge(1)), false, false, 2, 1, version).0);
+            assert!(!gate.route(None, true, false, 2, 1, version).0);
+        }
+        for phase in [1, 2, 4] {
+            let (blocked, forwarded) = gate.route(Some(edge(phase)), false, false, 0, 1, 4);
+            assert!(blocked);
+            assert_eq!(forwarded, Some(edge(phase)));
+            assert!(!gate.route(None, true, false, 0, 1, 4).0);
+        }
+        assert!(!gate.route(Some(edge(2)), false, false, 2, 1, 4).0);
+        assert!(gate.route(Some(edge(1)), false, false, 2, 1, 4).0);
+        assert!(!gate.route(Some(edge(2)), false, false, 2, 2, 4).0);
+        assert!(!gate.route(Some(edge(1)), false, false, 2, 0, 4).0);
+        let raw = TestEvent::new(event(1));
+        unsafe {
+            CGEventSetIntegerValueField(raw.0, 55, 31);
+            CGEventSetIntegerValueField(raw.0, 110, 27);
+        }
+        assert!(
+            raw.decode().is_none(),
+            "an incomplete FluidTouch event must pass through"
+        );
     }
 
     #[test]
@@ -465,6 +509,8 @@ mod tests {
                 velocity_x: velocity,
                 velocity_y: velocity,
                 inverted_from_device: true,
+                delta_x: 0.0,
+                delta_y: 0.0,
                 finger_count: 0,
             };
             let captured = TestEvent::new(raw).decode().unwrap();
@@ -567,6 +613,8 @@ mod tests {
             velocity_x: 0.0,
             velocity_y: 0.0,
             inverted_from_device: false,
+            delta_x: 0.0,
+            delta_y: 0.0,
             finger_count: 0,
         };
         let (_, began) = gate.route(Some(magnification(1, 0.1)), false, true, 2, 2, 3);
