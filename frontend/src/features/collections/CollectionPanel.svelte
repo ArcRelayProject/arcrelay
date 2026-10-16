@@ -313,10 +313,6 @@
     </footer>
   {:else}
     <div class="collection-list-body">
-      <div class="collection-heading">
-        <h2>我的集合</h2>
-        <button class="primary" on:click={newCollection}><Plus size={18} />新建</button>
-      </div>
       {#if error}<p role="alert" class="collection-error">{error}</p>{/if}
       {#if remove}<div class="collection-notice" role="alert">
           删除“{remove.name}”？{syncEnabled && syncEdits
@@ -341,7 +337,6 @@
         >
           <StackSimple size={36} />
           <p>{search ? "没有找到匹配的集合" : "把常用内容放在一起，需要时逐项粘贴。"}</p>
-          {#if !search}<button on:click={newCollection}>新建集合</button>{/if}
         </div>{/if}
       {#each visible as row (row.id)}
         <article
@@ -354,16 +349,49 @@
               class="collection-card-title"
               aria-expanded={expanded === row.id}
               on:click={() => toggle(row.id)}
-              ><span class="collection-symbol"><StackSimple size={24} /></span><span
+              ><span class="collection-symbol"><StackSimple size={20} /></span><span
                 ><strong>{row.name}</strong><small
                   >{row.items.map((i) => i.label).join("、") || "暂无内容"}</small
-                ><small>{row.items.length} 项 · 已保存</small></span
+                ></span
               >{#if expanded === row.id}<CaretDown size={18} />{:else}<CaretRight
                   size={18}
                 />{/if}</button
-            ><button
+            >
+          </div>
+          <div class="collection-card-tools">
+            <small class="collection-card-meta">{row.items.length} 项 · 已保存</small>
+            <button
+              class="icon"
+              aria-label={"编辑" + row.name}
+              title="编辑集合"
+              on:click={() => {
+                draft = toDraft(row);
+                error = "";
+                page = "edit";
+              }}><PencilSimple size={16} /></button
+            >
+            <span class="spacer"></span>
+            {#if expanded === row.id}
+              <button
+                class="icon"
+                aria-label="同步详情"
+                title="同步详情"
+                on:click={() => {
+                  error = "";
+                  page = "sync";
+                  void refresh();
+                }}><ArrowsClockwise size={16} /></button
+              ><button
+                class="icon"
+                aria-label="删除集合"
+                title="删除集合"
+                on:click={() => (remove = row)}><Trash size={16} /></button
+              >
+            {/if}
+            <button
               class="icon"
               aria-label={row.favorite ? "取消收藏" : "收藏"}
+              title={row.favorite ? "取消收藏" : "收藏"}
               on:click={() =>
                 void act(async () => {
                   await request({ type: "favorite", id: row.id, favorite: !row.favorite });
@@ -372,23 +400,6 @@
             >
           </div>
           {#if expanded === row.id}
-            <div class="collection-card-tools">
-              <button
-                on:click={() => {
-                  draft = toDraft(row);
-                  error = "";
-                  page = "edit";
-                }}><PencilSimple size={16} />编辑</button
-              ><button
-                on:click={() => {
-                  error = "";
-                  page = "sync";
-                  void refresh();
-                }}><ArrowsClockwise size={16} />同步</button
-              ><button class="icon" aria-label="删除集合" on:click={() => (remove = row)}
-                ><Trash size={16} /></button
-              >
-            </div>
             <p class="collection-target muted">
               {targetName ? "粘贴到 " + targetName : "选择目标应用后粘贴"}
             </p>
@@ -439,14 +450,27 @@
       {/each}
     </div>
     <footer class="collection-list-footer">
-      <ArrowsClockwise size={16} /><button
-        class="text-link"
+      <button
+        class="icon collection-sync-status"
+        aria-label={!syncEnabled
+          ? "同步已暂停，查看同步详情"
+          : !syncEdits
+            ? "修改仅保存在本机，查看同步详情"
+            : "跟随剪贴板同步，查看同步详情"}
+        title={!syncEnabled ? "同步已暂停" : !syncEdits ? "修改仅保存在本机" : "跟随剪贴板同步"}
         on:click={() => {
           page = "sync";
           error = "";
           void refresh();
-        }}>跟随剪贴板同步</button
-      ><span class="spacer"></span><small>↑↓ 选择　Enter 粘贴</small>
+        }}><ArrowsClockwise size={20} /></button
+      >
+      <strong class="collection-count">{search ? "找到" : "共"} {visible.length} 个集合</strong>
+      <button
+        class="collection-create"
+        aria-label="新建集合"
+        title="新建集合"
+        on:click={newCollection}><Plus size={20} /><span>新建</span></button
+      >
     </footer>
   {/if}
 </div>
