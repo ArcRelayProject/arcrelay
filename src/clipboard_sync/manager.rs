@@ -721,7 +721,7 @@ impl ClipboardSyncManager {
         true
     }
 
-    async fn run_connection(
+    pub(super) async fn run_connection(
         self: Arc<Self>,
         peer: PeerAdvertisement,
         pair_first: bool,
@@ -805,18 +805,9 @@ impl ClipboardSyncManager {
             Some(proto::server_control_frame::Body::Welcome(welcome)) => welcome,
             _ => return Err("remote peer returned no control protocol negotiation result".into()),
         };
-        if !welcome.features.iter().any(|feature| {
-            feature.feature == proto::Feature::ClipboardSync as i32
-                && matches!(feature.min_version, 1 | 2)
-                && feature.max_version == feature.min_version
-        }) {
-            return Err("remote peer does not support clipboard synchronization".into());
-        }
-        let replica_supported = welcome.features.iter().any(|feature| {
-            feature.feature == proto::Feature::ClipboardSync as i32
-                && feature.min_version == arcrelay_protocol::clipboard_replication::VERSION
-                && feature.max_version == arcrelay_protocol::clipboard_replication::VERSION
-        });
+        let clipboard_version = negotiated_clipboard_version(&welcome.features)?;
+        let replica_supported =
+            clipboard_version == arcrelay_protocol::clipboard_replication::VERSION;
         let remote_files_supported = welcome.features.iter().any(|feature| {
             feature.feature == proto::Feature::RemoteFiles as i32
                 && feature.min_version

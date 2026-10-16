@@ -1,5 +1,20 @@
 use super::*;
 
+pub(super) fn negotiated_clipboard_version(
+    features: &[proto::FeatureVersion],
+) -> Result<u32, String> {
+    features
+        .iter()
+        .find(|feature| {
+            feature.feature == proto::Feature::ClipboardSync as i32
+                && (1..=arcrelay_protocol::clipboard_replication::VERSION)
+                    .contains(&feature.min_version)
+                && feature.max_version == feature.min_version
+        })
+        .map(|feature| feature.min_version)
+        .ok_or_else(|| "remote peer does not support clipboard synchronization".into())
+}
+
 #[allow(deprecated)]
 pub(super) fn control_hello() -> proto::ClientControlFrame {
     let features = [

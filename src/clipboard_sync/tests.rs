@@ -1,5 +1,193 @@
 use super::*;
 
+#[test]
+fn clipboard_welcome_accepts_current_and_legacy_selected_versions() {
+    for version in 1..=arcrelay_protocol::clipboard_replication::VERSION {
+        let features = [proto::FeatureVersion {
+            feature: proto::Feature::ClipboardSync as i32,
+            min_version: version,
+            max_version: version,
+        }];
+        assert_eq!(negotiated_clipboard_version(&features), Ok(version));
+    }
+}
+
+#[test]
+fn clipboard_welcome_rejects_missing_unselected_and_unadvertised_versions() {
+    let current = arcrelay_protocol::clipboard_replication::VERSION;
+    assert!(negotiated_clipboard_version(&[]).is_err());
+    for (feature, min_version, max_version) in [
+        (proto::Feature::Clipboard, current, current),
+        (proto::Feature::ClipboardSync, 0, 0),
+        (proto::Feature::ClipboardSync, current + 1, current + 1),
+        (proto::Feature::ClipboardSync, 1, current),
+        (proto::Feature::ClipboardSync, current, 1),
+    ] {
+        assert!(negotiated_clipboard_version(&[proto::FeatureVersion {
+            feature: feature as i32,
+            min_version,
+            max_version,
+        }])
+        .is_err());
+    }
+}
+
+#[tokio::test]
+async fn current_clipboard_handshake_keeps_connection_for_bidirectional_replication() {
+    use arcrelay_core::domain::clipboard::ClipboardReplicaRecord;
+    use arcrelay_core::infrastructure::clipboard_test_support::TestClipboardRepository;
+    use arcrelay_protocol::clipboard_replication::{PeerClient, VERSION};
+
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let root = tempfile::tempdir().unwrap();
+        let left = test_network_runtime(&root.path().join("left"), "Left").await;
+        let right = test_network_runtime(&root.path().join("right"), "Right").await;
+        let mut incoming = right.subscribe();
+        let pairing = left
+            .connect(&test_advertisement(&right), SessionKind::Pairing)
+            .await
+            .unwrap();
+        let responder = incoming.recv().await.unwrap();
+        left.confirm_pairing_with_grants(
+            &pairing,
+            vec![arcrelay_peer::Grant {
+                peer_id: right.device_id(),
+                capability: CapabilityId::ClipboardSync,
+                direction: GrantDirection::Inbound,
+                constraints: arcrelay_peer::GrantConstraints::None,
+                granted_at_ms: 1,
+            }],
+        )
+        .await
+        .unwrap();
+        right.confirm_pairing(&responder).await.unwrap();
+        pairing.close("paired");
+
+        let local = TestClipboardRepository::open(None).await.unwrap().service();
+        let remote = TestClipboardRepository::open(None).await.unwrap().service();
+        let network = Arc::new(tokio::sync::OnceCell::new());
+        assert!(network.set(left.clone()).is_ok());
+        let (events, mut event_rx) = mpsc::channel(16);
+        let manager = ClipboardSyncManager::new(
+            local.clone(),
+            network,
+            Arc::new(ReverseFileProvider),
+            root.path(),
+            events,
+        );
+        let connection_manager = manager.clone();
+        let peer = test_advertisement(&right);
+        let _client = AbortTaskOnDrop(tokio::spawn(async move {
+            connection_manager.run_connection(peer, false).await
+        }));
+
+        let session = incoming.recv().await.unwrap();
+        let mut stream = session.accept_feature_stream().await.unwrap();
+        assert_eq!(stream.feature_id, "arcrelay.control");
+        let hello: proto::ClientControlFrame =
+            read_message(&mut stream.receive, MAX_CONTROL_FRAME_SIZE)
+                .await
+                .unwrap();
+        let Some(proto::client_control_frame::Body::Hello(hello)) = hello.body else {
+            panic!("expected control hello");
+        };
+        let offered = hello
+            .features
+            .iter()
+            .find(|f| f.feature == proto::Feature::ClipboardSync as i32)
+            .unwrap();
+        assert!(offered.min_version <= VERSION && offered.max_version == VERSION);
+        write_message(
+            &mut stream.send,
+            &proto::ServerControlFrame {
+                body: Some(proto::server_control_frame::Body::Welcome(
+                    proto::ControlWelcome {
+                        features: vec![proto::FeatureVersion {
+                            feature: proto::Feature::ClipboardSync as i32,
+                            min_version: VERSION,
+                            max_version: VERSION,
+                        }],
+                        ..Default::default()
+                    },
+                )),
+            },
+            MAX_CONTROL_FRAME_SIZE,
+        )
+        .await
+        .unwrap();
+        let _server = AbortTaskOnDrop(tokio::spawn(manager::serve_reverse_remote_file_streams(
+            session.transport_handle(),
+            Arc::new(ReverseFileProvider),
+            RemoteFileAccess::from_grants(&[], GrantDirection::Inbound),
+            Some(remote.clone()),
+        )));
+
+        assert!(
+            matches!(
+                event_rx.recv().await,
+                Some(ServerEvent::DeviceConnected { .. })
+            ),
+            "the negotiated current version must reach the connected state"
+        );
+        let transport = manager
+            .replica_connections
+            .lock()
+            .await
+            .get(right.device_id().as_str())
+            .cloned()
+            .expect("the current protocol must use replica streams, not legacy subscriptions");
+        let mut record = clipboard_version_record();
+        record.sync_id = format!("{:064x}", 1);
+        record.captured_at_ms = chrono::Utc::now().timestamp_millis();
+        let row = ClipboardReplicaRecord {
+            first_captured_at_ms: record.captured_at_ms,
+            record,
+            copy_count: 1,
+            last_used_at_ms: None,
+        };
+        PeerClient::new(transport.clone())
+            .send_record(row.clone(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            remote
+                .replica_record(&row.record.sync_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .record
+                .text,
+            row.record.text
+        );
+        let mut reverse = row;
+        reverse.record.sync_id = format!("{:064x}", 2);
+        reverse.record.text = Some("reverse replication".into());
+        PeerClient::new(session.transport_handle())
+            .send_record(reverse.clone(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            local
+                .replica_record(&reverse.record.sync_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .record
+                .text,
+            reverse.record.text
+        );
+        assert!(transport.close_reason().is_none());
+        assert_eq!(
+            manager.connected_peer_ids().await,
+            vec![right.device_id().to_string()]
+        );
+        left.shutdown("test complete");
+        right.shutdown("test complete");
+    })
+    .await
+    .expect("current-version handshake and replication must complete");
+}
+
 #[tokio::test]
 async fn startup_wait_retries_until_runtime_is_available() {
     let mut attempts = 0;
