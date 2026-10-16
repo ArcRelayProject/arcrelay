@@ -186,6 +186,7 @@ pub(super) unsafe fn decode(event: CGEventRef) -> Option<SystemGestureEvent> {
     } else {
         u32::try_from(CGEventGetIntegerValueField(event, 123)).ok()?
     };
+    let native_inverted = CGEventGetIntegerValueField(event, 136) != 0;
     let mut decoded = SystemGestureEvent {
         axis,
         phase: u32::try_from(CGEventGetIntegerValueField(event, 132)).ok()?,
@@ -200,20 +201,19 @@ pub(super) unsafe fn decode(event: CGEventRef) -> Option<SystemGestureEvent> {
         } else {
             CGEventGetDoubleValueField(event, 130)
         },
-        // Pinch's native direction flag affects how the Dock interprets it.
-        // Swipes retain the v1 injection convention used by mobile and old peers.
-        inverted_from_device: !magnification
-            && axis == 3
-            && CGEventGetIntegerValueField(event, 136) != 0,
+        // Horizontal direction is normalized below so it remains a v1 swipe.
+        // Pinch retains its versioned native direction metadata.
+        inverted_from_device: !magnification && axis == 3 && native_inverted,
         finger_count: 0,
     }
     .validate()
     .ok()?;
-    if axis == 2 {
-        // The macOS source trace reports up as negative/down as positive, but
-        // replay with our legacy injector reverses those actions (dual-Mac test).
-        // Convert only captured vertical gestures, including terminal velocity;
-        // do not invert horizontal swipes or mobile-generated input a second time.
+    if (axis == 1 && native_inverted) || axis == 2 {
+        // The macOS 15 trace has CG progress -0.2861 / velocity -3.5882 for
+        // a horizontal HID progress +0.2861 when field 136 is set. Normalize
+        // that direction once; with natural scrolling off, leave it unchanged.
+        // Preserve the previously verified vertical convention. Mobile input
+        // already uses wire coordinates. Exit velocity must follow progress.
         decoded.progress = -decoded.progress;
         decoded.velocity_x = -decoded.velocity_x;
         decoded.velocity_y = -decoded.velocity_y;
@@ -401,56 +401,93 @@ mod tests {
     }
 
     #[test]
-    fn captured_vertical_direction_and_exit_velocity_are_corrected_once() {
-        // Signs from the user's labelled upward/downward macOS 26 trace.
-        for sign in [-1.0, 1.0] {
-            for phase in [1, 2, 4, 8] {
-                let sample = SystemGestureEvent {
-                    progress: sign * 0.375,
-                    velocity_x: sign * 4.5,
-                    velocity_y: sign * 4.5,
-                    ..event(phase)
-                };
-                let decoded = TestEvent::new(sample).decode().unwrap();
-                assert_eq!(
-                    decoded,
-                    SystemGestureEvent {
-                        progress: -sample.progress,
-                        velocity_x: -sample.velocity_x,
-                        velocity_y: -sample.velocity_y,
-                        ..sample
+    fn captured_swipe_direction_and_exit_velocity_are_corrected_once() {
+        for axis in [1, 2] {
+            for native_inverted in [false, true] {
+                for sign in [-1.0, 1.0] {
+                    for phase in [1, 2, 4, 8] {
+                        let sample = SystemGestureEvent {
+                            axis,
+                            progress: sign * 0.375,
+                            velocity_x: sign * 4.5,
+                            velocity_y: sign * 4.5,
+                            inverted_from_device: native_inverted,
+                            ..event(phase)
+                        };
+                        let decoded = TestEvent::new(sample).decode().unwrap();
+                        let direction = if axis == 2 || native_inverted {
+                            -1.0
+                        } else {
+                            1.0
+                        };
+                        assert_eq!(
+                            decoded,
+                            SystemGestureEvent {
+                                progress: sample.progress * direction,
+                                velocity_x: sample.velocity_x * direction,
+                                velocity_y: sample.velocity_y * direction,
+                                inverted_from_device: false,
+                                ..sample
+                            }
+                        );
+                        assert!(decoded.validate_format(1).is_ok());
+                        assert_eq!(
+                            SystemGestureEvent::try_from(
+                                arcrelay_input::proto::SystemGesture::from(decoded)
+                            ),
+                            Ok(decoded)
+                        );
                     }
-                );
-                assert_eq!(
-                    SystemGestureEvent::try_from(arcrelay_input::proto::SystemGesture::from(
-                        decoded
-                    )),
-                    Ok(decoded)
-                );
+                }
             }
         }
     }
 
     #[test]
-    fn capture_preserves_horizontal_and_pinch_values_and_rejects_other_gestures() {
-        for axis in [1, 3] {
-            for sign in [-1.0, 1.0] {
-                for inverted_from_device in [false, true] {
-                    let sample = SystemGestureEvent {
-                        axis,
-                        progress: sign * 0.5,
-                        inverted_from_device,
-                        ..event(1)
-                    };
-                    let decoded = TestEvent::new(sample).decode().unwrap();
-                    assert_eq!(
-                        decoded,
-                        SystemGestureEvent {
-                            inverted_from_device: axis == 3 && inverted_from_device,
-                            ..sample
-                        }
-                    );
-                }
+    fn horizontal_capture_matches_macbook_native_hid_trace_without_double_inversion() {
+        // Real macOS 15.6.1 CGEvent/HID pairs from the 54 MacBook. The HID
+        // positions are independent evidence for the required target direction.
+        for (phase, progress, velocity, hid_progress) in [
+            (1, -0.0110015869140625, 0.0, 0.0110015869140625),
+            (
+                4,
+                -0.2860565185546875,
+                -3.58819580078125,
+                0.2860565185546875,
+            ),
+            (1, 0.0142822265625, 0.0, -0.0142822265625),
+            (4, 0.289520263671875, 4.1595916748046875, -0.289520263671875),
+        ] {
+            let raw = SystemGestureEvent {
+                axis: 1,
+                phase,
+                progress,
+                velocity_x: velocity,
+                velocity_y: velocity,
+                inverted_from_device: true,
+                finger_count: 0,
+            };
+            let captured = TestEvent::new(raw).decode().unwrap();
+            assert_eq!(captured.progress, hid_progress);
+            assert_eq!(captured.velocity_x, -velocity);
+            assert_eq!(captured.velocity_y, -velocity);
+            assert!(!captured.inverted_from_device);
+            assert!(captured.validate_format(1).is_ok());
+        }
+    }
+
+    #[test]
+    fn capture_preserves_pinch_values_and_rejects_other_gestures() {
+        for sign in [-1.0, 1.0] {
+            for inverted_from_device in [false, true] {
+                let sample = SystemGestureEvent {
+                    axis: 3,
+                    progress: sign * 0.5,
+                    inverted_from_device,
+                    ..event(1)
+                };
+                let decoded = TestEvent::new(sample).decode().unwrap();
+                assert_eq!(decoded, sample);
             }
         }
         for axis in [0, 4, u32::MAX] {

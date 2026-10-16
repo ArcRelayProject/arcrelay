@@ -1395,8 +1395,12 @@ impl ArcInputRuntime {
                         self.record(
                             "system-gesture",
                             format!(
-                                "received axis={} phase={} progress={:.4}",
-                                gesture.axis, gesture.phase, gesture.progress
+                                "received axis={} phase={} progress={:.4} fingers={} inverted={}",
+                                gesture.axis,
+                                gesture.phase,
+                                gesture.progress,
+                                gesture.finger_count,
+                                gesture.inverted_from_device
                             ),
                             None,
                         );

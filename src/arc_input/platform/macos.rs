@@ -404,6 +404,21 @@ unsafe extern "C" fn capture_callback(
             generation,
             format_version,
         );
+        if generation != 0 && event_type == 30 {
+            let phase = CGEventGetIntegerValueField(event, 132);
+            if matches!(phase, 1 | 4 | 8) {
+                tracing::debug!(
+                    target: "input.gesture.capture",
+                    subtype,
+                    motion = CGEventGetIntegerValueField(event, 123),
+                    phase,
+                    fingers = gesture::contact_count(),
+                    inverted = CGEventGetIntegerValueField(event, 136),
+                    blocked,
+                    "Native system gesture capture decision"
+                );
+            }
+        }
         if blocked {
             if let Some(event) = routed {
                 context.emit(CapturedInputEvent::SystemGesture { event, generation });
