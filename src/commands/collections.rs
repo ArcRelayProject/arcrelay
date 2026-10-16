@@ -5,6 +5,14 @@ use serde::Deserialize;
 #[derive(Deserialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum CollectionRequest {
+    AppPins {
+        app_id: String,
+    },
+    SetAppPin {
+        id: String,
+        app_id: String,
+        pinned: bool,
+    },
     List {
         after: String,
     },
@@ -40,6 +48,7 @@ pub enum CollectionRequest {
 #[derive(Default, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionResponse {
+    pub pinned_ids: Vec<String>,
     pub peers: Vec<crate::clipboard_sync::replication::CollectionPeerState>,
     pub records: Vec<ClipboardCollection>,
     pub saved: Option<ClipboardCollection>,
@@ -76,6 +85,30 @@ pub async fn collection_request(
         ..Default::default()
     };
     match request {
+        CollectionRequest::AppPins { app_id } => {
+            response.pinned_ids = state
+                .clipboard
+                .collection_app_pins(app_id)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        CollectionRequest::SetAppPin { id, app_id, pinned } => {
+            let target =
+                crate::windowing::clipboard_target_application(&app).map_err(|e| e.to_string())?;
+            if target.as_ref().map(|target| target.id.as_str()) != Some(app_id.as_str()) {
+                return Err("前台应用已切换，请重新打开菜单后置顶".into());
+            }
+            state
+                .clipboard
+                .set_collection_app_pin(id, app_id.clone(), pinned)
+                .await
+                .map_err(|e| e.to_string())?;
+            response.pinned_ids = state
+                .clipboard
+                .collection_app_pins(app_id)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
         CollectionRequest::Sync { id } => {
             response.peers = state.clipboard_sync.collection_states(&id).await?
         }
@@ -119,7 +152,10 @@ pub async fn collection_request(
             )
         }
         CollectionRequest::FromHistory { ids } => {
-            if ids.is_empty() || ids.len() > 64 {
+            if ids.is_empty()
+                || ids.len() > 64
+                || ids.iter().collect::<std::collections::HashSet<_>>().len() != ids.len()
+            {
                 return Err("Select 1 to 64 text records".into());
             }
             for (index, id) in ids.into_iter().enumerate() {

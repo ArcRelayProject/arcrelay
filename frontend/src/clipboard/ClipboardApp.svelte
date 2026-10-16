@@ -4,7 +4,7 @@
   import { translate as uiTranslate, language as uiLanguage, setLanguage } from "../i18n";
   import { SubscriptionScope } from "../subscriptions";
   import { observeWindowVisibility } from "./windowVisibility";
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { Dialog } from "bits-ui";
   import {
     Check,
@@ -26,13 +26,49 @@
   } from "phosphor-svelte";
 
   import CollectionPanel from "../features/collections/CollectionPanel.svelte";
+  import CollectionCapture from "../features/collections/CollectionCapture.svelte";
+  import type { ClipboardCollection } from "../ipc/generated";
   let collectionEditing = false;
-  let collectionHistoryIds: number[] = [];
-  function collectHistory(ids: number[]) {
-    collectionHistoryIds = [...ids];
-    selectedIds = [];
-    changeFilter("collections");
+  let collectionFocus = "";
+  let captureIds: number[] = [];
+  let captureIntent: "add" | "new" = "new";
+  let captureScrollTop = 0;
+  let collectionToast = "";
+  let collectionToastTimer: ReturnType<typeof setTimeout>;
+  function notifyCollection(message: string) {
+    clearTimeout(collectionToastTimer);
+    collectionToast = message;
+    collectionToastTimer = setTimeout(() => (collectionToast = ""), 3500);
   }
+  function collectHistory(ids: number[], intent: "add" | "new" = "new") {
+    if (captureIds.length) return;
+    captureScrollTop = scrollElement?.scrollTop ?? scrollTop;
+    captureIntent = intent;
+    captureIds = [...ids];
+    loadGeneration += 1;
+    loading = false;
+  }
+  async function closeCollectionCapture() {
+    captureIds = [];
+    await tick();
+    if (scrollElement) scrollElement.scrollTop = captureScrollTop;
+    scrollTop = captureScrollTop;
+    updateVisibleRange();
+  }
+  function collectionCaptured(record: ClipboardCollection, appended: boolean) {
+    if (appended) {
+      void closeCollectionCapture();
+      notifyCollection("已添加到 " + record.name);
+    } else {
+      captureIds = [];
+      selectedIds = [];
+      collectionFocus = record.id;
+      abandonNearby();
+      setSearchState("", "collections", null);
+      notifyCollection("已保存为集合 · " + record.items.length + " 项");
+    }
+  }
+  onDestroy(() => clearTimeout(collectionToastTimer));
   import BrandLogo from "../BrandLogo.svelte";
   import type { AppSettings, ClipboardSortPreference, LanguagePreference } from "../types";
   import ClipboardLabelDialog from "./ClipboardLabelDialog.svelte";
@@ -766,6 +802,7 @@
       Date.now() < interactionUntil
     )
       return;
+    if (captureIds.length) return;
     checkingApplication = true;
     const generation = loadGeneration;
     try {
@@ -804,7 +841,7 @@
     preservePosition = false,
   }: { append?: boolean; cursor?: ClipboardCursor | null; preservePosition?: boolean } = {}) {
     if (!windowVisible) return;
-    if (dragBusy) {
+    if (captureIds.length || dragBusy) {
       historyRefreshPending = true;
       return;
     }
@@ -874,6 +911,7 @@
         requestHistoryRefresh();
         return;
       }
+      if (captureIds.length) return;
       const anchor = preservePosition && scrollTop > 0 ? viewportAnchor() : null;
       const previousSelection = selectedId;
       targetApplication = target;
@@ -1473,7 +1511,9 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (handleInlineMenuKey(event)) return;
     if (
+      captureIds.length > 0 ||
       filter === "collections" ||
       collectionEditing ||
       (event.target instanceof Element && event.target.closest(".collection-panel"))
@@ -1489,7 +1529,6 @@
       }
       return;
     }
-    if (handleInlineMenuKey(event)) return;
     if (event.key === "Escape") {
       if (selectedIds.length > 0) {
         event.preventDefault();
@@ -1703,7 +1742,7 @@
           !loading && !locating && search === debouncedSearch && debouncedSearch.trim()
             ? () => viewNearby(item)
             : undefined,
-        collect: () => collectHistory([item.id]),
+        collect: () => collectHistory([item.id], "add"),
         reload: load,
         edit: () => beginEdit(item),
         original: editOrigins.has(item.id)
@@ -1908,7 +1947,9 @@
 
 <main
   class="clipboard-window"
-  class:collection-editing={collectionEditing}
+  class:collection-editing={collectionEditing || captureIds.length > 0}
+  class:capture-mode={captureIds.length > 0}
+  class:multi-select-mode={selectedIds.length > 0 && !captureIds.length}
   class:collection-mode={filter === "collections"}
 >
   <header class="clipboard-header drag-region" use:windowDrag>
@@ -2163,12 +2204,25 @@
     {/if}
   </div>
 
+  {#if captureIds.length}
+    <CollectionCapture
+      ids={captureIds}
+      intent={captureIntent}
+      onClose={() => void closeCollectionCapture()}
+      onSaved={collectionCaptured}
+    />
+  {/if}
+  {#if collectionToast}<div class="collection-toast" role="status">
+      <Check size={18} />{collectionToast}
+    </div>{/if}
   {#if filter === "collections"}
     <CollectionPanel
       targetName={targetApplication?.name ?? ""}
       search={debouncedSearch}
       bind:editing={collectionEditing}
-      bind:historyIds={collectionHistoryIds}
+      targetId={targetApplication?.id ?? ""}
+      focusId={collectionFocus}
+      onNotify={notifyCollection}
     />
   {:else}
     <section
@@ -2259,76 +2313,59 @@
     </section>
   {/if}
 
-  {#if selectedIds.length > 0}
-    <div class="multi-select-status" role="status" aria-live="polite">
-      {t("已选 {count} 项 · 按 1 → {count} 处理", language, { count: selectedIds.length })}
-    </div>
-    <div
-      class="multi-select-actions"
-      role="toolbar"
-      aria-label={uiTranslate("多选操作", $uiLanguage)}
-    >
-      <button
-        class="multi-action paste-action"
-        type="button"
-        disabled={multiPasting || !multiPasteAvailable}
-        on:click={pasteSelectedItems}
-        aria-label={uiTranslate("粘贴", $uiLanguage)}
-        title={!multiPasteAvailable
-          ? uiTranslate("多选粘贴仅支持可用的文本和图片", $uiLanguage)
-          : combinedPasteAvailable
-            ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage)
-            : uiTranslate("按选择顺序粘贴", $uiLanguage)}
-      >
-        <span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span>
-        <CopySimple size={21} weight="bold" />
-      </button>
-      <button
-        class="multi-action continuous-action"
-        type="button"
-        disabled={multiPasting}
-        on:click={startContinuousPaste}
-        aria-label={uiTranslate("开始连续粘贴", $uiLanguage)}
-        title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}
-      >
-        <span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span>
-        <StackSimple size={21} weight="bold" />
-      </button>
-      <button
-        class="multi-action"
-        type="button"
-        disabled={selectedItems.length > 64 ||
-          selectedItems.some((item) => !item.available || !["text", "html"].includes(item.kind))}
-        on:click={() => collectHistory(selectedIds)}
-        aria-label="存为集合"
-        title="存为集合"><StackSimple size={21} /></button
-      >
-      <div class="multi-action-divider" aria-hidden="true"></div>
-      <button
-        class="multi-action delete-action"
-        type="button"
-        disabled={multiPasting}
-        on:click={deleteSelectedItems}
-        aria-label={uiTranslate("删除所选", $uiLanguage)}
-        title={uiTranslate("删除所选", $uiLanguage)}
-      >
-        <span class="multi-action-label">{uiTranslate("删除所选", $uiLanguage)}</span>
-        <Trash size={21} weight="bold" />
-      </button>
-      <button
-        class="multi-action clear-selection"
-        type="button"
-        on:click={clearMultiSelection}
-        aria-label={tr("取消", language)}
-        title={tr("取消", language)}
-      >
-        <span class="multi-action-label">{tr("取消", language)}</span>
-        <X size={21} />
-      </button>
+  {#if selectedIds.length > 0 && filter !== "collections"}
+    <div class="multi-select-actions" role="toolbar" aria-label="多选操作">
+      <div class="multi-select-heading">
+        <strong role="status" aria-live="polite">已选 {selectedIds.length} 项</strong><small
+          >按选择顺序保存</small
+        >
+        <button class="cancel-selection" type="button" on:click={clearMultiSelection}
+          >取消选择</button
+        >
+      </div>
+      <div class="multi-select-buttons">
+        <button
+          class="multi-action paste-action"
+          type="button"
+          disabled={multiPasting || !multiPasteAvailable}
+          on:click={pasteSelectedItems}
+          aria-label="粘贴"
+          title="按选择顺序粘贴"><CopySimple size={18} /><span>粘贴</span></button
+        >
+        <button
+          class="multi-action continuous-action"
+          type="button"
+          disabled={multiPasting}
+          on:click={startContinuousPaste}
+          aria-label="开始连续粘贴"
+          title="每次按剪贴板快捷键粘贴下一项"
+          ><StackSimple size={18} /><span>连续粘贴</span></button
+        >
+        <button
+          class="multi-action collect-action"
+          type="button"
+          disabled={multiPasting || !combinedPasteAvailable || selectedIds.length > 64}
+          on:click={() => collectHistory(selectedIds)}
+          aria-label="保存为集合"
+          title={selectedIds.length > 64
+            ? "最多选择 64 条文本记录"
+            : !combinedPasteAvailable
+              ? "仅支持可用的文本记录，请取消图片、文件或不可用记录的选择"
+              : "每条文本保存为一个内容项"}><StackSimple size={18} /><span>保存为集合</span></button
+        >
+        <button
+          class="multi-action delete-action"
+          type="button"
+          disabled={multiPasting}
+          on:click={deleteSelectedItems}
+          aria-label="删除所选"
+          title="删除所选"><Trash size={18} /></button
+        >
+      </div>
     </div>
   {/if}
 
-  {#if filter !== "collections"}
+  {#if filter !== "collections" && !selectedIds.length}
     <footer class="clipboard-footer drag-region" use:windowDrag>
       <div class:busy={ocrPasting} class="record-count">
         <strong>
@@ -2542,6 +2579,12 @@
 <InlineContextMenu />
 
 <style>
+  .clipboard-window.capture-mode > :global(:not(.collection-capture)) {
+    display: none;
+  }
+  .clipboard-window.multi-select-mode {
+    grid-template-rows: 60px 60px auto minmax(0, 1fr) auto;
+  }
   .clipboard-window.collection-mode :global(.label-filter-toolbar) {
     display: none;
   }

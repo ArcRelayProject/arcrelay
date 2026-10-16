@@ -5,7 +5,9 @@ export type ContextMenuEntry =
   | {
       id?: string;
       text: string;
-      icon?: "insert" | "copy" | "edit" | "pin" | "favorite" | "label" | "delete";
+      description?: string;
+      icon?:
+        "insert" | "copy" | "edit" | "pin" | "favorite" | "label" | "delete" | "collection" | "add";
       destructive?: boolean;
       checked?: boolean;
       enabled?: boolean;

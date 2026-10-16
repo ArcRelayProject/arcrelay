@@ -84,25 +84,29 @@
   min-height: 0;
   flex: 1;
 }
-.collection-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 20px;
+.collection-list-body {
+  padding: 8px 10px 12px;
+  background: var(--surface-sunken);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .collection-card {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  margin-bottom: 14px;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  margin-bottom: 8px;
   overflow: hidden;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+.collection-card.expanded {
+  border-color: var(--accent);
+}
+.collection-card:focus-within {
+  border-color: var(--accent);
 }
 .collection-card-header {
   display: flex;
   align-items: center;
-  padding-right: 12px;
-  gap: 0;
 }
 .collection-card-title {
   flex: 1;
@@ -113,8 +117,9 @@
   background: transparent;
   text-align: left;
   justify-content: start;
-  padding: 20px 16px;
-  gap: 14px;
+  padding: 12px 14px;
+  gap: 10px;
+  border-radius: 0;
 }
 .collection-card-title > span:nth-child(2) {
   flex: 1;
@@ -122,7 +127,7 @@
 }
 .collection-card-title strong {
   display: block;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -139,29 +144,39 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  background: var(--accent-soft);
+  width: 24px;
+  height: 24px;
   color: var(--accent);
   flex-shrink: 0;
 }
 .collection-card-tools {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 0 14px 12px;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 14px;
+  min-height: 34px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-soft);
 }
-.collection-card-tools button {
-  padding: 5px 10px;
-  font-size: 13px;
-  min-height: 30px;
+.collection-card-meta {
+  white-space: nowrap;
+}
+.collection-panel .collection-card-tools .icon {
+  padding: 5px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+}
+.collection-panel .icon:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .collection-values {
   border-top: 1px solid var(--border);
 }
 .collection-value {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   padding: 14px 12px;
@@ -209,18 +224,46 @@
   display: flex;
   align-items: center;
   gap: 3px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .value-actions > button:last-child {
   padding: 6px 10px;
 }
 .collection-list-footer {
   border-top: 1px solid var(--border);
-  padding: 10px 24px;
-  display: flex;
+  padding: 5px 10px;
+  min-height: 48px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   color: var(--text-secondary);
+  background: var(--surface-soft);
   flex-shrink: 0;
+}
+.collection-sync-status {
+  justify-self: start;
+}
+.collection-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.collection-panel .collection-create {
+  justify-self: end;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 6px 8px;
+  white-space: nowrap;
+  gap: 4px;
+}
+.collection-panel .collection-create:hover {
+  background: var(--accent-soft);
 }
 .collection-empty {
   padding: 60px 0;
@@ -432,26 +475,11 @@
   color: var(--danger);
 }
 @media (max-width: 440px) {
-  .collection-list-body,
   .collection-editor-body {
     padding: 16px;
   }
-  .collection-list-footer {
-    padding: 10px 16px;
-  }
   .collection-card-title small {
     font-size: 12px;
-  }
-  .collection-symbol {
-    width: 36px;
-    height: 40px;
-  }
-  .collection-card-header {
-    padding-right: 8px;
-  }
-  .collection-panel button.collection-card-title {
-    padding: 16px 12px;
-    gap: 10px;
   }
   .field-heading {
     gap: 4px;
@@ -462,21 +490,186 @@
   .field-content {
     padding-left: 0;
   }
-  .collection-list-footer > small {
-    display: none;
-  }
-  .value-actions {
-    flex-wrap: wrap;
-    max-width: 110px;
-  }
 }
 
 .collection-target {
   margin: 0;
-  padding: 0 16px 12px;
+  padding: 8px 14px;
+  font-size: 12px;
 }
 .collection-sync-peers .collection-notice {
   justify-content: space-between;
+}
+
+.collection-app-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 110px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.collection-app-pin span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-app-pin svg {
+  flex-shrink: 0;
+}
+.collection-capture-body > .collection-label {
+  font-size: 13px;
+  font-weight: 500;
+  gap: 8px;
+}
+.collection-capture-preview {
+  padding: 10px 0 16px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  max-height: 150px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  font-size: 15px;
+}
+.collection-destination-heading {
+  margin: 24px 0 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.collection-destination-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.collection-destination-search > svg {
+  position: absolute;
+  left: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.collection-panel .collection-destination-search > input {
+  padding-left: 38px;
+}
+.collection-destinations {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.collection-panel .collection-destinations > button {
+  width: 100%;
+  min-height: 60px;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.collection-destinations > button:last-child {
+  border-bottom: 0;
+}
+.collection-destinations > button > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.collection-destinations > button > span {
+  flex: 1;
+  min-width: 0;
+}
+.collection-destinations strong,
+.collection-destinations small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-destinations strong {
+  font-weight: 600;
+}
+.collection-destinations small {
+  font-size: 12px;
+  margin-top: 3px;
+}
+.collection-panel .collection-destinations > button.selected {
+  background: var(--accent-soft);
+}
+.collection-destination-empty {
+  padding: 8px 14px;
+}
+.collection-editor.from-history .field-content {
+  padding-top: 8px;
+}
+.collection-editor.from-history textarea {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.collection-editor.from-history .collection-topbar,
+.collection-capture > .collection-topbar {
+  min-height: 56px;
+  padding: 10px 16px;
+}
+.collection-editor.from-history .collection-editor-body {
+  padding: 20px 18px;
+}
+.collection-editor.from-history .collection-label {
+  font-size: 14px;
+  gap: 8px;
+}
+.collection-editor.from-history .collection-label input {
+  font-size: 14px;
+  font-weight: 400;
+  padding: 8px 12px;
+  line-height: 20px;
+}
+.collection-editor.from-history .field-heading > .icon {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+}
+.collection-editor.from-history .field-content > textarea,
+.collection-editor.from-history .field-content > input {
+  display: block;
+}
+.collection-editor.from-history .collection-section-title {
+  margin: 28px 0 14px;
+  gap: 8px;
+}
+.collection-editor.from-history .collection-section-title strong {
+  font-size: 14px;
+}
+.collection-editor.from-history .collection-field {
+  padding: 10px 12px;
+}
+.collection-panel .from-history .field-heading input.field-name {
+  padding: 4px 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+  min-height: 28px;
+}
+.collection-editor.from-history .field-content {
+  padding-left: 22px;
+}
+.collection-editor.from-history .field-type {
+  width: 86px;
+}
+.collection-editor.from-history .field-type.app-select-trigger {
+  background: transparent;
+  border-color: transparent;
+  padding: 4px;
+  min-height: 28px;
+}
+.collection-editor.from-history .collection-add {
+  color: var(--accent);
 }
 
 .collection-panel .field-type {

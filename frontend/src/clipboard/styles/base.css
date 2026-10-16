@@ -408,9 +408,23 @@ input:focus-visible {
 
 .clipboard-row.multi-selected {
   border-color: color-mix(in srgb, var(--accent) 88%, var(--border-color));
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent),
-    0 4px 14px color-mix(in srgb, var(--text-primary) 7%, transparent);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+.clipboard-row.selecting .clipboard-content {
+  padding-left: 32px;
+}
+.clipboard-row.selecting .clipboard-meta {
+  padding-left: 46px;
+}
+.clipboard-row.multi-selected .clipboard-content {
+  background: var(--accent-soft);
+}
+.selection-empty {
+  position: absolute;
+  top: 12px;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .clipboard-row.multi-selected .clipboard-meta {
@@ -421,17 +435,17 @@ input:focus-visible {
   position: absolute;
   z-index: 3;
   top: 8px;
-  right: 8px;
+  left: 10px;
   display: grid;
   min-width: 24px;
   height: 24px;
   padding: 0 6px;
   place-items: center;
-  border: 2px solid var(--surface-raised);
+  border: 0;
   border-radius: 999px;
   color: var(--text-inverse);
   background: var(--accent);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: none;
   font-size: 11px;
   font-weight: 750;
 }
@@ -783,127 +797,101 @@ input:focus-visible {
 }
 
 .multi-select-actions {
-  position: absolute;
-  z-index: 8;
-  right: 14px;
-  bottom: 58px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  min-width: 0;
+}
+.multi-select-heading {
   display: flex;
-  width: 56px;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 17px;
-  background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--text-primary) 16%, transparent);
-  backdrop-filter: blur(16px);
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
 }
-
-.multi-select-status {
-  position: absolute;
-  z-index: 7;
-  right: 82px;
-  bottom: 64px;
-  left: 14px;
-  width: fit-content;
-  max-width: calc(100% - 96px);
-  padding: 7px 11px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-color));
-  border-radius: 10px;
+.multi-select-heading small {
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--text-primary) 10%, transparent);
-  backdrop-filter: blur(14px);
   font-size: 11px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-
+.multi-select-heading .cancel-selection {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.multi-select-buttons {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 32px;
+  gap: 6px;
+}
 .multi-select-actions button.multi-action {
-  position: relative;
   display: inline-flex;
-  width: 40px;
-  height: 40px;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  color: var(--text-inverse);
-  background: var(--accent);
-  cursor: pointer;
-  transition:
-    filter 120ms ease,
-    transform 120ms ease,
-    box-shadow 120ms ease;
-}
-
-.multi-select-actions button.continuous-action {
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-color));
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-}
-
-.multi-select-actions button.delete-action {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.multi-select-actions button.clear-selection {
-  color: var(--text-primary);
-  background: var(--surface-hover);
-}
-
-.multi-select-actions button:hover:not(:disabled),
-.multi-select-actions button:focus-visible:not(:disabled) {
-  filter: brightness(1.04);
-  transform: translateY(-1px);
-  box-shadow: 0 5px 14px color-mix(in srgb, currentColor 18%, transparent);
-}
-
-.multi-select-actions button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.multi-action-divider {
-  width: 30px;
-  height: 1px;
-  margin: 1px 0;
-  background: var(--border-color);
-}
-
-.multi-action-label {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 10px);
-  max-width: 220px;
-  padding: 6px 9px;
-  overflow: hidden;
+  gap: 5px;
+  min-height: 36px;
+  padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
+  background: var(--surface);
   color: var(--text-primary);
-  background: var(--surface-overlay);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--text-primary) 14%, transparent);
-  font-size: 11px;
-  font-weight: 650;
-  opacity: 0;
-  pointer-events: none;
-  text-overflow: ellipsis;
-  transform: translate(4px, -50%);
-  transition:
-    opacity 100ms ease,
-    transform 100ms ease;
+  font-size: 12px;
   white-space: nowrap;
+  cursor: pointer;
 }
-
-.multi-action:hover .multi-action-label,
-.multi-action:focus-visible .multi-action-label {
-  opacity: 1;
-  transform: translate(0, -50%);
+.multi-select-actions .multi-action svg {
+  flex-shrink: 0;
+}
+.multi-select-actions button.collect-action {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+}
+.multi-select-actions button.delete-action {
+  color: var(--danger);
+  padding: 5px;
+}
+.multi-select-actions button.multi-action:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+.multi-select-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.collection-toast {
+  position: absolute;
+  z-index: 30;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 28px);
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--text-primary);
+  color: var(--surface);
+  font-size: 13px;
+  pointer-events: none;
+}
+.collection-toast svg {
+  flex-shrink: 0;
+}
+@container clipboard-window (max-width: 350px) {
+  .multi-select-buttons .paste-action span,
+  .multi-select-buttons .continuous-action span {
+    display: none;
+  }
+  .multi-select-buttons {
+    grid-template-columns: 34px 34px minmax(0, 1fr) 32px;
+  }
+  .multi-select-heading small {
+    display: none;
+  }
 }
 
 .record-count {
