@@ -20,6 +20,7 @@
     Receipt,
     Clock,
     FileText,
+    PushPin,
   } from "phosphor-svelte";
   import type {
     ClipboardCollection,
@@ -29,13 +30,127 @@
     CollectionPeerState,
   } from "../../ipc/generated";
   import { collectionRequest as request } from "./bridge";
-  import { templates, fromTemplate, toDraft, matches } from "./model";
+  import { clipboardBridge } from "../../clipboard/bridge";
+  import {
+    showInlineContextMenu,
+    closeInlineContextMenu,
+    handleInlineMenuKey,
+    type ContextMenuEntry,
+  } from "../../clipboard/inlineContextMenu";
+  import { templates, fromTemplate, toDraft, matches, item } from "./model";
   import CollectionEditor from "./CollectionEditor.svelte";
   import "./collections.css";
   export let targetName = "";
   export let search = "";
   export let editing = false;
-  export let historyIds: number[] = [];
+  export let targetId = "";
+  export let focusId = "";
+  export let onNotify: (message: string) => void = () => {};
+  let focused = "";
+  let pinnedIds: string[] = [];
+  let pinnedFor = "";
+  let pinGeneration = 0;
+  let menuGeneration = 0;
+  $: pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
+  $: if (targetId !== pinnedFor) {
+    pinnedFor = targetId;
+    pinnedIds = [];
+    frozenOrder = [];
+    void loadPins(targetId);
+  }
+  async function loadPins(appId: string) {
+    const generation = ++pinGeneration;
+    if (!appId) return;
+    try {
+      const result = await request({ type: "appPins", app_id: appId });
+      if (!disposed && generation === pinGeneration && targetId === appId)
+        pinnedIds = result.pinnedIds;
+    } catch (reason) {
+      if (!disposed && generation === pinGeneration) error = String(reason);
+    }
+  }
+  $: if (focusId && focused !== focusId && records.some((row) => row.id === focusId)) {
+    focused = focusId;
+    void focusCollection(focusId);
+  }
+  async function focusCollection(id: string) {
+    expanded = id;
+    frozenOrder = [];
+    selected = records.find((row) => row.id === id)?.items[0]?.id ?? "";
+    await tick();
+    document.getElementById("collection-" + id)?.scrollIntoView({ block: "nearest" });
+  }
+  function edit(row: ClipboardCollection, add = false) {
+    draft = toDraft(row);
+    if (add) draft.items.push(item("内容 " + (row.items.length + 1)));
+    error = "";
+    page = "edit";
+  }
+  async function openMenu(event: MouseEvent, row: ClipboardCollection) {
+    event.preventDefault();
+    event.stopPropagation();
+    const generation = ++menuGeneration;
+    closeInlineContextMenu();
+    let action: (() => void) | null = null;
+    try {
+      const app = await clipboardBridge.targetApplication();
+      const pins = app ? (await request({ type: "appPins", app_id: app.id })).pinnedIds : [];
+      if (disposed || generation !== menuGeneration) return;
+      const pinned = pins.includes(row.id);
+      const entries: ContextMenuEntry[] = [
+        { text: "编辑集合…", icon: "edit", action: () => edit(row) },
+        {
+          text: row.items.length >= 64 ? "添加内容项（已达上限）" : "添加内容项…",
+          icon: "add",
+          enabled: row.items.length < 64,
+          action: () => edit(row, true),
+        },
+        { item: "Separator" },
+        {
+          text: app
+            ? (pinned ? "取消在 " : "在 ") + app.name + " 中置顶"
+            : "在当前应用中置顶（未检测到目标应用）",
+          icon: "pin",
+          description: app ? "仅对 " + app.name + " 生效" : undefined,
+          enabled: !!app,
+          action: () =>
+            void act(async () => {
+              if (!app) return;
+              const result = await request({
+                type: "setAppPin",
+                id: row.id,
+                app_id: app.id,
+                pinned: !pinned,
+              });
+              if (targetId === app.id) {
+                pinnedIds = result.pinnedIds;
+                frozenOrder = [];
+              }
+              onNotify((pinned ? "已取消在 " : "已在 ") + app.name + " 中置顶");
+            }),
+        },
+        {
+          text: row.favorite ? "取消收藏" : "收藏",
+          icon: "favorite",
+          action: () =>
+            void act(async () => {
+              await request({ type: "favorite", id: row.id, favorite: !row.favorite });
+              await refresh();
+            }),
+        },
+        { item: "Separator" },
+        { text: "删除集合", icon: "delete", destructive: true, action: () => (remove = row) },
+      ];
+      await clipboardBridge.setContextMenuOpen(true);
+      if (disposed || generation !== menuGeneration) return;
+      action = await showInlineContextMenu(entries, event.clientX, event.clientY);
+    } catch (reason) {
+      error = String(reason);
+    } finally {
+      if (generation === menuGeneration) await clipboardBridge.setContextMenuOpen(false);
+    }
+    if (!disposed && generation === menuGeneration) action?.();
+  }
   let peers: CollectionPeerState[] = [];
   let used: Record<string, number> = {};
   try {
@@ -68,16 +183,23 @@
     .filter((r) => !r.deleted && matches(r, search))
     .sort(
       (a, b) =>
+        (pinOrder.has(a.id) || pinOrder.has(b.id)
+          ? (pinOrder.get(a.id) ?? Infinity) - (pinOrder.get(b.id) ?? Infinity)
+          : 0) ||
         Number(b.favorite) - Number(a.favorite) ||
         (used[b.id] ?? 0) - (used[a.id] ?? 0) ||
         a.name.localeCompare(b.name) ||
         a.id.localeCompare(b.id),
     )
-    .sort((a, b) =>
-      expanded && frozenOrder.length
-        ? (frozenOrder.indexOf(a.id) < 0 ? Infinity : frozenOrder.indexOf(a.id)) -
-          (frozenOrder.indexOf(b.id) < 0 ? Infinity : frozenOrder.indexOf(b.id))
-        : 0,
+    .sort(
+      (a, b) =>
+        (pinOrder.has(a.id) || pinOrder.has(b.id)
+          ? (pinOrder.get(a.id) ?? Infinity) - (pinOrder.get(b.id) ?? Infinity)
+          : 0) ||
+        (expanded && frozenOrder.length
+          ? (frozenOrder.indexOf(a.id) < 0 ? Infinity : frozenOrder.indexOf(a.id)) -
+            (frozenOrder.indexOf(b.id) < 0 ? Infinity : frozenOrder.indexOf(b.id))
+          : 0),
     );
   async function refresh() {
     if (refreshing) return;
@@ -94,6 +216,7 @@
         after = result.records[result.records.length - 1].id;
       } while (all.length < 10000 && !disposed);
       if (!disposed) records = all;
+      await loadPins(targetId);
       if (page === "sync") peers = (await request({ type: "sync", id: expanded })).peers;
     } catch (e) {
       if (!disposed) error = String(e);
@@ -118,6 +241,8 @@
     await act(async () => {
       const result = await request({ type: "save", draft: value });
       expanded = result.saved?.id ?? "";
+      selected = result.saved?.items[0]?.id ?? "";
+      if (result.saved) onNotify("集合已保存");
       frozenOrder = [];
       page = "list";
       reveal = new Set();
@@ -171,6 +296,7 @@
     page = "new";
   }
   function keydown(event: KeyboardEvent) {
+    if (event.defaultPrevented || handleInlineMenuKey(event)) return;
     if (
       page !== "list" ||
       (event.target instanceof Element && event.target.closest("input,textarea,select"))
@@ -207,19 +333,13 @@
     }, 1000);
     return () => {
       disposed = true;
+      menuGeneration += 1;
+      closeInlineContextMenu();
+      void clipboardBridge.setContextMenuOpen(false);
       clearInterval(refreshTimer);
       clearInterval(tick);
     };
   });
-  $: if (historyIds.length) {
-    const ids = historyIds;
-    historyIds = [];
-    void act(async () => {
-      const result = await request({ type: "fromHistory", ids });
-      draft = { ...fromTemplate(0), items: result.items };
-      page = "edit";
-    });
-  }
 </script>
 
 <svelte:window on:keydown={keydown} />
@@ -343,6 +463,7 @@
           id={"collection-" + row.id}
           class="collection-card"
           class:expanded={expanded === row.id}
+          on:contextmenu={(event) => void openMenu(event, row)}
         >
           <div class="collection-card-header">
             <button
@@ -371,6 +492,11 @@
               }}><PencilSimple size={16} /></button
             >
             <span class="spacer"></span>
+            {#if pinOrder.has(row.id) && targetName}
+              <span class="collection-app-pin" title={"在 " + targetName + " 中置顶"}
+                ><PushPin size={15} weight="fill" /><span>{targetName}</span></span
+              >
+            {/if}
             {#if expanded === row.id}
               <button
                 class="icon"

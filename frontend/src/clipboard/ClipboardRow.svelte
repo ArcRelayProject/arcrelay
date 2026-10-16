@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../localization";
-  import { DevicesIcon, Star, PencilSimple, PushPin } from "phosphor-svelte";
+  import { DevicesIcon, Star, PencilSimple, PushPin, Circle } from "phosphor-svelte";
 
   import type { LanguagePreference } from "../types";
   import ContentPreview from "./ContentPreview.svelte";
@@ -93,6 +93,7 @@
 <div
   class:selected
   class:multi-selected={multiSelected}
+  class:selecting={multiSelectActive}
   class:unavailable={!item.available}
   class="clipboard-row"
   role="button"
@@ -111,6 +112,7 @@
   oncontextmenu={handleContextMenu}
   ondblclick={handleDoubleClick}
   aria-disabled={!item.available}
+  aria-pressed={multiSelectActive ? multiSelected : undefined}
   aria-label={t("{name}，双击插入", language, { name: item.sourceApp ?? "剪贴板" })}
 >
   {#if selectionOrder !== null}
@@ -119,7 +121,9 @@
       aria-label={t("第 {count} 个选择", language, { count: selectionOrder })}
       >{selectionOrder}</span
     >
-  {/if}
+  {:else if multiSelectActive}<span class="selection-empty" aria-hidden="true"
+      ><Circle size={22} /></span
+    >{/if}
   <div class="clipboard-content">
     <ContentPreview {item} {language} active={previewActive} onPreviewFiles={onPreview} />
   </div>

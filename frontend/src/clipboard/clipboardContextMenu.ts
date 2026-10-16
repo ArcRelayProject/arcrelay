@@ -103,9 +103,6 @@ export async function showClipboardContextMenu(
 
   const pairedPeers = nearbyPeers.filter((peer) => peer.paired);
   const items: ContextMenuEntry[] = [
-    ...(callbacks.collect && ["text", "html"].includes(item.kind)
-      ? [{ text: "存为集合", enabled: item.available, action: action(callbacks.collect) }]
-      : []),
     {
       text: tr("插入到当前应用", language),
       icon: "insert",
@@ -119,6 +116,17 @@ export async function showClipboardContextMenu(
       enabled: item.available,
       action: action(() => clipboardBridge.copy(item.id)),
     },
+    ...(callbacks.collect && ["text", "html"].includes(item.kind)
+      ? [
+          { item: "Separator" as const },
+          {
+            text: "添加到集合…",
+            icon: "collection" as const,
+            enabled: item.available,
+            action: action(callbacks.collect),
+          },
+        ]
+      : []),
     ...(item.kind === "text" || item.kind === "html"
       ? [{ text: translate("预览与选择…", language), action: action(callbacks.segment) }]
       : []),

@@ -18,9 +18,11 @@
   export let current: ClipboardCollection | undefined = undefined;
   export let busy = false;
   export let error = "";
+  export let title = "";
+  export let fromHistory = false;
   export let onSave: (draft: CollectionDraft) => void;
   export let onClose: () => void;
-  export let onSettings: () => void;
+  export let onSettings: (() => void) | undefined = undefined;
   let initial = JSON.stringify(draft);
   let discard = false;
   let reveal = new Set<string>();
@@ -33,6 +35,7 @@
       current.revision !== draft.base?.revision ||
       current.updatedByDeviceId !== draft.base?.deviceId);
   function close() {
+    if (busy) return;
     if (JSON.stringify(draft) !== initial) discard = true;
     else onClose();
   }
@@ -66,10 +69,10 @@
   }
 </script>
 
-<div class="collection-editor">
+<div class="collection-editor" class:from-history={fromHistory}>
   <header class="collection-topbar">
     <button class="icon" aria-label="返回" on:click={close}><ArrowLeft size={22} /></button><span
-      >{draft.id ? "编辑集合" : "新建集合"}</span
+      >{title || (draft.id ? "编辑集合" : "新建集合")}</span
     ><button class="icon" aria-label="关闭" on:click={close}><X size={22} /></button>
   </header>
   <div class="collection-editor-body">
@@ -110,7 +113,11 @@
         disabled={busy}
       /></label
     >
-    <div class="collection-section-title"><strong>内容项</strong><small>拖动调整顺序</small></div>
+    <div class="collection-section-title">
+      <strong>内容项</strong><small>{draft.items.length}</small><span class="spacer"></span><small
+        >拖动调整顺序</small
+      >
+    </div>
     <div class="collection-fields">
       {#each draft.items as entry, index (entry.id)}
         <section
@@ -128,6 +135,13 @@
               class="icon drag"
               draggable={!busy}
               on:dragstart={() => (dragged = index)}
+              on:keydown={(event) => {
+                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                  event.preventDefault();
+                  move(index, index + (event.key === "ArrowUp" ? -1 : 1));
+                }
+              }}
+              title="拖动排序，或聚焦后按上下方向键"
               aria-label="拖动内容项"><DotsSixVertical size={20} /></button
             >
             <input
@@ -157,7 +171,8 @@
               aria-label="删除内容项"
               on:click={() =>
                 (draft = { ...draft, items: draft.items.filter((i) => i.id !== entry.id) })}
-              disabled={busy}><Trash size={18} /></button
+              disabled={busy}
+              >{#if fromHistory}<X size={18} />{:else}<Trash size={18} />{/if}</button
             >
           </div>
           {#if pendingType === index}<div class="collection-notice">
@@ -213,34 +228,34 @@
               />
             {:else}<textarea
                 aria-label={entry.label + "内容"}
-                rows={entry.value.includes("\n") ? 4 : 2}
+                rows={entry.value.includes("\n") ? 4 : fromHistory ? 1 : 2}
                 bind:value={entry.value}
                 disabled={busy}
               ></textarea>{/if}
-            <div class="field-options">
-              {#if !entry.totp}<label class="check"
-                  ><input type="checkbox" bind:checked={entry.masked} />遮挡显示</label
-                >{/if}
-              {#if entry.masked || entry.totp}<button
+            {#if !fromHistory || entry.totp || entry.masked}<div class="field-options">
+                {#if !entry.totp}<label class="check"
+                    ><input type="checkbox" bind:checked={entry.masked} />遮挡显示</label
+                  >{/if}
+                {#if entry.masked || entry.totp}<button
+                    class="icon"
+                    aria-label={reveal.has(entry.id) ? "隐藏内容" : "显示内容"}
+                    on:click={() => toggle(entry)}
+                    >{#if reveal.has(entry.id)}<EyeSlash size={18} />{:else}<Eye
+                        size={18}
+                      />{/if}</button
+                  >{/if}
+                <span class="spacer"></span><button
                   class="icon"
-                  aria-label={reveal.has(entry.id) ? "隐藏内容" : "显示内容"}
-                  on:click={() => toggle(entry)}
-                  >{#if reveal.has(entry.id)}<EyeSlash size={18} />{:else}<Eye
-                      size={18}
-                    />{/if}</button
-                >{/if}
-              <span class="spacer"></span><button
-                class="icon"
-                aria-label="上移"
-                disabled={index === 0 || busy}
-                on:click={() => move(index, index - 1)}><ArrowUp size={16} /></button
-              ><button
-                class="icon"
-                aria-label="下移"
-                disabled={index === draft.items.length - 1 || busy}
-                on:click={() => move(index, index + 1)}><ArrowDown size={16} /></button
-              >
-            </div>
+                  aria-label="上移"
+                  disabled={index === 0 || busy}
+                  on:click={() => move(index, index - 1)}><ArrowUp size={16} /></button
+                ><button
+                  class="icon"
+                  aria-label="下移"
+                  disabled={index === draft.items.length - 1 || busy}
+                  on:click={() => move(index, index + 1)}><ArrowDown size={16} /></button
+                >
+              </div>{/if}
           </div>
         </section>
       {/each}
@@ -251,9 +266,10 @@
       on:click={() => (draft = { ...draft, items: [...draft.items, item()] })}
       ><Plus size={20} />添加内容项</button
     >
+    {#if fromHistory}<p class="muted">每条记录保存为一个内容项，可修改名称和顺序。</p>{/if}
     <p class="collection-sync-note">
       <ArrowsClockwise size={18} />跟随剪贴板同步设置
-      <button class="text-link" on:click={onSettings}>查看设置</button>
+      {#if onSettings}<button class="text-link" on:click={onSettings}>查看设置</button>{/if}
     </p>
   </div>
   <footer class="collection-editor-footer">

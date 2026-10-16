@@ -161,9 +161,9 @@ export type CollectionItem = { id: string, label: string, value: string, masked:
 
 export type CollectionPeerState = { deviceName: string, status: string, };
 
-export type CollectionRequest = { "type": "list", after: string, } | { "type": "save", draft: CollectionDraft, } | { "type": "remove", id: string, base: CollectionVersion, } | { "type": "favorite", id: string, favorite: boolean, } | { "type": "value", id: string, item: string, } | { "type": "use", id: string, item: string, paste: boolean, } | { "type": "fromHistory", ids: Array<number>, } | { "type": "openSettings" } | { "type": "retry" } | { "type": "sync", id: string, };
+export type CollectionRequest = { "type": "appPins", app_id: string, } | { "type": "setAppPin", id: string, app_id: string, pinned: boolean, } | { "type": "list", after: string, } | { "type": "save", draft: CollectionDraft, } | { "type": "remove", id: string, base: CollectionVersion, } | { "type": "favorite", id: string, favorite: boolean, } | { "type": "value", id: string, item: string, } | { "type": "use", id: string, item: string, paste: boolean, } | { "type": "fromHistory", ids: Array<number>, } | { "type": "openSettings" } | { "type": "retry" } | { "type": "sync", id: string, };
 
-export type CollectionResponse = { peers: Array<CollectionPeerState>, records: Array<ClipboardCollection>, saved: ClipboardCollection | null, value: TotpCode | null, items: Array<CollectionItem>, syncEnabled: boolean, syncEdits: boolean, syncFavorites: boolean, };
+export type CollectionResponse = { pinnedIds: Array<string>, peers: Array<CollectionPeerState>, records: Array<ClipboardCollection>, saved: ClipboardCollection | null, value: TotpCode | null, items: Array<CollectionItem>, syncEnabled: boolean, syncEdits: boolean, syncFavorites: boolean, };
 
 export type CollectionVersion = { revision: number, deviceId: string, };
 
