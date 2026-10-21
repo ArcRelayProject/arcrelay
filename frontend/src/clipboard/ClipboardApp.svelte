@@ -1949,7 +1949,6 @@
   class="clipboard-window"
   class:collection-editing={collectionEditing || captureIds.length > 0}
   class:capture-mode={captureIds.length > 0}
-  class:multi-select-mode={selectedIds.length > 0 && !captureIds.length}
   class:collection-mode={filter === "collections"}
 >
   <header class="clipboard-header drag-region" use:windowDrag>
@@ -2314,58 +2313,79 @@
   {/if}
 
   {#if selectedIds.length > 0 && filter !== "collections"}
-    <div class="multi-select-actions" role="toolbar" aria-label="多选操作">
-      <div class="multi-select-heading">
-        <strong role="status" aria-live="polite">已选 {selectedIds.length} 项</strong><small
-          >按选择顺序保存</small
-        >
-        <button class="cancel-selection" type="button" on:click={clearMultiSelection}
-          >取消选择</button
-        >
-      </div>
-      <div class="multi-select-buttons">
-        <button
-          class="multi-action paste-action"
-          type="button"
-          disabled={multiPasting || !multiPasteAvailable}
-          on:click={pasteSelectedItems}
-          aria-label="粘贴"
-          title="按选择顺序粘贴"><CopySimple size={18} /><span>粘贴</span></button
-        >
-        <button
-          class="multi-action continuous-action"
-          type="button"
-          disabled={multiPasting}
-          on:click={startContinuousPaste}
-          aria-label="开始连续粘贴"
-          title="每次按剪贴板快捷键粘贴下一项"
-          ><StackSimple size={18} /><span>连续粘贴</span></button
-        >
-        <button
-          class="multi-action collect-action"
-          type="button"
-          disabled={multiPasting || !combinedPasteAvailable || selectedIds.length > 64}
-          on:click={() => collectHistory(selectedIds)}
-          aria-label="保存为集合"
-          title={selectedIds.length > 64
-            ? "最多选择 64 条文本记录"
-            : !combinedPasteAvailable
-              ? "仅支持可用的文本记录，请取消图片、文件或不可用记录的选择"
-              : "每条文本保存为一个内容项"}><StackSimple size={18} /><span>保存为集合</span></button
-        >
-        <button
-          class="multi-action delete-action"
-          type="button"
-          disabled={multiPasting}
-          on:click={deleteSelectedItems}
-          aria-label="删除所选"
-          title="删除所选"><Trash size={18} /></button
-        >
-      </div>
+    <div class="multi-select-status" role="status" aria-live="polite">
+      {t("已选 {count} 项 · 按 1 → {count} 处理", language, { count: selectedIds.length })}
+    </div>
+    <div
+      class="multi-select-actions"
+      role="toolbar"
+      aria-label={uiTranslate("多选操作", $uiLanguage)}
+      aria-orientation="vertical"
+    >
+      <button
+        class="multi-action paste-action"
+        type="button"
+        disabled={multiPasting || !multiPasteAvailable}
+        on:click={pasteSelectedItems}
+        aria-label={uiTranslate("粘贴", $uiLanguage)}
+        title={!multiPasteAvailable
+          ? uiTranslate("多选粘贴仅支持可用的文本和图片", $uiLanguage)
+          : combinedPasteAvailable
+            ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage)
+            : uiTranslate("按选择顺序粘贴", $uiLanguage)}
+        ><span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span><CopySimple
+          size={21}
+          weight="bold"
+        /></button
+      >
+      <button
+        class="multi-action continuous-action"
+        type="button"
+        disabled={multiPasting}
+        on:click={startContinuousPaste}
+        aria-label={uiTranslate("开始连续粘贴", $uiLanguage)}
+        title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}
+        ><span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span
+        ><StackSimple size={21} weight="bold" /></button
+      >
+      <button
+        class="multi-action collect-action"
+        type="button"
+        disabled={multiPasting || !combinedPasteAvailable || selectedIds.length > 64}
+        on:click={() => collectHistory(selectedIds)}
+        aria-label="保存为集合"
+        title={selectedIds.length > 64
+          ? "最多选择 64 条文本记录"
+          : !combinedPasteAvailable
+            ? "仅支持可用的文本记录，请取消图片、文件或不可用记录的选择"
+            : "每条文本保存为一个内容项"}
+        ><span class="multi-action-label">保存为集合</span><StackSimple size={21} /></button
+      >
+      <div class="multi-action-divider" aria-hidden="true"></div>
+      <button
+        class="multi-action delete-action"
+        type="button"
+        disabled={multiPasting}
+        on:click={deleteSelectedItems}
+        aria-label={uiTranslate("删除所选", $uiLanguage)}
+        title={uiTranslate("删除所选", $uiLanguage)}
+        ><span class="multi-action-label">{uiTranslate("删除所选", $uiLanguage)}</span><Trash
+          size={21}
+          weight="bold"
+        /></button
+      >
+      <button
+        class="multi-action clear-selection"
+        type="button"
+        on:click={clearMultiSelection}
+        aria-label={tr("取消", language)}
+        title={tr("取消", language)}
+        ><span class="multi-action-label">{tr("取消", language)}</span><X size={21} /></button
+      >
     </div>
   {/if}
 
-  {#if filter !== "collections" && !selectedIds.length}
+  {#if filter !== "collections"}
     <footer class="clipboard-footer drag-region" use:windowDrag>
       <div class:busy={ocrPasting} class="record-count">
         <strong>
@@ -2581,9 +2601,6 @@
 <style>
   .clipboard-window.capture-mode > :global(:not(.collection-capture)) {
     display: none;
-  }
-  .clipboard-window.multi-select-mode {
-    grid-template-rows: 60px 60px auto minmax(0, 1fr) auto;
   }
   .clipboard-window.collection-mode :global(.label-filter-toolbar) {
     display: none;
