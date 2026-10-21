@@ -10,10 +10,12 @@
     Check,
     ArrowLeft,
     CaretDown,
+    ClipboardText,
     ClockCounterClockwise,
-    CopySimple,
     FileText,
+    FolderPlus,
     ImageSquare,
+    ListNumbers,
     LockKey,
     MagnifyingGlass,
     PushPin,
@@ -2333,10 +2335,9 @@
           : combinedPasteAvailable
             ? uiTranslate("按选择顺序合并并粘贴", $uiLanguage)
             : uiTranslate("按选择顺序粘贴", $uiLanguage)}
-        ><span class="multi-action-label">{uiTranslate("粘贴", $uiLanguage)}</span><CopySimple
-          size={21}
-          weight="bold"
-        /></button
+        ><ClipboardText size={21} weight="bold" /><span class="multi-action-label"
+          >{uiTranslate("粘贴", $uiLanguage)}</span
+        ></button
       >
       <button
         class="multi-action continuous-action"
@@ -2345,21 +2346,24 @@
         on:click={startContinuousPaste}
         aria-label={uiTranslate("开始连续粘贴", $uiLanguage)}
         title={uiTranslate("每次按剪贴板快捷键粘贴下一项", $uiLanguage)}
-        ><span class="multi-action-label">{uiTranslate("开始连续粘贴", $uiLanguage)}</span
-        ><StackSimple size={21} weight="bold" /></button
+        ><ListNumbers size={21} weight="bold" /><span class="multi-action-label"
+          >{uiTranslate("连续粘贴", $uiLanguage)}</span
+        ></button
       >
       <button
         class="multi-action collect-action"
         type="button"
         disabled={multiPasting || !combinedPasteAvailable || selectedIds.length > 64}
         on:click={() => collectHistory(selectedIds)}
-        aria-label="保存为集合"
+        aria-label={uiTranslate("保存为集合", $uiLanguage)}
         title={selectedIds.length > 64
           ? "最多选择 64 条文本记录"
           : !combinedPasteAvailable
             ? "仅支持可用的文本记录，请取消图片、文件或不可用记录的选择"
             : "每条文本保存为一个内容项"}
-        ><span class="multi-action-label">保存为集合</span><StackSimple size={21} /></button
+        ><FolderPlus size={21} weight="bold" /><span class="multi-action-label"
+          >{uiTranslate("保存为集合", $uiLanguage)}</span
+        ></button
       >
       <div class="multi-action-divider" aria-hidden="true"></div>
       <button
@@ -2369,18 +2373,19 @@
         on:click={deleteSelectedItems}
         aria-label={uiTranslate("删除所选", $uiLanguage)}
         title={uiTranslate("删除所选", $uiLanguage)}
-        ><span class="multi-action-label">{uiTranslate("删除所选", $uiLanguage)}</span><Trash
-          size={21}
-          weight="bold"
-        /></button
+        ><Trash size={21} weight="bold" /><span class="multi-action-label"
+          >{uiTranslate("删除所选", $uiLanguage)}</span
+        ></button
       >
       <button
         class="multi-action clear-selection"
         type="button"
         on:click={clearMultiSelection}
-        aria-label={tr("取消", language)}
-        title={tr("取消", language)}
-        ><span class="multi-action-label">{tr("取消", language)}</span><X size={21} /></button
+        aria-label={uiTranslate("取消选择", $uiLanguage)}
+        title={uiTranslate("取消选择", $uiLanguage)}
+        ><X size={21} weight="bold" /><span class="multi-action-label"
+          >{uiTranslate("取消选择", $uiLanguage)}</span
+        ></button
       >
     </div>
   {/if}
