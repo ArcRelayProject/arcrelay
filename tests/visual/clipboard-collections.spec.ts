@@ -43,7 +43,7 @@ test("multi-select drafts preserve selection order and cancel restores selection
   for (const id of [105, 102, 103]) {
     await page
       .locator(`[data-clipboard-id="${id}"] .clipboard-row`)
-      .click({ modifiers: ["Control"] });
+      .click({ modifiers: ["ControlOrMeta"] });
   }
   await page.getByRole("button", { name: "保存为集合", exact: true }).click();
   const values = page.locator(".collection-field textarea");
@@ -54,7 +54,7 @@ test("multi-select drafts preserve selection order and cancel restores selection
   await expect(values.nth(0)).toHaveValue("https://www.arcrelay.app/clipboard");
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.getByRole("button", { name: "放弃修改", exact: true }).click();
-  await expect(page.getByRole("toolbar", { name: "多选操作" })).toContainText("已选 3 项");
+  await expect(page.locator(".multi-select-status")).toContainText("已选 3 项");
   await expect(page.locator('[data-clipboard-id="105"] .selection-order')).toHaveText("1");
   await page.getByRole("button", { name: "保存为集合", exact: true }).click();
   await page.getByRole("textbox", { name: "集合名称", exact: true }).fill("测试环境");
@@ -105,7 +105,7 @@ test("mixed image/text selections cannot be silently saved as a partial collecti
   for (const id of [101, 102])
     await page
       .locator(`[data-clipboard-id="${id}"] .clipboard-row`)
-      .click({ modifiers: ["Control"] });
+      .click({ modifiers: ["ControlOrMeta"] });
   await expect(page.getByRole("button", { name: "保存为集合", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "保存为集合", exact: true })).toHaveAttribute(
     "title",
