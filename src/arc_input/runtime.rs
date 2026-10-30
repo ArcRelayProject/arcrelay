@@ -21,10 +21,11 @@ use arcrelay_protocol::server::WorkspaceInputSnapshot;
 use tokio::sync::{broadcast, oneshot, Mutex as AsyncMutex};
 
 use super::discovery::DiscoveredPeer;
+use super::metrics::{micros, PipelineTimings};
 use super::network::{
     wait_for_network, InputEnqueueOutcome, NetworkError, NetworkEvent, PeerConnectionHub,
 };
-use super::platform::NativePlatform;
+use super::platform::{capture::CapturedInputSample, NativePlatform};
 use super::store::{HorizontalScrollBehavior, StoreError, WorkspaceConfiguration, WorkspaceStore};
 use super::{ProductIdentity, ProductPaths};
 
@@ -285,8 +286,27 @@ fn simultaneous_claim_wins(
         && incoming_controller > active_controller
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CaptureTiming {
+    captured_at: Instant,
+    routed_at: Instant,
+}
+
+#[derive(Debug)]
+struct RoutedInput {
+    event: CapturedInputEvent,
+    timing: CaptureTiming,
+}
+
+impl RoutedInput {
+    fn new(event: CapturedInputEvent, timing: CaptureTiming) -> Self {
+        Self { event, timing }
+    }
+}
+
 #[derive(Debug, Default)]
 struct PendingPointerDelta {
+    timing: Option<CaptureTiming>,
     x: f64,
     y: f64,
 }
@@ -357,11 +377,24 @@ impl RemoteTakeoverIntent {
 
 #[derive(Debug, Default)]
 struct PendingScrollDelta {
+    timing: Option<CaptureTiming>,
     event: Option<ScrollEvent>,
 }
 
 impl PendingScrollDelta {
+    #[cfg(test)]
     fn push(&mut self, event: ScrollEvent) -> bool {
+        let now = Instant::now();
+        self.push_timed(
+            event,
+            CaptureTiming {
+                captured_at: now,
+                routed_at: now,
+            },
+        )
+    }
+
+    fn push_timed(&mut self, event: ScrollEvent, timing: CaptureTiming) -> bool {
         if !event.has_delta()
             || !matches!(event.phase, ScrollPhase::Changed | ScrollPhase::Unspecified)
         {
@@ -377,16 +410,36 @@ impl PendingScrollDelta {
                 pending.delta_y += event.delta_y;
             }
             Some(_) => return false,
-            None => self.event = Some(event),
+            None => {
+                self.event = Some(event);
+                self.timing = Some(timing);
+            }
         }
         true
     }
 
+    #[cfg(test)]
     fn take(&mut self) -> Option<ScrollEvent> {
-        self.event.take()
+        self.take_timed().and_then(|sample| match sample.event {
+            CapturedInputEvent::Scroll { event, .. } => Some(event),
+            _ => None,
+        })
+    }
+
+    fn take_timed(&mut self) -> Option<RoutedInput> {
+        let timing = self.timing.take();
+        let event = self.event.take()?;
+        Some(RoutedInput::new(
+            CapturedInputEvent::Scroll {
+                event,
+                native_quartz_event: None,
+            },
+            timing?,
+        ))
     }
 
     fn clear(&mut self) {
+        self.timing = None;
         self.event = None;
     }
 }
@@ -568,18 +621,51 @@ impl HorizontalNavigationRecognizer {
 }
 
 impl PendingPointerDelta {
+    #[cfg(test)]
     fn push(&mut self, x: f64, y: f64) {
+        let now = Instant::now();
+        self.push_timed(
+            x,
+            y,
+            CaptureTiming {
+                captured_at: now,
+                routed_at: now,
+            },
+        );
+    }
+
+    fn push_timed(&mut self, x: f64, y: f64, timing: CaptureTiming) {
+        if x == 0.0 && y == 0.0 {
+            return;
+        }
+        self.timing.get_or_insert(timing);
         self.x += x;
         self.y += y;
     }
 
+    #[cfg(test)]
     fn take(&mut self) -> Option<(f64, f64)> {
+        self.take_timed().and_then(|sample| match sample.event {
+            CapturedInputEvent::PointerDelta { x, y } => Some((x, y)),
+            _ => None,
+        })
+    }
+
+    fn take_timed(&mut self) -> Option<RoutedInput> {
+        let timing = self.timing.take();
         let x = std::mem::take(&mut self.x);
         let y = std::mem::take(&mut self.y);
-        (x != 0.0 || y != 0.0).then_some((x, y))
+        if x == 0.0 && y == 0.0 {
+            return None;
+        }
+        Some(RoutedInput::new(
+            CapturedInputEvent::PointerDelta { x, y },
+            timing?,
+        ))
     }
 
     fn clear(&mut self) {
+        self.timing = None;
         self.x = 0.0;
         self.y = 0.0;
     }
@@ -678,6 +764,9 @@ pub struct ArcInputRuntime {
     snapshot_revision: Mutex<u64>,
     diagnostics: Mutex<VecDeque<DiagnosticRecord>>,
     input_diagnostic_counter: AtomicU64,
+    pipeline_timings: PipelineTimings,
+    input_metrics_last_emitted: Mutex<Instant>,
+    input_receive_diagnostic_counter: AtomicU64,
     input_capture_count: AtomicU64,
     input_capture_errors: AtomicU64,
     input_capture_max_micros: AtomicU64,
@@ -700,6 +789,7 @@ mod coalesced_wakeup;
 mod external;
 mod input;
 mod lifecycle;
+mod maintenance;
 mod network_runtime;
 mod reconnect;
 mod wire;

@@ -1,3 +1,4 @@
+import { localLatencySamples } from "./diagnosticsModel.ts";
 import { t } from "../../localization.ts";
 import type { LanguagePreference } from "../../types";
 import type {
@@ -158,23 +159,18 @@ export function recoverableOfflinePeer(snapshot: RuntimeSnapshot) {
 }
 
 export function inputLatencyValues(records: DiagnosticRecord[]) {
-  const endToEnd = records.filter((record) => record.category === "input-e2e");
-  const source = endToEnd.length
-    ? endToEnd
-    : records.filter((record) => record.category === "input-latency");
-  return source.flatMap((record) =>
-    record.latencyMicros == null ? [] : [record.latencyMicros / 1000],
-  );
+  return localLatencySamples(records).samples.map((record) => record.latencyMicros! / 1000);
 }
 
+// Both local paths retain exactly one in every 128 processed events. This is
+// an estimate of processed events, not the native device polling frequency.
 export function inputEventRate(records: DiagnosticRecord[]) {
-  const endToEnd = records.filter((record) => record.category === "input-e2e");
-  const samples = (
-    endToEnd.length ? endToEnd : records.filter((record) => record.category === "input-latency")
-  ).slice(-256);
+  const samples = [...localLatencySamples(records).samples].sort(
+    (a, b) => a.timestampMs - b.timestampMs,
+  );
   if (samples.length < 2) return null;
   const elapsedSeconds = (samples[samples.length - 1].timestampMs - samples[0].timestampMs) / 1000;
-  return elapsedSeconds > 0 ? (samples.length - 1) / elapsedSeconds : null;
+  return elapsedSeconds > 0 ? ((samples.length - 1) * 128) / elapsedSeconds : null;
 }
 
 export function formatInputRate(rate: number | null) {

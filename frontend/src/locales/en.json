@@ -2826,5 +2826,21 @@
   "文件列表为空": "The file list is empty",
   "文件列表": "File list",
   "{type} 文件": "{type} file",
-  "插入全部 {count} 个文件": "Insert all {count} files"
+  "插入全部 {count} 个文件": "Insert all {count} files",
+  "本机接收处理耗时": "Local receive processing time",
+  "本机采集处理耗时": "Local capture processing time",
+  "本机处理耗时": "Local processing time",
+  "本机输入处理": "Local input processing",
+  "本机输入处理耗时偏高": "Local input processing is slow",
+  "本机处理样本在参考范围内": "Local processing samples are within the reference range",
+  "本机耗时不包含跨设备传输，无法据此判断端到端延迟。": "Local timings exclude transfer between devices and cannot establish end-to-end latency.",
+  "本机处理样本超过 16 ms 参考线，请结合分段排队和 QUIC 指标排查。": "Local samples exceed the 16 ms reference. Check stage queueing times and QUIC metrics.",
+  "高于本机 16 ms 参考线": "Above the local 16 ms reference",
+  "本机耗时，不含网络传输": "Local time, excluding network transfer",
+  "本机参考线 16 ms": "Local reference: 16 ms",
+  "处理速率（估算）": "Processing rate (estimated)",
+  "加密连接 · 等待本机处理样本": "Encrypted connection · Waiting for local processing samples",
+  "本机处理 · {latency} ms": "Local processing · {latency} ms",
+  "样本 P95": "Sample P95",
+  "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Shows one sample per 128 processed events, excluding network transfer. Full stage statistics and QUIC metrics are in diagnostic logs."
 }

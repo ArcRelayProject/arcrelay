@@ -159,6 +159,7 @@ async fn obsolete_transport_events_cannot_reset_reconnected_metadata() {
             frame: proto::ControlFrame { body: None },
         },
         NetworkEvent::Input {
+            received_at: Instant::now(),
             service_instance_id: peer.clone(),
             session_id: 0,
             batch: proto::InputEventBatch::default(),

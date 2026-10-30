@@ -1,8 +1,9 @@
+use super::capture::{CaptureSender, CapturedInputSample};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -152,7 +153,7 @@ extern "C" {
 
 struct CaptureContext {
     consumer: Arc<Mutex<arcrelay_input::ConsumerCapture>>,
-    events: SyncSender<CapturedInputEvent>,
+    events: CaptureSender,
     options: CaptureOptions,
     suppress_local: Arc<AtomicBool>,
     cursor_hidden: Arc<Mutex<bool>>,
@@ -805,60 +806,21 @@ impl NativePlatform {
     }
 }
 
-impl InputCapturePort for NativePlatform {
-    fn set_consumer_capture(&self, generation: u64, mask: u32) {
-        lock(&self.consumer).set_route(generation, mask);
-    }
-    fn set_consumer_shortcuts(&self, shortcuts: Vec<arcrelay_input::ConsumerShortcut>) {
-        lock(&self.consumer).set_shortcuts(shortcuts);
-    }
-    fn capabilities(&self) -> PlatformCapabilities {
-        let permission = Self::permission_granted();
-        PlatformCapabilities {
-            can_capture_pointer: permission,
-            can_capture_keyboard: permission,
-            can_suppress_local_input: permission,
-            can_place_internal_barrier: false,
-            can_inject_absolute_pointer: permission,
-            can_inject_keyboard: permission,
-            can_inject_app_pointer: false,
-            can_control_elevated_apps: permission,
-            can_persist_permission: true,
-            can_capture_native_quartz_events: permission,
-            can_inject_native_quartz_events: permission,
-            can_capture_precision_touchpad_events: false,
-            can_inject_precision_touchpad_events: false,
-            can_capture_system_gestures: permission
-                && gesture::supported()
-                && self.system_gesture_available.load(Ordering::Acquire),
-            can_inject_system_gestures: permission && gesture::supported(),
-            system_gesture_format_version: if arcrelay_core::infrastructure::input_control::macos_system_gesture::notification_center_supported() {
-                arcrelay_input::SYSTEM_NOTIFICATION_CENTER_FORMAT_VERSION
-            } else {
-                arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION
-            },
-            consumer_capture_mask: if permission
-                && self.system_gesture_available.load(Ordering::Acquire)
-            {
-                arcrelay_input::ConsumerKey::ALL_MASK
-            } else {
-                0
-            },
-            consumer_inject_mask: if permission {
-                arcrelay_input::ConsumerKey::ALL_MASK
-            } else {
-                0
-            },
-            brightness_display_ids: self.brightness.supported(),
-            limitation: (!permission)
-                .then(|| "macOS Accessibility permission is required".to_string()),
-        }
-    }
-
-    fn start(
+impl NativePlatform {
+    pub(crate) fn start_timed(
         &self,
         options: CaptureOptions,
-    ) -> Result<Receiver<CapturedInputEvent>, PlatformError> {
+    ) -> Result<Receiver<CapturedInputSample>, PlatformError> {
+        let (sender, receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
+        self.start_capture(options, CaptureSender::timed(sender))?;
+        Ok(receiver)
+    }
+
+    fn start_capture(
+        &self,
+        options: CaptureOptions,
+        events_tx: CaptureSender,
+    ) -> Result<(), PlatformError> {
         if !Self::permission_granted() {
             return Err(PlatformError::PermissionDenied(
                 "macOS Accessibility permission is required".into(),
@@ -874,7 +836,6 @@ impl InputCapturePort for NativePlatform {
                 arcrelay_core::infrastructure::input_control::macos_system_gesture::backend_name(),
             "native system gesture backend selected"
         );
-        let (events_tx, events_rx) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
         let (started_tx, started_rx) = mpsc::sync_channel(1);
         self.set_suppress_local(options.suppress_local)?;
         let suppress_local = self.suppress_local.clone();
@@ -1001,7 +962,7 @@ impl InputCapturePort for NativePlatform {
                     run_loop,
                     thread: Some(thread),
                 });
-                Ok(events_rx)
+                Ok(())
             }
             Ok(Err(error)) => {
                 let _ = thread.join();
@@ -1014,6 +975,66 @@ impl InputCapturePort for NativePlatform {
                 Err(PlatformError::Operation(error.to_string()))
             }
         }
+    }
+}
+
+impl InputCapturePort for NativePlatform {
+    fn set_consumer_capture(&self, generation: u64, mask: u32) {
+        lock(&self.consumer).set_route(generation, mask);
+    }
+    fn set_consumer_shortcuts(&self, shortcuts: Vec<arcrelay_input::ConsumerShortcut>) {
+        lock(&self.consumer).set_shortcuts(shortcuts);
+    }
+    fn capabilities(&self) -> PlatformCapabilities {
+        let permission = Self::permission_granted();
+        PlatformCapabilities {
+            can_capture_pointer: permission,
+            can_capture_keyboard: permission,
+            can_suppress_local_input: permission,
+            can_place_internal_barrier: false,
+            can_inject_absolute_pointer: permission,
+            can_inject_keyboard: permission,
+            can_inject_app_pointer: false,
+            can_control_elevated_apps: permission,
+            can_persist_permission: true,
+            can_capture_native_quartz_events: permission,
+            can_inject_native_quartz_events: permission,
+            can_capture_precision_touchpad_events: false,
+            can_inject_precision_touchpad_events: false,
+            can_capture_system_gestures: permission
+                && gesture::supported()
+                && self.system_gesture_available.load(Ordering::Acquire),
+            can_inject_system_gestures: permission && gesture::supported(),
+            system_gesture_format_version: if arcrelay_core::infrastructure::input_control::macos_system_gesture::notification_center_supported() {
+                arcrelay_input::SYSTEM_NOTIFICATION_CENTER_FORMAT_VERSION
+            } else {
+                arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION
+            },
+            consumer_capture_mask: if permission
+                && self.system_gesture_available.load(Ordering::Acquire)
+            {
+                arcrelay_input::ConsumerKey::ALL_MASK
+            } else {
+                0
+            },
+            consumer_inject_mask: if permission {
+                arcrelay_input::ConsumerKey::ALL_MASK
+            } else {
+                0
+            },
+            brightness_display_ids: self.brightness.supported(),
+            limitation: (!permission)
+                .then(|| "macOS Accessibility permission is required".to_string()),
+        }
+    }
+
+    fn start(
+        &self,
+        options: CaptureOptions,
+    ) -> Result<Receiver<CapturedInputEvent>, PlatformError> {
+        let (sender, receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
+        self.start_capture(options, CaptureSender::plain(sender))?;
+        Ok(receiver)
     }
 
     fn set_suppress_local(&self, suppress: bool) -> Result<(), PlatformError> {
@@ -1595,10 +1616,10 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 mod emergency_shortcut_tests {
     use super::*;
 
-    fn capture_context(events: SyncSender<CapturedInputEvent>) -> CaptureContext {
+    fn capture_context(events: std::sync::mpsc::SyncSender<CapturedInputEvent>) -> CaptureContext {
         CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: false,
                 capture_pointer: true,
@@ -1629,7 +1650,7 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn captured_pointer_button_preserves_quartz_double_click_count() {
-        let (events, receiver) = mpsc::sync_channel(2);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(2);
         let mut context = capture_context(events);
         unsafe {
             let event =
@@ -1660,7 +1681,7 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn injected_pointer_placement_does_not_become_physical_takeover_input() {
-        let (events, receiver) = mpsc::sync_channel(4);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(4);
         let mut context = capture_context(events);
         unsafe {
             // A Quartz event created by this process already carries its PID,
@@ -1695,10 +1716,10 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn arcrelay_tagged_paste_keys_do_not_become_physical_takeover_input() {
-        let (events, receiver) = mpsc::sync_channel(4);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(4);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: false,
                 capture_pointer: true,
@@ -1736,10 +1757,10 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn arcrelay_tagged_system_gestures_do_not_become_physical_takeover_input() {
-        let (events, receiver) = mpsc::sync_channel(4);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(4);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: false,
                 capture_pointer: true,
@@ -1844,10 +1865,10 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn capture_callback_forwards_function_key_down_and_up() {
-        let (events, receiver) = mpsc::sync_channel(2);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(2);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,
@@ -1893,10 +1914,10 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn caps_lock_transitions_produce_complete_strokes_and_ignore_duplicate_flags() {
-        let (events, receiver) = mpsc::sync_channel(8);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(8);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,
@@ -1972,13 +1993,13 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn capture_queue_overflow_immediately_fails_open() {
-        let (events, _receiver) = mpsc::sync_channel(0);
+        let (events, _receiver) = mpsc::sync_channel::<CapturedInputEvent>(0);
         let suppress_local = Arc::new(AtomicBool::new(true));
         let native_quartz_capture = Arc::new(AtomicBool::new(true));
         let cursor_hidden = Arc::new(Mutex::new(false));
         let context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,
@@ -2028,10 +2049,10 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn disabled_tap_with_null_event_still_releases_input() {
-        let (events, receiver) = mpsc::sync_channel(2);
+        let (events, receiver) = mpsc::sync_channel::<CapturedInputEvent>(2);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,

@@ -86,14 +86,14 @@
   });
   $: detailedLogging = Boolean(logStatus?.detailedUntilMs && logStatus.detailedUntilMs > now);
   $: visibleEvents = rangedDiagnostics.slice(showAllEvents ? -20 : -4).reverse();
-  $: latencyLabel = !latencies.length || chart.endToEnd ? "端到端延迟" : "控制器管线延迟";
+  $: latencyLabel = chart.scope === "receive" ? "本机接收处理耗时" : "本机采集处理耗时";
 
   async function copyReport() {
     const report = [
       `Arc Input: ${health.title}`,
       `connected peers: ${snapshot.connectedPeers.length}`,
       `active portals: ${activePortalCount(snapshot)}`,
-      `latency p95: ${p95?.toFixed(2) ?? "no samples"} ms`,
+      `local ${chart.scope} sampled latency p95: ${p95?.toFixed(2) ?? "no samples"} ms`,
       ...rangedDiagnostics
         .slice(-20)
         .map(
@@ -277,20 +277,28 @@
     <div class="metric-grid">
       <article>
         <span class="metric-label"
-          ><Pulse size={15} />{uiTranslate("延迟", $uiLanguage)}<small>P95</small></span
+          ><Pulse size={15} />{uiTranslate(latencyLabel, $uiLanguage)}<small
+            >{uiTranslate("样本 P95", $uiLanguage)}</small
+          ></span
         >
         <strong class="metric-value" data-tone={latencyTone(p95)}
           >{p95 == null ? "—" : p95.toFixed(1)}{#if p95 != null}<span>ms</span>{/if}</strong
         >
         <small
           >{uiTranslate(
-            p95 == null ? "等待输入样本" : p95 > 16 ? "高于 16 ms 目标" : "目标 ≤ 16 ms",
+            p95 == null
+              ? "等待输入样本"
+              : p95 > 16
+                ? "高于本机 16 ms 参考线"
+                : "本机耗时，不含网络传输",
             $uiLanguage,
           )}</small
         >
       </article>
       <article>
-        <span class="metric-label"><Gauge size={15} />{uiTranslate("输入频率", $uiLanguage)}</span>
+        <span class="metric-label"
+          ><Gauge size={15} />{uiTranslate("处理速率（估算）", $uiLanguage)}</span
+        >
         <strong class="metric-value"
           >{eventRate == null
             ? "—"
@@ -326,7 +334,7 @@
     <section class="panel quality-card" aria-labelledby="quality-title">
       <div class="panel-heading">
         <div>
-          <h3 id="quality-title">{uiTranslate("连接质量", $uiLanguage)}</h3>
+          <h3 id="quality-title">{uiTranslate("本机输入处理", $uiLanguage)}</h3>
           <p><i class="legend-dot"></i>{uiTranslate(latencyLabel, $uiLanguage)}</p>
         </div>
         <span
@@ -365,7 +373,7 @@
               />{/if}
           </svg>
           <span class="target-label" style:top={`${(chart.targetY / 150) * 100}%`}
-            >{uiTranslate("目标 ≤ 16 ms", $uiLanguage)}</span
+            >{uiTranslate("本机参考线 16 ms", $uiLanguage)}</span
           >
           {#if !chart.path}<div class="chart-empty">
               <Pulse size={24} /><span>{uiTranslate("发生跨屏输入后显示延迟", $uiLanguage)}</span>
@@ -388,7 +396,7 @@
           >
         </div>
         <div>
-          <small>P95</small><strong data-tone={latencyTone(p95)}
+          <small>{uiTranslate("样本 P95", $uiLanguage)}</small><strong data-tone={latencyTone(p95)}
             >{p95 == null ? "—" : p95.toFixed(1)}{#if p95 != null}<span>ms</span>{/if}</strong
           >
         </div>

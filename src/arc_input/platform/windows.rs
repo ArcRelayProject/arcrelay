@@ -1,7 +1,8 @@
+use super::capture::{CaptureSender, CapturedInputSample};
 use std::ffi::c_void;
 use std::mem::{size_of, MaybeUninit};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -236,7 +237,7 @@ impl WindowsPointerSettings {
 
 struct CaptureContext {
     consumer: Arc<Mutex<arcrelay_input::ConsumerCapture>>,
-    events: SyncSender<CapturedInputEvent>,
+    events: CaptureSender,
     options: CaptureOptions,
     suppress_local: Arc<AtomicBool>,
     cursor_hidden: Arc<Mutex<bool>>,
@@ -1204,47 +1205,21 @@ impl NativePlatform {
     }
 }
 
-impl InputCapturePort for NativePlatform {
-    fn set_consumer_capture(&self, generation: u64, mask: u32) {
-        lock(&self.consumer).set_route(generation, mask);
-    }
-    fn set_consumer_shortcuts(&self, shortcuts: Vec<arcrelay_input::ConsumerShortcut>) {
-        lock(&self.consumer).set_shortcuts(shortcuts);
-    }
-    fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities {
-            can_capture_pointer: true,
-            can_capture_keyboard: true,
-            can_suppress_local_input: true,
-            // The hook can suppress a fully remote session, but Arc Input does
-            // not yet install selective native-display pointer barriers.
-            can_place_internal_barrier: false,
-            can_inject_absolute_pointer: true,
-            can_inject_keyboard: true,
-            can_inject_app_pointer: false,
-            can_control_elevated_apps: false,
-            can_persist_permission: true,
-            can_capture_native_quartz_events: false,
-            can_inject_native_quartz_events: false,
-            can_capture_precision_touchpad_events: false,
-            can_inject_precision_touchpad_events: create_synthetic_pointer_device_2().is_some(),
-            can_capture_system_gestures: false,
-            can_inject_system_gestures: self.gestures.available(),
-            system_gesture_format_version: arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION,
-            consumer_capture_mask: arcrelay_input::ConsumerKey::ALL_MASK,
-            consumer_inject_mask: arcrelay_input::ConsumerKey::ALL_MASK,
-            brightness_display_ids: self.brightness.supported(),
-            limitation: Some(
-                "UAC secure desktops and higher-integrity applications require the optional signed broker"
-                    .into(),
-            ),
-        }
-    }
-
-    fn start(
+impl NativePlatform {
+    pub(crate) fn start_timed(
         &self,
         options: CaptureOptions,
-    ) -> Result<Receiver<CapturedInputEvent>, PlatformError> {
+    ) -> Result<Receiver<CapturedInputSample>, PlatformError> {
+        let (sender, receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
+        self.start_capture(options, CaptureSender::timed(sender))?;
+        Ok(receiver)
+    }
+
+    fn start_capture(
+        &self,
+        options: CaptureOptions,
+        events_tx: CaptureSender,
+    ) -> Result<(), PlatformError> {
         let mut active = lock(&self.capture);
         if active.is_some() {
             return Err(PlatformError::Operation("capture is already active".into()));
@@ -1254,7 +1229,6 @@ impl InputCapturePort for NativePlatform {
                 "another Arc Input capture hook is active".into(),
             ));
         }
-        let (events_tx, events_rx) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
         let (started_tx, started_rx) = mpsc::sync_channel(1);
         self.suppress_local
             .store(options.suppress_local, Ordering::Release);
@@ -1331,7 +1305,54 @@ impl InputCapturePort for NativePlatform {
             thread_id,
             thread: Some(thread),
         });
-        Ok(events_rx)
+        Ok(())
+    }
+}
+
+impl InputCapturePort for NativePlatform {
+    fn set_consumer_capture(&self, generation: u64, mask: u32) {
+        lock(&self.consumer).set_route(generation, mask);
+    }
+    fn set_consumer_shortcuts(&self, shortcuts: Vec<arcrelay_input::ConsumerShortcut>) {
+        lock(&self.consumer).set_shortcuts(shortcuts);
+    }
+    fn capabilities(&self) -> PlatformCapabilities {
+        PlatformCapabilities {
+            can_capture_pointer: true,
+            can_capture_keyboard: true,
+            can_suppress_local_input: true,
+            // The hook can suppress a fully remote session, but Arc Input does
+            // not yet install selective native-display pointer barriers.
+            can_place_internal_barrier: false,
+            can_inject_absolute_pointer: true,
+            can_inject_keyboard: true,
+            can_inject_app_pointer: false,
+            can_control_elevated_apps: false,
+            can_persist_permission: true,
+            can_capture_native_quartz_events: false,
+            can_inject_native_quartz_events: false,
+            can_capture_precision_touchpad_events: false,
+            can_inject_precision_touchpad_events: create_synthetic_pointer_device_2().is_some(),
+            can_capture_system_gestures: false,
+            can_inject_system_gestures: self.gestures.available(),
+            system_gesture_format_version: arcrelay_input::SYSTEM_GESTURE_CONTACTS_FORMAT_VERSION,
+            consumer_capture_mask: arcrelay_input::ConsumerKey::ALL_MASK,
+            consumer_inject_mask: arcrelay_input::ConsumerKey::ALL_MASK,
+            brightness_display_ids: self.brightness.supported(),
+            limitation: Some(
+                "UAC secure desktops and higher-integrity applications require the optional signed broker"
+                    .into(),
+            ),
+        }
+    }
+
+    fn start(
+        &self,
+        options: CaptureOptions,
+    ) -> Result<Receiver<CapturedInputEvent>, PlatformError> {
+        let (sender, receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
+        self.start_capture(options, CaptureSender::plain(sender))?;
+        Ok(receiver)
     }
 
     fn set_suppress_local(&self, suppress: bool) -> Result<(), PlatformError> {
@@ -1881,11 +1902,11 @@ mod emergency_shortcut_tests {
 
     #[test]
     fn capture_queue_overflow_immediately_fails_open() {
-        let (events, _receiver) = mpsc::sync_channel(0);
+        let (events, _receiver) = mpsc::sync_channel::<CapturedInputEvent>(0);
         let suppress_local = Arc::new(AtomicBool::new(true));
         let context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,

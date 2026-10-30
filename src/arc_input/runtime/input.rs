@@ -62,27 +62,24 @@ pub(super) fn gaze_target_is_active(
 
 fn send_pending_pointer(
     pending: &Mutex<PendingPointerDelta>,
-    sender: &tokio::sync::mpsc::Sender<CapturedInputEvent>,
-) -> Result<(), tokio::sync::mpsc::error::SendError<CapturedInputEvent>> {
+    sender: &tokio::sync::mpsc::Sender<RoutedInput>,
+) -> Result<(), tokio::sync::mpsc::error::SendError<RoutedInput>> {
     // The consumer may need this mutex before it can free a queue slot.
     // An if-let scrutinee would keep its temporary guard over blocking_send.
-    let motion = lock(pending).take();
-    if let Some((x, y)) = motion {
-        sender.blocking_send(CapturedInputEvent::PointerDelta { x, y })?;
+    let motion = lock(pending).take_timed();
+    if let Some(sample) = motion {
+        sender.blocking_send(sample)?;
     }
     Ok(())
 }
 
 fn send_pending_scroll(
     pending: &Mutex<PendingScrollDelta>,
-    sender: &tokio::sync::mpsc::Sender<CapturedInputEvent>,
-) -> Result<(), tokio::sync::mpsc::error::SendError<CapturedInputEvent>> {
-    let scroll = lock(pending).take();
-    if let Some(event) = scroll {
-        sender.blocking_send(CapturedInputEvent::Scroll {
-            event,
-            native_quartz_event: None,
-        })?;
+    sender: &tokio::sync::mpsc::Sender<RoutedInput>,
+) -> Result<(), tokio::sync::mpsc::error::SendError<RoutedInput>> {
+    let scroll = lock(pending).take_timed();
+    if let Some(sample) = scroll {
+        sender.blocking_send(sample)?;
     }
     Ok(())
 }
@@ -594,7 +591,7 @@ impl ArcInputRuntime {
         if self.capture_active.swap(true, Ordering::AcqRel) {
             return Ok(());
         }
-        let receiver = match self.platform.start(CaptureOptions {
+        let receiver = match self.platform.start_timed(CaptureOptions {
             suppress_local: false,
             capture_pointer: true,
             capture_keyboard: true,
@@ -646,25 +643,25 @@ impl ArcInputRuntime {
                     }
                     _ = &mut pointer_tick => {
                         pointer_tick.set(coalesced_wakeup::next(pointer_ready.clone(), POINTER_DISPATCH_INTERVAL));
-                        let Some((x, y)) = lock(&pointer_for_processing).take() else {
+                        let Some(sample) = lock(&pointer_for_processing).take_timed() else {
                             continue;
                         };
-                        CapturedInputEvent::PointerDelta { x, y }
+                        sample
                     }
                     _ = &mut scroll_tick => {
                         scroll_tick.set(coalesced_wakeup::next(scroll_ready.clone(), SCROLL_DISPATCH_INTERVAL));
-                        let Some(event) = lock(&scroll_for_processing).take() else {
+                        let Some(sample) = lock(&scroll_for_processing).take_timed() else {
                             continue;
                         };
-                        CapturedInputEvent::Scroll {
-                            event,
-                            native_quartz_event: None,
-                        }
+                        sample
                     }
                 };
                 let Some(runtime) = processing_weak.upgrade() else {
                     break;
                 };
+                runtime.pipeline_timings.router_queue.record(event.timing.routed_at.elapsed());
+                let captured_at = event.timing.captured_at;
+                let event = event.event;
                 let pointer_event = matches!(event, CapturedInputEvent::PointerDelta { .. });
                 let location_before = pointer_event.then(|| {
                     lock(&runtime.session).as_ref().map(|session| {
@@ -674,7 +671,13 @@ impl ArcInputRuntime {
                         )
                     })
                 });
-                if let Err(error) = runtime.handle_captured(event).await {
+                let result = runtime.handle_captured(event).await;
+                let elapsed = captured_at.elapsed();
+                runtime.pipeline_timings.capture_total.record(elapsed);
+                if runtime.input_diagnostic_counter.fetch_add(1, Ordering::Relaxed).is_multiple_of(128) {
+                    runtime.record("input-capture-local", "native enqueue to capture handler completion (local only)".into(), Some(micros(elapsed)));
+                }
+                if let Err(error) = result {
                     runtime.record("input", error.to_string(), None);
                     // Never replay motion collected while a handoff was
                     // stalled. Releasing the transient session keeps passive
@@ -706,10 +709,15 @@ impl ArcInputRuntime {
         if let Err(error) = std::thread::Builder::new()
             .name("arc-input-capture-router".into())
             .spawn(move || {
-                while let Ok(event) = receiver.recv() {
+                while let Ok(CapturedInputSample { event, captured_at }) = receiver.recv() {
+                    let routed_at = Instant::now();
+                    let Some(runtime) = emergency_weak.upgrade() else { break; };
+                    runtime.pipeline_timings.native_queue.record(routed_at.duration_since(captured_at));
+                    drop(runtime);
+                    let timing = CaptureTiming { captured_at, routed_at };
                     match event {
                         CapturedInputEvent::PointerDelta { x, y } => {
-                            lock(&pointer_for_capture).push(x, y);
+                            lock(&pointer_for_capture).push_timed(x, y, timing);
                             pointer_signal.notify_one();
                         }
                         CapturedInputEvent::Scroll {
@@ -721,12 +729,12 @@ impl ArcInputRuntime {
                                 ScrollPhase::Changed | ScrollPhase::Unspecified
                             ) =>
                         {
-                            let accepted = lock(&scroll_for_capture).push(event);
+                            let accepted = lock(&scroll_for_capture).push_timed(event, timing);
                             if !accepted {
                                 if send_pending_scroll(&scroll_for_capture, &event_tx).is_err() {
                                     break;
                                 }
-                                let pushed = lock(&scroll_for_capture).push(event);
+                                let pushed = lock(&scroll_for_capture).push_timed(event, timing);
                                 debug_assert!(pushed);
                             }
                             scroll_signal.notify_one();
@@ -751,7 +759,7 @@ impl ArcInputRuntime {
                             if send_pending_scroll(&scroll_for_capture, &event_tx).is_err() {
                                 break;
                             }
-                            if event_tx.blocking_send(event).is_err() {
+                            if event_tx.blocking_send(RoutedInput::new(event, timing)).is_err() {
                                 break;
                             }
                         }
@@ -1140,7 +1148,9 @@ impl ArcInputRuntime {
         let is_scroll = matches!(&event, CapturedInputEvent::Scroll { .. });
         let started = Instant::now();
         let result = self.handle_captured_inner(event).await;
-        let elapsed_micros = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+        let elapsed = started.elapsed();
+        self.pipeline_timings.capture_handler.record(elapsed);
+        let elapsed_micros = micros(elapsed);
         self.input_capture_count.fetch_add(1, Ordering::Relaxed);
         if is_scroll {
             self.input_scroll_captured.fetch_add(1, Ordering::Relaxed);
@@ -1149,17 +1159,6 @@ impl ArcInputRuntime {
             .fetch_max(elapsed_micros, Ordering::Relaxed);
         if result.is_err() {
             self.input_capture_errors.fetch_add(1, Ordering::Relaxed);
-        }
-        let sample = self
-            .input_diagnostic_counter
-            .fetch_add(1, Ordering::Relaxed)
-            .is_multiple_of(128);
-        if result.is_err() || sample || elapsed_micros >= 2_000 {
-            self.record(
-                "input-latency",
-                "capture/router/enqueue sample".into(),
-                Some(elapsed_micros),
-            );
         }
         result
     }
@@ -2533,7 +2532,8 @@ impl ArcInputRuntime {
             }),
             events: vec![event],
             held_state_checksum: session.held.checksum(),
-            sent_at_unix_micros: unix_micros(),
+            // Unsynchronised peer wall clocks cannot measure one-way latency.
+            sent_at_unix_micros: 0,
         };
         let outcome = self
             .network
@@ -2567,7 +2567,8 @@ impl ArcInputRuntime {
                 event: Some(proto::input_event::Event::ReleaseAll(proto::ReleaseAll {})),
             }],
             held_state_checksum: 0,
-            sent_at_unix_micros: unix_micros(),
+            // Unsynchronised peer wall clocks cannot measure one-way latency.
+            sent_at_unix_micros: 0,
         };
         self.network.send_input(&target, batch, false)?;
         session.next_sequence = session.next_sequence.saturating_add(1);
@@ -2857,6 +2858,50 @@ mod pointer_accumulator_tests {
 mod capture_queue_tests {
     use super::*;
 
+    #[test]
+    fn coalescing_keeps_oldest_capture_time_and_clear_discards_it() {
+        let now = Instant::now();
+        let old = CaptureTiming {
+            captured_at: now - Duration::from_millis(80),
+            routed_at: now - Duration::from_millis(30),
+        };
+        let fresh = CaptureTiming {
+            captured_at: now,
+            routed_at: now,
+        };
+        let mut pointer = PendingPointerDelta::default();
+        pointer.push_timed(1.0, 2.0, old);
+        pointer.push_timed(3.0, 4.0, fresh);
+        let sample = pointer.take_timed().unwrap();
+        assert_eq!(sample.timing.captured_at, old.captured_at);
+        assert_eq!(sample.timing.routed_at, old.routed_at);
+        assert_eq!(
+            sample.event,
+            CapturedInputEvent::PointerDelta { x: 4.0, y: 6.0 }
+        );
+        pointer.push_timed(1.0, 1.0, old);
+        pointer.clear();
+        pointer.push_timed(2.0, 2.0, fresh);
+        assert_eq!(pointer.take_timed().unwrap().timing.captured_at, now);
+
+        let mut scroll = PendingScrollDelta::default();
+        let event = ScrollEvent {
+            delta_y: 5.0,
+            ..Default::default()
+        };
+        assert!(scroll.push_timed(event, old));
+        assert!(scroll.push_timed(event, fresh));
+        let sample = scroll.take_timed().unwrap();
+        assert_eq!(sample.timing.captured_at, old.captured_at);
+        assert!(
+            matches!(sample.event, CapturedInputEvent::Scroll { event, .. } if event.delta_y == 10.0)
+        );
+        assert!(scroll.push_timed(event, old));
+        scroll.clear();
+        assert!(scroll.push_timed(event, fresh));
+        assert_eq!(scroll.take_timed().unwrap().timing.captured_at, now);
+    }
+
     fn check_pending_buffer_during_backpressure(scroll: bool) {
         let pointer = Arc::new(Mutex::new(PendingPointerDelta::default()));
         let pending_scroll = Arc::new(Mutex::new(PendingScrollDelta::default()));
@@ -2868,7 +2913,13 @@ mod capture_queue_tests {
         let (sender, mut receiver) = tokio::sync::mpsc::channel(64);
         for _ in 0..64 {
             sender
-                .try_send(CapturedInputEvent::EmergencyRelease)
+                .try_send(RoutedInput::new(
+                    CapturedInputEvent::EmergencyRelease,
+                    CaptureTiming {
+                        captured_at: Instant::now(),
+                        routed_at: Instant::now(),
+                    },
+                ))
                 .unwrap();
         }
         let worker_pointer = pointer.clone();
@@ -2903,7 +2954,7 @@ mod capture_queue_tests {
         for _ in 0..63 {
             receiver.blocking_recv().unwrap();
         }
-        let forwarded = receiver.blocking_recv().unwrap();
+        let forwarded = receiver.blocking_recv().unwrap().event;
         if scroll {
             assert!(
                 matches!(forwarded, CapturedInputEvent::Scroll { event, .. } if event.delta_y == 5.0)
