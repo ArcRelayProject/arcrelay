@@ -104,10 +104,8 @@ extern "C" {
         key_down: bool,
     ) -> CGEventRef;
     fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
-    #[cfg(test)]
     fn CGEventGetTimestamp(event: CGEventRef) -> u64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
-    #[cfg(test)]
     fn CGEventSetFlags(event: CGEventRef, flags: u64);
     fn CGEventCreateData(allocator: *const c_void, event: CGEventRef) -> CFDataRef;
     fn CGEventCreateFromData(allocator: *const c_void, data: CFDataRef) -> CGEventRef;
@@ -132,6 +130,7 @@ extern "C" {
     fn CGEventSetSource(event: CGEventRef, source: *const c_void);
     fn CGEventSetTimestamp(event: CGEventRef, timestamp: u64);
     fn CGEventSetIntegerValueField(event: CGEventRef, field: u32, value: i64);
+    fn CGEventSetDoubleValueField(event: CGEventRef, field: u32, value: f64);
     #[cfg(test)]
     fn CFDataCreate(allocator: *const c_void, bytes: *const u8, length: isize) -> CFDataRef;
     fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
@@ -726,6 +725,7 @@ impl NativePlatform {
                 unit: ScrollUnit::Pixel,
                 ..ScrollEvent::default()
             });
+            let _ = scroll::cancel_companion();
         }
         if state.scroll_momentum_active {
             let _ = self.post_portable_scroll(ScrollEvent {
