@@ -153,7 +153,7 @@ mod tests {
         let (events, receiver) = mpsc::sync_channel(8);
         let mut context = CaptureContext {
             consumer: Arc::new(Mutex::new(arcrelay_input::ConsumerCapture::default())),
-            events,
+            events: super::CaptureSender::plain(events),
             options: CaptureOptions {
                 suppress_local: true,
                 capture_pointer: true,

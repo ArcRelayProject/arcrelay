@@ -1,5 +1,6 @@
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod brightness;
+pub(super) mod capture;
 #[cfg(any(target_os = "windows", test))]
 mod consumer;
 

@@ -2826,5 +2826,21 @@
   "文件列表为空": "A lista de arquivos está vazia",
   "文件列表": "Lista de arquivos",
   "{type} 文件": "Arquivo {type}",
-  "插入全部 {count} 个文件": "Inserir todos os {count} arquivos"
+  "插入全部 {count} 个文件": "Inserir todos os {count} arquivos",
+  "本机接收处理耗时": "Tempo de processamento local de recepção",
+  "本机采集处理耗时": "Tempo de processamento local de captura",
+  "本机处理耗时": "Tempo de processamento local",
+  "本机输入处理": "Processamento local de entrada",
+  "本机输入处理耗时偏高": "O processamento local de entrada está lento",
+  "本机处理样本在参考范围内": "As amostras locais estão na faixa de referência",
+  "本机耗时不包含跨设备传输，无法据此判断端到端延迟。": "Os tempos locais excluem a transferência entre dispositivos e não medem a latência de ponta a ponta.",
+  "本机处理样本超过 16 ms 参考线，请结合分段排队和 QUIC 指标排查。": "As amostras locais excedem 16 ms. Verifique as filas por etapa e as métricas QUIC.",
+  "高于本机 16 ms 参考线": "Acima da referência local de 16 ms",
+  "本机耗时，不含网络传输": "Tempo local sem transferência de rede",
+  "本机参考线 16 ms": "Referência local: 16 ms",
+  "处理速率（估算）": "Taxa de processamento (estimada)",
+  "加密连接 · 等待本机处理样本": "Conexão criptografada · Aguardando amostras locais",
+  "本机处理 · {latency} ms": "Processamento local · {latency} ms",
+  "样本 P95": "P95 das amostras",
+  "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Mostra uma amostra a cada 128 eventos processados, sem transferência de rede. As estatísticas completas e métricas QUIC estão nos registros de diagnóstico."
 }

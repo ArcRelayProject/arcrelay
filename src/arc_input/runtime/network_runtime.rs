@@ -40,46 +40,17 @@ impl ArcInputRuntime {
             .filter_map(|peer| DiscoveredPeer::try_from(peer).ok())
             .collect();
         self.update_discovered(initial_peers).await;
-        let mut inventory_tick = tokio::time::interval(std::time::Duration::from_secs(2));
-        inventory_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let (mut maintenance, mut inventories) = self.start_maintenance();
         let mut input_metrics_tick = tokio::time::interval(std::time::Duration::from_secs(5));
         input_metrics_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         input_metrics_tick.tick().await;
-        let mut gesture_tick = tokio::time::interval(Duration::from_millis(500));
-        let mut last_consumer_caps = InputCapturePort::capabilities(self.platform.as_ref());
-        self.platform.refresh_consumer_capabilities();
-        gesture_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
-                _ = gesture_tick.tick() => {
-                    if let Err(error) = self.platform.maintain_cursor_visibility() {
-                        self.record("cursor", error.to_string(), None);
-                        if let Err(error) = self.release_control() {
-                            tracing::error!(%error, "Arc Input failed to release after cursor visibility error");
-                        }
-                    }
-                    match self.platform.maintain_system_gesture() {
-                        Ok(true) => self.record("system-gesture", "cancelled after 2s without a gesture update".into(), None),
-                        Err(error) => self.record("system-gesture", error.to_string(), None),
-                        Ok(false) => {}
-                    }
+                stopped = maintenance.join_next(), if !maintenance.is_empty() => {
+                    self.record("maintenance", format!("periodic worker stopped: {stopped:?}"), None);
                 },
-                _ = inventory_tick.tick() => {
-                    self.platform.refresh_consumer_capabilities();
-                    let caps = InputCapturePort::capabilities(self.platform.as_ref());
-                    if caps != last_consumer_caps {
-                        self.platform.release_consumer_keys();
-                        last_consumer_caps = caps;
-                        for peer in self.network.connected_peers() {
-                            if let Err(error) = self.send_capabilities(&peer).await { self.record("consumer-capabilities", error.to_string(), None); }
-                        }
-                        self.refresh_consumer_capture();
-                        let _ = self.events.send(RuntimeEvent::SnapshotChanged);
-                    }
-                    if let Err(error) = self.refresh_paired_peers().await {
-                        self.record("pairing", error.to_string(), None);
-                    }
-                    if let Err(error) = self.refresh_local_inventory().await {
+                Some(inventory) = inventories.recv() => {
+                    if let Err(error) = self.apply_local_inventory(inventory).await {
                         self.record("display", error.to_string(), None);
                     }
                 },
@@ -254,20 +225,47 @@ impl ArcInputRuntime {
                 service_instance_id,
                 session_id,
                 batch,
+                received_at,
             } => {
                 if self
                     .network
                     .is_current_session(&service_instance_id, session_id)
                 {
-                    self.handle_input(service_instance_id, batch)?;
+                    self.pipeline_timings
+                        .receive_queue
+                        .record(received_at.elapsed());
+                    let started = Instant::now();
+                    let result = self.handle_input(service_instance_id, batch);
+                    self.pipeline_timings
+                        .receive_handler
+                        .record(started.elapsed());
+                    let elapsed = received_at.elapsed();
+                    self.pipeline_timings.receive_total.record(elapsed);
+                    if self
+                        .input_receive_diagnostic_counter
+                        .fetch_add(1, Ordering::Relaxed)
+                        .is_multiple_of(128)
+                    {
+                        self.record(
+                            "input-receive-local",
+                            "decoded frame to input handler completion (local only)".into(),
+                            Some(micros(elapsed)),
+                        );
+                    }
+                    result?;
                 }
             }
         }
         Ok(())
     }
 
-    pub(super) async fn refresh_local_inventory(&self) -> Result<(), RuntimeError> {
-        let mut reported = collapse_mirrored_inventory(self.platform.inventory()?);
+    async fn apply_local_inventory(
+        &self,
+        mut reported: DisplayInventory,
+    ) -> Result<(), RuntimeError> {
+        // Apply against current configuration on the same task as remote
+        // topology/control updates. Never publish a background snapshot's
+        // stale configuration over a newer incoming update.
         let changed = read(&self.local_inventory)
             .as_ref()
             .is_none_or(|current| !inventory_equivalent(current, &reported));
@@ -1249,7 +1247,6 @@ impl ArcInputRuntime {
         if !self.input_sharing_enabled() {
             return Err(RuntimeError::InputSharingDisabled);
         }
-        let sent_at_unix_micros = batch.sent_at_unix_micros;
         let header = domain_header(batch.header.ok_or(RuntimeError::MissingHeader)?)?;
         if header.source_device_id != peer {
             return Err(RuntimeError::WrongPeer);
@@ -1453,18 +1450,8 @@ impl ArcInputRuntime {
             session.held.clear();
             return Err(RuntimeError::HeldStateMismatch);
         }
-        let now = unix_micros();
-        if sent_at_unix_micros > 0 {
-            if let Some(latency) = now.checked_sub(sent_at_unix_micros) {
-                if latency <= 60_000_000 {
-                    self.record(
-                        "input-e2e",
-                        "capture-to-inject sample".into(),
-                        Some(latency),
-                    );
-                }
-            }
-        }
+        // The peer's Unix clock is intentionally ignored. No synchronized
+        // clock or input acknowledgement exists to establish one-way latency.
         Ok(())
     }
 
@@ -2323,19 +2310,10 @@ impl ArcInputRuntime {
             || detail.contains("disconnected")
             || detail.contains("mismatch")
             || detail.contains("timeout");
-        // `input-e2e` is recorded in the bounded in-memory diagnostics ring for
-        // UI inspection, but never forwarded to disk one event at a time. The
-        // periodic pipeline summary below is the durable signal for this hot
-        // path. `input-latency` is already sampled before it reaches here.
+        // Hot-path UI samples stay in the bounded ring. All-event histogram
+        // summaries, not selectively sampled events, are persisted every 5s.
         match category {
-            "input-e2e" => {}
-            "input-latency" => tracing::debug!(
-                event,
-                category,
-                detail = %detail,
-                latency_micros = latency_micros.unwrap_or_default(),
-                "Arc Input diagnostic sample"
-            ),
+            "input-capture-local" | "input-receive-local" => {}
             _ if is_warning => tracing::warn!(
                 event,
                 category,
@@ -2367,6 +2345,14 @@ impl ArcInputRuntime {
     }
 
     fn emit_input_metrics(&self) {
+        let now = Instant::now();
+        let interval_ms = {
+            let mut previous = lock(&self.input_metrics_last_emitted);
+            let elapsed = now.duration_since(*previous).as_millis() as u64;
+            *previous = now;
+            elapsed
+        };
+        self.pipeline_timings.emit();
         let captured = self.input_capture_count.swap(0, Ordering::AcqRel);
         let capture_errors = self.input_capture_errors.swap(0, Ordering::AcqRel);
         let capture_max_micros = self.input_capture_max_micros.swap(0, Ordering::AcqRel);
@@ -2398,7 +2384,7 @@ impl ArcInputRuntime {
         if capture_errors > 0 || transport.queue_full > 0 || scroll_native_failed > 0 {
             tracing::warn!(
                 event = "input.pipeline.summary",
-                interval_ms = 5_000_u64,
+                interval_ms,
                 captured,
                 capture_errors,
                 capture_max_micros,
@@ -2422,7 +2408,7 @@ impl ArcInputRuntime {
         } else {
             tracing::info!(
                 event = "input.pipeline.summary",
-                interval_ms = 5_000_u64,
+                interval_ms,
                 captured,
                 capture_errors,
                 capture_max_micros,
@@ -2468,8 +2454,7 @@ fn diagnostic_event_name(category: &str) -> &'static str {
         "protocol" => "input.protocol.error",
         "network" => "input.network.error",
         "input" => "input.pipeline.error",
-        "input-latency" => "input.pipeline.latency_sample",
-        "input-e2e" => "input.pipeline.e2e_sample",
+        "input-capture-local" | "input-receive-local" => "input.pipeline.local_sample",
         _ => "input.diagnostic",
     }
 }

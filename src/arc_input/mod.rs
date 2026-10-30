@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod discovery;
 pub mod identity;
+mod metrics;
 pub mod network;
 pub mod platform;
 pub mod runtime;

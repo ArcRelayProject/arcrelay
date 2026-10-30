@@ -1,3 +1,4 @@
+use super::capture::CapturedInputSample;
 use std::sync::mpsc::Receiver;
 
 use arcrelay_input::{
@@ -23,6 +24,15 @@ impl NativePlatform {
 impl Default for NativePlatform {
     fn default() -> Self {
         Self
+    }
+}
+
+impl NativePlatform {
+    pub(crate) fn start_timed(
+        &self,
+        _: CaptureOptions,
+    ) -> Result<Receiver<CapturedInputSample>, PlatformError> {
+        Err(Self::unsupported())
     }
 }
 

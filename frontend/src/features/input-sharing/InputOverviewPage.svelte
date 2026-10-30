@@ -290,14 +290,14 @@
       <div class="session-metrics">
         <article>
           <Pulse size={24} /><span
-            ><small>{uiTranslate("输入", $uiLanguage)}</small><strong
+            ><small>{uiTranslate("处理速率（估算）", $uiLanguage)}</small><strong
               >{uiTranslate(formatInputRate(eventRate), $uiLanguage)}</strong
             ></span
           >
         </article>
         <article>
           <Gauge size={24} /><span
-            ><small>{uiTranslate("延迟", $uiLanguage)}</small><strong
+            ><small>{uiTranslate("本机处理耗时", $uiLanguage)}</small><strong
               >{uiTranslate(p95 == null ? "等待样本" : `${p95.toFixed(1)} ms`, $uiLanguage)}</strong
             ></span
           >
@@ -342,8 +342,8 @@
                 >{uiTranslate(
                   peer.connected
                     ? p95 == null
-                      ? "加密连接 · 等待延迟样本"
-                      : t("加密连接 · {latency} ms", $uiLanguage, { latency: p95.toFixed(0) })
+                      ? "加密连接 · 等待本机处理样本"
+                      : t("本机处理 · {latency} ms", $uiLanguage, { latency: p95.toFixed(0) })
                     : peer.paired
                       ? "已配对 · 等待连接"
                       : "尚未配对",

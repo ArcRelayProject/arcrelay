@@ -176,14 +176,6 @@ pub(super) fn suspend_initial_remote_portals(
     }
 }
 
-pub(super) fn unix_micros() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_micros()
-        .min(u128::from(u64::MAX)) as u64
-}
-
 pub(super) fn inventory_equivalent(left: &DisplayInventory, right: &DisplayInventory) -> bool {
     let normalize = |inventory: &DisplayInventory| {
         let mut inventory = inventory.clone();

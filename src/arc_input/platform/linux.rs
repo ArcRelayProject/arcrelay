@@ -1,3 +1,4 @@
+use super::capture::{CaptureSender, CapturedInputSample};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
@@ -70,6 +71,82 @@ impl NativePlatform {
     }
 }
 
+impl NativePlatform {
+    pub(crate) fn start_timed(
+        &self,
+        options: CaptureOptions,
+    ) -> Result<Receiver<CapturedInputSample>, PlatformError> {
+        let (sender, receiver) = mpsc::channel();
+        self.start_capture(options, CaptureSender::timed(sender))?;
+        Ok(receiver)
+    }
+
+    fn start_capture(
+        &self,
+        options: CaptureOptions,
+        sender: CaptureSender,
+    ) -> Result<(), PlatformError> {
+        if options.suppress_local {
+            return Err(self.unsupported("local input suppression"));
+        }
+        if self.wayland || !self.has_xinput {
+            return Err(self.unsupported("global input capture"));
+        }
+        let mut active = lock(&self.capture);
+        if active.is_some() {
+            return Err(PlatformError::Operation("capture is already active".into()));
+        }
+        let mut child = Command::new("xinput")
+            .args(["test-xi2", "--root"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| PlatformError::Operation(error.to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| PlatformError::Operation("xinput stdout is unavailable".into()))?;
+        std::thread::Builder::new()
+            .name("arc-input-xinput-capture".into())
+            .spawn(move || {
+                let mut event_type = String::new();
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    let line = line.trim();
+                    if let Some(value) = line.strip_prefix("EVENT type ") {
+                        event_type = value.to_string();
+                    } else if let Some(value) = line.strip_prefix("detail:") {
+                        let detail = value.trim().parse::<u16>().ok();
+                        let down =
+                            event_type.contains("ButtonPress") || event_type.contains("KeyPress");
+                        let up = event_type.contains("ButtonRelease")
+                            || event_type.contains("KeyRelease");
+                        if down || up {
+                            if event_type.contains("Button") {
+                                if let Some(button) = detail {
+                                    let _ = sender.try_send(CapturedInputEvent::PointerButton {
+                                        hid_usage: x11_button_to_hid(button),
+                                        down,
+                                        click_count: 1,
+                                    });
+                                }
+                            } else if let Some(keycode) = detail.and_then(x11_keycode_to_hid) {
+                                let _ = sender.try_send(CapturedInputEvent::Keyboard(
+                                    MappedKeyboardEvent::Physical {
+                                        hid_usage: keycode,
+                                        down,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                }
+            })
+            .map_err(|error| PlatformError::Operation(error.to_string()))?;
+        *active = Some(child);
+        Ok(())
+    }
+}
+
 impl InputCapturePort for NativePlatform {
     fn capabilities(&self) -> PlatformCapabilities {
         let x11_ready = !self.wayland && self.has_xinput && self.has_xdotool;
@@ -101,64 +178,8 @@ impl InputCapturePort for NativePlatform {
         &self,
         options: CaptureOptions,
     ) -> Result<Receiver<CapturedInputEvent>, PlatformError> {
-        if options.suppress_local {
-            return Err(self.unsupported("local input suppression"));
-        }
-        if self.wayland || !self.has_xinput {
-            return Err(self.unsupported("global input capture"));
-        }
-        let mut active = lock(&self.capture);
-        if active.is_some() {
-            return Err(PlatformError::Operation("capture is already active".into()));
-        }
-        let mut child = Command::new("xinput")
-            .args(["test-xi2", "--root"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| PlatformError::Operation(error.to_string()))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| PlatformError::Operation("xinput stdout is unavailable".into()))?;
         let (sender, receiver) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("arc-input-xinput-capture".into())
-            .spawn(move || {
-                let mut event_type = String::new();
-                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    let line = line.trim();
-                    if let Some(value) = line.strip_prefix("EVENT type ") {
-                        event_type = value.to_string();
-                    } else if let Some(value) = line.strip_prefix("detail:") {
-                        let detail = value.trim().parse::<u16>().ok();
-                        let down =
-                            event_type.contains("ButtonPress") || event_type.contains("KeyPress");
-                        let up = event_type.contains("ButtonRelease")
-                            || event_type.contains("KeyRelease");
-                        if down || up {
-                            if event_type.contains("Button") {
-                                if let Some(button) = detail {
-                                    let _ = sender.send(CapturedInputEvent::PointerButton {
-                                        hid_usage: x11_button_to_hid(button),
-                                        down,
-                                        click_count: 1,
-                                    });
-                                }
-                            } else if let Some(keycode) = detail.and_then(x11_keycode_to_hid) {
-                                let _ = sender.send(CapturedInputEvent::Keyboard(
-                                    MappedKeyboardEvent::Physical {
-                                        hid_usage: keycode,
-                                        down,
-                                    },
-                                ));
-                            }
-                        }
-                    }
-                }
-            })
-            .map_err(|error| PlatformError::Operation(error.to_string()))?;
-        *active = Some(child);
+        self.start_capture(options, CaptureSender::plain(sender))?;
         Ok(receiver)
     }
 

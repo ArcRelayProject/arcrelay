@@ -2,6 +2,9 @@ use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
+
+use super::metrics::{micros, TimingHistogram};
 
 use arcrelay_input::{proto, wire};
 use arcrelay_network::{NetworkRuntime, Session, SessionKind};
@@ -19,8 +22,14 @@ pub enum InputEnqueueOutcome {
 }
 
 #[derive(Debug)]
+struct QueuedInput {
+    batch: proto::InputEventBatch,
+    enqueued_at: Instant,
+}
+
+#[derive(Debug)]
 struct InputSendQueueState {
-    frames: VecDeque<proto::InputEventBatch>,
+    frames: VecDeque<QueuedInput>,
     closed: bool,
 }
 
@@ -94,9 +103,9 @@ impl InputSendQueueSender {
         }
         if replace_pending_motion && is_pointer_motion_batch(&batch) {
             if let Some(pending) = state.frames.back_mut() {
-                if replaceable_pointer_motion(pending, &batch) {
+                if replaceable_pointer_motion(&pending.batch, &batch) {
                     if let (Some(pending_header), Some(next_header)) =
-                        (pending.header.as_ref(), batch.header.as_mut())
+                        (pending.batch.header.as_ref(), batch.header.as_mut())
                     {
                         // The replaced frame has not left the application yet.
                         // Reuse its reliable sequence so the receiver still
@@ -104,7 +113,9 @@ impl InputSendQueueSender {
                         // boundaries such as buttons and keys.
                         next_header.sequence = pending_header.sequence;
                     }
-                    *pending = batch;
+                    // Keep the residence time of this queue slot. Replacing
+                    // its payload must not hide a sender that is falling behind.
+                    pending.batch = batch;
                     return Ok(InputEnqueueOutcome::ReplacedPendingMotion);
                 }
             }
@@ -112,10 +123,20 @@ impl InputSendQueueSender {
         if state.frames.len() >= INPUT_SEND_QUEUE_CAPACITY {
             return Err(InputSendQueueError::Full);
         }
-        state.frames.push_back(batch);
+        state.frames.push_back(QueuedInput {
+            batch,
+            enqueued_at: Instant::now(),
+        });
         drop(state);
         self.inner.notify.notify_one();
         Ok(InputEnqueueOutcome::Queued)
+    }
+
+    fn oldest_age_micros(&self) -> u64 {
+        lock(&self.inner.state)
+            .frames
+            .front()
+            .map_or(0, |frame| micros(frame.enqueued_at.elapsed()))
     }
 
     fn pending(&self) -> u64 {
@@ -124,7 +145,7 @@ impl InputSendQueueSender {
 }
 
 impl InputSendQueueReceiver {
-    async fn recv(&mut self) -> Option<proto::InputEventBatch> {
+    async fn recv(&mut self) -> Option<QueuedInput> {
         loop {
             let notified = self.inner.notify.notified();
             {
@@ -182,6 +203,9 @@ fn replaceable_pointer_motion(
 
 #[derive(Debug, Default)]
 struct TransportCounters {
+    send_queue: TimingHistogram,
+    stream_open: TimingHistogram,
+    stream_write: TimingHistogram,
     enqueued: AtomicU64,
     written: AtomicU64,
     received: AtomicU64,
@@ -219,6 +243,7 @@ pub enum NetworkEvent {
         service_instance_id: ServiceInstanceId,
         session_id: u64,
         batch: proto::InputEventBatch,
+        received_at: Instant,
     },
 }
 
@@ -228,6 +253,52 @@ struct ActiveLink {
     session: Arc<Session>,
     connection: quinn::Connection,
     input_sender: InputSendQueueSender,
+    metrics: Arc<LinkMetrics>,
+}
+
+#[derive(Default)]
+struct LinkMetrics {
+    previous: Mutex<Option<(Instant, quinn::ConnectionStats)>>,
+    write_started: Mutex<Option<Instant>>,
+}
+
+fn counter_delta(now: u64, before: u64) -> u64 {
+    // Path counters can reset after migration. A new session also gets its own
+    // initial baseline; never compare a replacement connection to the old one.
+    now.checked_sub(before).unwrap_or(now)
+}
+
+/// The connection counters cover all traffic on this realtime-input session,
+/// including control frames. Quinn does not expose a retransmission counter:
+/// loss and flow-control counters must not be relabelled as retransmissions.
+fn emit_quic_metrics(peer: &ServiceInstanceId, link: &ActiveLink) {
+    let stats = link.connection.stats();
+    let now = Instant::now();
+    let (previous_at, previous) = lock(&link.metrics.previous)
+        .replace((now, stats))
+        .unwrap_or((now, stats));
+    let delta = counter_delta;
+    tracing::info!(
+        event = "input.transport.quic",
+        peer_id = %crate::arc_input::log_peer_id(peer.as_str()),
+        session_id = link.session_id,
+        interval_micros = micros(now.duration_since(previous_at)),
+        path_counters_reset = stats.path.sent_packets < previous.path.sent_packets,
+        rtt_micros = micros(stats.path.rtt),
+        cwnd_bytes = stats.path.cwnd,
+        sent_packets = delta(stats.path.sent_packets, previous.path.sent_packets),
+        lost_packets = delta(stats.path.lost_packets, previous.path.lost_packets),
+        lost_bytes = delta(stats.path.lost_bytes, previous.path.lost_bytes),
+        congestion_events = delta(stats.path.congestion_events, previous.path.congestion_events),
+        udp_tx_bytes = delta(stats.udp_tx.bytes, previous.udp_tx.bytes),
+        udp_rx_bytes = delta(stats.udp_rx.bytes, previous.udp_rx.bytes),
+        data_blocked = delta(stats.frame_tx.data_blocked, previous.frame_tx.data_blocked),
+        stream_data_blocked = delta(stats.frame_tx.stream_data_blocked, previous.frame_tx.stream_data_blocked),
+        oldest_queue_age_micros = link.input_sender.oldest_age_micros(),
+        in_flight_write_micros = lock(&link.metrics.write_started).map_or(0, |started| micros(started.elapsed())),
+        retransmissions_available = false,
+        "Arc Input QUIC connection interval (loss is not a retransmission count)"
+    );
 }
 
 /// Arc Input adapter over the process-wide authenticated network runtime.
@@ -443,6 +514,10 @@ impl PeerConnectionHub {
         let session_id = session.id();
         let connection = session.transport_handle();
         let (input_sender, input_receiver) = InputSendQueueSender::channel();
+        let metrics = Arc::new(LinkMetrics {
+            previous: Mutex::new(Some((Instant::now(), connection.stats()))),
+            write_started: Mutex::new(None),
+        });
         let existing = {
             let mut links = lock(&self.links);
             // Authentication may finish after a newer connection was installed.
@@ -464,6 +539,7 @@ impl PeerConnectionHub {
                     session: session.clone(),
                     connection: connection.clone(),
                     input_sender,
+                    metrics: metrics.clone(),
                 },
             )
         };
@@ -494,7 +570,7 @@ impl PeerConnectionHub {
         let input_counters = self.counters.clone();
         tokio::spawn(async move {
             if let Err(error) =
-                send_input_loop(input_connection, input_receiver, input_counters).await
+                send_input_loop(input_connection, input_receiver, input_counters, metrics).await
             {
                 tracing::warn!(
                     event = "input.transport.sender_stopped",
@@ -584,6 +660,7 @@ impl PeerConnectionHub {
                                         service_instance_id: input_peer.clone(),
                                         session_id,
                                         batch,
+                                        received_at: Instant::now(),
                                     });
                                 }
                                 Err(error) => {
@@ -658,6 +735,17 @@ impl PeerConnectionHub {
     }
 
     pub fn take_input_metrics(&self) -> InputTransportMetrics {
+        self.counters.send_queue.take().emit("send_queue");
+        self.counters.stream_open.take().emit("stream_open");
+        self.counters.stream_write.take().emit("stream_write");
+        // Do not retain the link-map lock while reading Quinn or logging.
+        let links = lock(&self.links)
+            .iter()
+            .map(|(peer, link)| (peer.clone(), link.clone()))
+            .collect::<Vec<_>>();
+        for (peer, link) in links {
+            emit_quic_metrics(&peer, &link);
+        }
         let pending = lock(&self.links)
             .values()
             .map(|link| link.input_sender.pending())
@@ -677,19 +765,37 @@ async fn send_input_loop(
     connection: quinn::Connection,
     mut receiver: InputSendQueueReceiver,
     counters: Arc<TransportCounters>,
+    metrics: Arc<LinkMetrics>,
 ) -> Result<(), NetworkError> {
     let Some(first) = receiver.recv().await else {
         return Ok(());
     };
-    let mut stream = connection.open_uni().await?;
+    counters.send_queue.record(first.enqueued_at.elapsed());
+    let started = Instant::now();
+    *lock(&metrics.write_started) = Some(started);
+    let opened = connection.open_uni().await;
+    counters.stream_open.record(started.elapsed());
+    *lock(&metrics.write_started) = None;
+    let mut stream = opened?;
+    *lock(&metrics.write_started) = Some(Instant::now());
     stream
         .write_u8(arcrelay_input::STREAM_KIND_RELIABLE_INPUT)
         .await?;
-    wire::write_input(&mut stream, &first).await?;
-    counters.written.fetch_add(1, Ordering::Relaxed);
-    while let Some(batch) = receiver.recv().await {
-        wire::write_input(&mut stream, &batch).await?;
+    let mut next = Some(first);
+    while let Some(frame) = next {
+        let started = Instant::now();
+        *lock(&metrics.write_started) = Some(started);
+        let result = wire::write_input(&mut stream, &frame.batch).await;
+        counters.stream_write.record(started.elapsed());
+        *lock(&metrics.write_started) = None;
+        result?;
+        // A successful write only means Quinn accepted the bytes, not that
+        // the peer acknowledged, dequeued, or injected this input.
         counters.written.fetch_add(1, Ordering::Relaxed);
+        next = receiver.recv().await;
+        if let Some(frame) = &next {
+            counters.send_queue.record(frame.enqueued_at.elapsed());
+        }
     }
     stream.finish()?;
     Ok(())
@@ -892,6 +998,31 @@ mod input_send_queue_tests {
         )
     }
 
+    #[test]
+    fn path_counter_reset_does_not_underflow_or_suppress_new_losses() {
+        assert_eq!(counter_delta(25, 20), 5);
+        assert_eq!(counter_delta(3, 20), 3);
+        assert_eq!(counter_delta(20, 20), 0);
+    }
+
+    #[tokio::test]
+    async fn replacing_motion_preserves_the_oldest_queue_slot_age() {
+        let (sender, mut receiver) = InputSendQueueSender::channel();
+        sender.try_send(motion(1, 10), true).unwrap();
+        let old = Instant::now() - std::time::Duration::from_millis(700);
+        lock(&sender.inner.state)
+            .frames
+            .front_mut()
+            .unwrap()
+            .enqueued_at = old;
+        sender.try_send(motion(2, 20), true).unwrap();
+        assert!(sender.oldest_age_micros() >= 700_000);
+        let delivered = receiver.recv().await.unwrap();
+        assert_eq!(delivered.enqueued_at, old);
+        assert_eq!(delivered.batch.header.unwrap().sequence, 1);
+        assert_eq!(sender.oldest_age_micros(), 0);
+    }
+
     #[tokio::test]
     async fn pending_motion_is_replaced_without_consuming_a_sequence() {
         let (sender, mut receiver) = InputSendQueueSender::channel();
@@ -905,7 +1036,7 @@ mod input_send_queue_tests {
         );
         assert_eq!(sender.pending(), 1);
 
-        let delivered = receiver.recv().await.unwrap();
+        let delivered = receiver.recv().await.unwrap().batch;
         assert_eq!(delivered.header.unwrap().sequence, 1);
         let proto::input_event::Event::PointerMotion(pointer) =
             delivered.events.into_iter().next().unwrap().event.unwrap()
@@ -938,9 +1069,9 @@ mod input_send_queue_tests {
             Ok(InputEnqueueOutcome::ReplacedPendingMotion)
         );
 
-        let first = receiver.recv().await.unwrap();
-        let second = receiver.recv().await.unwrap();
-        let third = receiver.recv().await.unwrap();
+        let first = receiver.recv().await.unwrap().batch;
+        let second = receiver.recv().await.unwrap().batch;
+        let third = receiver.recv().await.unwrap().batch;
         assert_eq!(first.header.unwrap().sequence, 1);
         assert!(matches!(
             second.events[0].event,
@@ -993,7 +1124,7 @@ mod input_send_queue_tests {
         sender.try_send(motion(7, 70), true).unwrap();
         assert_eq!(sender.pending(), 6);
         for sequence in 1..=6 {
-            let delivered = receiver.recv().await.unwrap();
+            let delivered = receiver.recv().await.unwrap().batch;
             assert_eq!(delivered.header.unwrap().sequence, sequence);
             if (2..=5).contains(&sequence) {
                 assert!(matches!(
@@ -1029,7 +1160,7 @@ mod input_send_queue_tests {
         sender.try_send(motion(6, 60), true).unwrap();
         assert_eq!(sender.pending(), 5);
         for sequence in 1..=5 {
-            let delivered = receiver.recv().await.unwrap();
+            let delivered = receiver.recv().await.unwrap().batch;
             assert_eq!(delivered.header.unwrap().sequence, sequence);
             if (2..=4).contains(&sequence) {
                 let Some(proto::input_event::Event::ConsumerKey(key)) = &delivered.events[0].event
