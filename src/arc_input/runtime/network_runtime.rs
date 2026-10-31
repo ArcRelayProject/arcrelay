@@ -135,6 +135,7 @@ impl ArcInputRuntime {
                 write(&self.remote_capabilities).remove(&service_instance_id);
                 write(&self.remote_inventories).remove(&service_instance_id);
                 write(&self.remote_sharing_enabled).remove(&service_instance_id);
+                lock(&self.peer_control_states).remove(&service_instance_id);
                 self.suspend_offline_portals(&service_instance_id)?;
                 *lock(&self.automatic_control_retry_at) = None;
                 if self.input_sharing_enabled() {
@@ -189,6 +190,7 @@ impl ArcInputRuntime {
                 write(&self.remote_capabilities).remove(&service_instance_id);
                 write(&self.remote_inventories).remove(&service_instance_id);
                 write(&self.remote_sharing_enabled).remove(&service_instance_id);
+                lock(&self.peer_control_states).remove(&service_instance_id);
                 {
                     let mut active = lock(&self.active_gaze_target);
                     if active
@@ -357,7 +359,12 @@ impl ArcInputRuntime {
                             .all(|display| component.contains(&display.device_id))
                     })
                 } else {
-                    participants == component
+                    self.accepts_control_scope(&peer, &participants)
+                };
+                let participants = if participants.is_empty() {
+                    component.clone()
+                } else {
+                    participants
                 };
                 let retired_epoch = lock(&self.retired_control_epochs).get(&peer).copied();
                 let arbitration = if !self.input_sharing_enabled() {
@@ -384,7 +391,13 @@ impl ArcInputRuntime {
                         (Some((active, _, active_controller)), Some(grant))
                             if active == incoming && active_controller == peer =>
                         {
-                            Ok(grant)
+                            if *lock(&self.control_participants) == participants {
+                                Ok(grant)
+                            } else {
+                                // Retries may reuse an identical scope, but a
+                                // new scope must negotiate a new owner token.
+                                Err(arcrelay_input::ControlError::ComponentChanged)
+                            }
                         }
                         (Some((active, _, _)), Some(grant)) if active == expected => {
                             self.arbiter.transfer(grant.epoch, peer.clone())
@@ -419,14 +432,31 @@ impl ArcInputRuntime {
                             s.controller == self.identity.service_instance_id
                                 && s.controller != peer
                         }) {
-                            let application_targets = lock(&self.control_participants)
+                            // The new controller may not be paired with every
+                            // former target. Retire those targets ourselves;
+                            // only the overlapping scope receives its takeover.
+                            let retired_targets = lock(&self.control_participants)
                                 .iter()
-                                .filter(|target| self.is_application_receiver(target))
+                                .filter(|target| {
+                                    **target != self.identity.service_instance_id
+                                        && (self.is_application_receiver(target)
+                                            || !participants.contains(*target))
+                                })
                                 .cloned()
                                 .collect();
-                            self.broadcast_release_to(previous, application_targets);
+                            self.broadcast_release_to(previous, retired_targets);
                         }
-                        *lock(&self.control_participants) = component;
+                        if let Some(previous) = previous_session.as_ref().filter(|s| {
+                            s.controller != self.identity.service_instance_id
+                                && s.controller != peer
+                                && !participants.contains(&s.controller)
+                        }) {
+                            // The replacement cannot notify an owner it is not
+                            // paired with. Retire that owner's old token via
+                            // the existing authenticated target-owner link.
+                            self.broadcast_release(previous);
+                        }
+                        *lock(&self.control_participants) = participants;
                         if previous_session
                             .as_ref()
                             .is_some_and(|session| session.controller != peer)
@@ -546,6 +576,7 @@ impl ArcInputRuntime {
                             replaced_local_topology_revision = layout.revision.0,
                             "Arc Input control acquisition granted"
                         );
+                        self.broadcast_peer_route_snapshots();
                     }
                     Err(error) => {
                         tracing::warn!(
@@ -589,10 +620,12 @@ impl ArcInputRuntime {
                                 },
                             )
                             .await?;
+                        // A stale ownership hint must recover on the next
+                        // physical attempt even when scopes differ legally.
+                        self.network
+                            .send_control(&peer, &self.peer_route_snapshot_frame(&peer))
+                            .await?;
                         if error == arcrelay_input::ControlError::ComponentChanged {
-                            self.network
-                                .send_control(&peer, &self.peer_route_snapshot_frame(&peer))
-                                .await?;
                             self.reconnect_peers();
                         }
                     }
@@ -1693,6 +1726,20 @@ impl ArcInputRuntime {
         self.control_epoch_clock
             .fetch_max(header_epoch, Ordering::AcqRel);
         if self.input_component().contains(&source) {
+            let mut states = lock(&self.peer_control_states);
+            if states
+                .get(&source)
+                .is_none_or(|state| header_epoch >= state.version)
+            {
+                states.insert(
+                    source.clone(),
+                    ObservedControlState {
+                        version: header_epoch,
+                        active: advertised_active.clone(),
+                    },
+                );
+            }
+            drop(states);
             let mut observed = lock(&self.observed_control);
             let clear_from_controller = advertised_active.is_none()
                 && observed
@@ -1799,7 +1846,7 @@ impl ArcInputRuntime {
         Ok(())
     }
 
-    fn broadcast_peer_route_snapshots(self: &Arc<Self>) {
+    pub(super) fn broadcast_peer_route_snapshots(self: &Arc<Self>) {
         for peer in self.network.connected_peers() {
             let frame = self.peer_route_snapshot_frame(&peer);
             let network = self.network.clone();

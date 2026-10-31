@@ -66,6 +66,7 @@ impl ArcInputRuntime {
             session: Mutex::new(None),
             control_participants: Mutex::new(BTreeSet::new()),
             retired_control_epochs: Mutex::new(BTreeMap::new()),
+            peer_control_states: Mutex::new(BTreeMap::new()),
             control_epoch_clock: AtomicU64::new(0),
             system_gesture_generation: AtomicU64::new(1),
             consumer_generation: AtomicU64::new(1),

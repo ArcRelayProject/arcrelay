@@ -789,7 +789,7 @@ async fn unrelated_offline_island_keeps_ownership_but_component_merge_releases_i
 }
 
 #[tokio::test]
-async fn claim_with_a_different_component_cannot_establish_ownership() {
+async fn claim_without_its_authenticated_endpoints_cannot_establish_ownership() {
     let directory = tempfile::tempdir().unwrap();
     let runtime = ArcInputRuntime::load(
         ProductPaths::from_root(directory.path().join("input")),
@@ -833,14 +833,14 @@ async fn claim_with_a_different_component_cannot_establish_ownership() {
                             sequence: 1,
                         }),
                         expected_control_epoch: 0,
-                        participant_device_ids: vec![local.to_string(), peer.to_string()],
+                        participant_device_ids: vec![local.to_string(), third.to_string()],
                     },
                 )),
             },
         )
         .await;
     // The synthetic hub cannot deliver the rejection, but no arbiter/session
-    // state may be installed for the incomplete participant set.
+    // state may be installed for a scope omitting the authenticated controller.
     assert!(matches!(
         result,
         Err(RuntimeError::Network(NetworkError::NotConnected))
@@ -878,6 +878,65 @@ async fn claim_with_a_different_component_cannot_establish_ownership() {
         lock(&runtime.session).as_ref().unwrap().control_epoch,
         ControlEpoch(5)
     );
+    let mut changed_scope = claim(5);
+    let Some(proto::control_frame::Body::AcquireControl(acquire)) = &mut changed_scope.body else {
+        panic!("acquisition expected")
+    };
+    acquire.participant_device_ids = vec![local.to_string(), peer.to_string()];
+    let _ = runtime.handle_control(peer, changed_scope).await;
+    assert_eq!(lock(&runtime.control_participants).len(), 3);
+    assert_eq!(
+        lock(&runtime.session).as_ref().unwrap().control_epoch,
+        ControlEpoch(5)
+    );
+}
+
+#[tokio::test]
+async fn control_scope_requires_endpoints_membership_and_an_available_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = ArcInputRuntime::load(
+        ProductPaths::from_root(directory.path().join("input")),
+        Arc::new(ProductIdentity::from_device_id("local").unwrap()),
+        Arc::new(tokio::sync::OnceCell::new()),
+    )
+    .await
+    .unwrap();
+    let local = runtime.identity.service_instance_id.clone();
+    let middle = ServiceInstanceId::parse("middle").unwrap();
+    let far = ServiceInstanceId::parse("far").unwrap();
+    let unknown = ServiceInstanceId::parse("unknown").unwrap();
+    let mut configuration = runtime.store.snapshot();
+    configuration.layout = Some(WorkspaceLayout {
+        workspace_id: WorkspaceId::parse("desk").unwrap(),
+        revision: TopologyRevision(1),
+        portals: Vec::new(),
+        displays: [
+            test_display("a", &local, 0),
+            test_display("b", &middle, 500_000),
+            test_display("c", &far, 1_000_000),
+        ]
+        .into_iter()
+        .map(|display| (display.display_id.clone(), display))
+        .collect(),
+    });
+    rebuild_auto_portals(&mut configuration).unwrap();
+    runtime.store.save(configuration.clone()).unwrap();
+    let scope = |ids: &[&ServiceInstanceId]| ids.iter().map(|id| (*id).clone()).collect();
+    assert!(runtime.accepts_control_scope(&middle, &scope(&[&local, &middle])));
+    assert!(!runtime.accepts_control_scope(&middle, &scope(&[&middle, &far])));
+    assert!(!runtime.accepts_control_scope(&middle, &scope(&[&local, &far])));
+    assert!(!runtime.accepts_control_scope(&middle, &scope(&[&local, &middle, &unknown])));
+    assert!(!runtime.accepts_control_scope(&far, &scope(&[&local, &far])));
+    for portal in &mut configuration.layout.as_mut().unwrap().portals {
+        if portal.source_display.as_str() == "c" || portal.target_display.as_str() == "c" {
+            portal.status = PortalStatus::SuspendedOffline;
+        }
+    }
+    runtime.store.save(configuration).unwrap();
+    // The receiver need not reach every other target, but it must reach its
+    // controller without trusting a claimed participant to revive an edge.
+    assert!(runtime.accepts_control_scope(&middle, &scope(&[&local, &middle, &far])));
+    assert!(!runtime.accepts_control_scope(&far, &scope(&[&local, &middle, &far])));
 }
 
 #[tokio::test]
