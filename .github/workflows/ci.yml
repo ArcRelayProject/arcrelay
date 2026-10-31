@@ -76,6 +76,7 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --bin arcrelay-desktop windowing::clipboard_windows -- --nocapture
       - run: cargo test --locked --bin arcrelay-desktop arc_input::runtime::tests::workspace_sync -- --nocapture
+      - run: cargo test --locked --bin arcrelay-desktop windows_cursor -- --nocapture
 
   windows-system-folders:
     runs-on: windows-latest

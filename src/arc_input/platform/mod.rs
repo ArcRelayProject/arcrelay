@@ -3,6 +3,8 @@ mod brightness;
 pub(super) mod capture;
 #[cfg(any(target_os = "windows", test))]
 mod consumer;
+#[cfg(any(target_os = "windows", test))]
+mod windows_cursor;
 
 #[cfg(target_os = "macos")]
 mod macos;
