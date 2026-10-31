@@ -1134,6 +1134,7 @@ pub struct NativePlatform {
     suppress_local: Arc<AtomicBool>,
     cursor_hidden: Arc<Mutex<bool>>,
     state: Mutex<InjectedState>,
+    remote_cursor: super::windows_cursor::RemoteCursor,
 }
 
 impl NativePlatform {
@@ -1147,6 +1148,7 @@ impl NativePlatform {
             suppress_local: Arc::new(AtomicBool::new(false)),
             cursor_hidden: Arc::new(Mutex::new(false)),
             state: Mutex::new(InjectedState::default()),
+            remote_cursor: Default::default(),
         }
     }
 
@@ -1378,6 +1380,7 @@ impl InputCapturePort for NativePlatform {
             // Keep the native cursor at the portal edge. WM_INPUT continues to
             // deliver relative hardware motion without an observable or
             // asynchronous synthetic center warp.
+            self.remote_cursor.release();
             set_cursor_hidden(&self.cursor_hidden, true);
             self.suppress_local.store(true, Ordering::Release);
         }
@@ -1411,6 +1414,7 @@ impl InputCapturePort for NativePlatform {
         lock(&self.consumer).reset();
         self.suppress_local.store(false, Ordering::Release);
         set_cursor_hidden(&self.cursor_hidden, false);
+        self.remote_cursor.release();
         let state = lock(&self.capture).take();
         if let Some(mut state) = state {
             let post_result =
@@ -1505,6 +1509,7 @@ impl InputInjectionPort for NativePlatform {
         let normalized_y = (((physical_y - f64::from(y)) * 65_535.0) / f64::from(height - 1))
             .round()
             .clamp(0.0, 65_535.0) as i32;
+        self.remote_cursor.ensure_visible();
         Self::send(&[Self::mouse_input(
             MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
             0,
@@ -1527,6 +1532,9 @@ impl InputInjectionPort for NativePlatform {
                 if *down {
                     if !state.keys.contains(hid_usage) {
                         state.keys.push(*hid_usage);
+                        if *hid_usage == 0x53 {
+                            self.remote_cursor.num_lock_toggled();
+                        }
                     }
                 } else {
                     state.keys.retain(|value| value != hid_usage);
@@ -1702,6 +1710,7 @@ impl InputInjectionPort for NativePlatform {
         for button in buttons {
             let _ = self.pointer_button(button, false, 1);
         }
+        self.remote_cursor.release();
         Ok(())
     }
 }
