@@ -53,7 +53,7 @@
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.10.12",
     "@types/qrcode": "^1.5.5",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "eslint": "10.10.0",
     "eslint-plugin-svelte": "3.23.0",
     "marked": "^18.0.14",
