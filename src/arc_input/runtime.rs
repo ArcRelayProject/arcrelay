@@ -738,6 +738,7 @@ pub struct ArcInputRuntime {
     consumer_generation: AtomicU64,
     consumer_route: Mutex<Option<(ServiceInstanceId, DisplayId, u32)>>,
     observed_control: Mutex<ObservedControlState>,
+    peer_control_states: Mutex<BTreeMap<ServiceInstanceId, ObservedControlState>>,
     takeover_pending_peers: Mutex<BTreeMap<ServiceInstanceId, ControlEpoch>>,
     control_waiters: Mutex<ControlWaiters>,
     handoff_waiters: Mutex<HandoffWaiters>,

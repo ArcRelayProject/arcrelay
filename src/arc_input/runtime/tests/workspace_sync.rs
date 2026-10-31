@@ -227,24 +227,37 @@ async fn pair_input_nodes(left: &ArcInputRuntime, right: &ArcInputRuntime) {
 
 #[tokio::test]
 async fn three_peer_partial_mesh_without_relay_support_recovers_on_timer() {
-    check_three_peer_input_mesh(false, false).await;
+    check_three_peer_input_mesh(false, false, None).await;
 }
 
 #[tokio::test]
 async fn three_peer_chain_relays_end_to_end_input_without_a_direct_link() {
-    check_three_peer_input_mesh(true, false).await;
+    check_three_peer_input_mesh(true, false, None).await;
 }
 
 #[tokio::test]
 async fn three_peer_chain_closes_relays_when_target_sharing_is_disabled() {
-    check_three_peer_input_mesh(true, true).await;
+    check_three_peer_input_mesh(true, true, None).await;
 }
 
-async fn check_three_peer_input_mesh(use_relay: bool, disable_target: bool) {
+#[tokio::test]
+async fn three_peer_partial_pairing_keeps_existing_input_usable() {
+    for endpoints_paired in [false, true] {
+        check_three_peer_input_mesh(false, false, Some(endpoints_paired)).await;
+    }
+}
+
+async fn check_three_peer_input_mesh(
+    use_relay: bool,
+    disable_target: bool,
+    partial_scope: Option<bool>,
+) {
     let directory = tempfile::tempdir().unwrap();
     let (left, middle) = connected_runtimes(directory.path()).await;
     let right = node(directory.path(), "third").await;
-    pair_input_nodes(&left, &right).await;
+    if partial_scope != Some(false) {
+        pair_input_nodes(&left, &right).await;
+    }
     pair_input_nodes(&middle, &right).await;
     let nodes = [&left, &middle, &right];
     let displays = nodes
@@ -298,7 +311,26 @@ async fn check_three_peer_input_mesh(use_relay: bool, disable_target: bool) {
                             caps.supports_input_relay = use_relay;
                         }
                     }
-                    runtime.handle_network_event(event).await.unwrap();
+                    let control_exit = matches!(
+                        &event,
+                        NetworkEvent::Control { frame, .. } if matches!(
+                            frame.body,
+                            Some(proto::control_frame::Body::ReleaseControl(_)
+                                | proto::control_frame::Body::EmergencyRelease(_))
+                        )
+                    );
+                    let result = runtime.handle_network_event(event).await;
+                    if control_exit
+                        && matches!(
+                            result,
+                            Err(RuntimeError::WrongPeer | RuntimeError::NoControlSession)
+                        )
+                    {
+                        // A retired owner's release can arrive after the
+                        // receiver has already accepted the replacement.
+                        continue;
+                    }
+                    result.unwrap();
                 }
             }
         }));
@@ -345,6 +377,20 @@ async fn check_three_peer_input_mesh(use_relay: bool, disable_target: bool) {
         lock(&left.reconnect_attempts).is_empty(),
         "disabled automatic dialing must stay disabled"
     );
+
+    if let Some(endpoints_paired) = partial_scope {
+        check_partial_pairing_ownership(&left, &middle, &right, endpoints_paired).await;
+        for worker in workers {
+            worker.abort();
+        }
+        for node in nodes {
+            node.unified_network
+                .get()
+                .unwrap()
+                .shutdown("test complete");
+        }
+        return;
+    }
 
     if use_relay {
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -603,6 +649,212 @@ async fn check_three_peer_input_mesh(use_relay: bool, disable_target: bool) {
     }
 }
 
+fn install_controller(runtime: &ArcInputRuntime, screen: &str, epoch: u64) {
+    let local = runtime.identity.service_instance_id.clone();
+    let layout = runtime.store.snapshot().layout.unwrap();
+    let previous_epoch = lock(&runtime.session)
+        .as_ref()
+        .filter(|session| session.controller != local)
+        .map(|session| session.control_epoch);
+    if let Some(grant) = runtime.arbiter.current() {
+        runtime
+            .arbiter
+            .transfer(grant.epoch, local.clone())
+            .unwrap();
+    } else {
+        runtime
+            .arbiter
+            .acquire(layout.workspace_id.clone(), local.clone())
+            .unwrap();
+    }
+    let participants = runtime.input_component();
+    let targets = participants
+        .iter()
+        .filter(|peer| **peer != local)
+        .cloned()
+        .collect::<Vec<_>>();
+    let previous = std::mem::replace(&mut *lock(&runtime.control_participants), participants);
+    runtime.prepare_control_acquisitions(&targets, &previous, previous_epoch);
+    runtime
+        .control_epoch_clock
+        .fetch_max(epoch, Ordering::AcqRel);
+    *lock(&runtime.session) = Some(ControlSession {
+        workspace_id: layout.workspace_id,
+        controller: local.clone(),
+        current_target: local,
+        current_display: DisplayId::parse(screen).unwrap(),
+        topology_revision: layout.revision,
+        control_epoch: ControlEpoch(epoch),
+        next_sequence: 1,
+        state: SessionState::Local,
+        held: HeldInputState::default(),
+    });
+}
+
+async fn wait_for_peer_owner(
+    observer: &ArcInputRuntime,
+    reporter: &ServiceInstanceId,
+    owner: &ServiceInstanceId,
+    epoch: u64,
+) {
+    let result = tokio::time::timeout(Duration::from_secs(3), async {
+        while !lock(&observer.peer_control_states)
+            .get(reporter)
+            .and_then(|state| state.active.as_ref())
+            .is_some_and(|(controller, token)| controller == owner && token.0 == epoch)
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(
+        result.is_ok(),
+        "expected owner {owner} at epoch {epoch}; observed {:?}",
+        lock(&observer.peer_control_states)
+    );
+}
+
+async fn assert_input_arrives(source: &ArcInputRuntime, target: &ArcInputRuntime, epoch: u64) {
+    let session = lock(&target.session).clone().unwrap();
+    source
+        .network
+        .send_input(
+            &target.identity.service_instance_id,
+            proto::InputEventBatch {
+                header: Some(proto::RuntimeHeader {
+                    workspace_id: session.workspace_id.to_string(),
+                    topology_revision: session.topology_revision.0,
+                    control_epoch: epoch,
+                    source_device_id: source.identity.service_instance_id.to_string(),
+                    target_device_id: target.identity.service_instance_id.to_string(),
+                    sequence: 1,
+                }),
+                ..Default::default()
+            },
+            false,
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while lock(&target.session).as_ref().unwrap().next_sequence != 2 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("input must flow over the existing authenticated link");
+}
+
+async fn check_partial_pairing_ownership(
+    left: &Arc<ArcInputRuntime>,
+    middle: &Arc<ArcInputRuntime>,
+    right: &Arc<ArcInputRuntime>,
+    endpoints_paired: bool,
+) {
+    let left_id = left.identity.service_instance_id.clone();
+    let middle_id = middle.identity.service_instance_id.clone();
+    let right_id = right.identity.service_instance_id.clone();
+    assert_eq!(
+        read(&left.paired_peers).contains_key(&right_id),
+        endpoints_paired
+    );
+    assert_eq!(
+        read(&right.paired_peers).contains_key(&left_id),
+        endpoints_paired
+    );
+    assert!(left.workspace_mesh_connected());
+
+    // A is paired only with B. B's additional C must not reject A's A-B scope.
+    install_controller(left, "screen-0", 91);
+    left.send_acquire_control(&middle_id).await.unwrap();
+    assert_eq!(lock(&middle.control_participants).len(), 2);
+    middle.reconcile_control_component().unwrap();
+    assert_eq!(lock(&middle.session).as_ref().unwrap().controller, left_id);
+    assert_input_arrives(left, middle, 91).await;
+
+    // C can replace A at B without connecting to A, using B's live epoch.
+    wait_for_peer_owner(right, &middle_id, &left_id, 91).await;
+    install_controller(right, "screen-2", 92);
+    assert_eq!(
+        lock(&right.takeover_pending_peers).get(&middle_id),
+        Some(&ControlEpoch(91))
+    );
+    right.send_acquire_control(&middle_id).await.unwrap();
+    assert_input_arrives(right, middle, 92).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while lock(&left.session).is_some() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    // B can control both endpoints without requiring A and C to pair/connect.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !lock(&middle.peer_control_states)
+            .get(&left_id)
+            .is_some_and(|state| state.version >= 91 && state.active.is_none())
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the former controller must advertise its released token");
+    install_controller(middle, "screen-1", 93);
+    assert!(!lock(&middle.takeover_pending_peers).contains_key(&left_id));
+    assert_eq!(
+        lock(&middle.takeover_pending_peers).get(&right_id),
+        Some(&ControlEpoch(92))
+    );
+    for target in [left, right] {
+        middle
+            .send_acquire_control(&target.identity.service_instance_id)
+            .await
+            .unwrap();
+        target.reconcile_control_component().unwrap();
+        assert_eq!(
+            lock(&target.session).as_ref().unwrap().controller,
+            middle_id
+        );
+        assert_eq!(lock(&target.control_participants).len(), 3);
+        assert_input_arrives(middle, target, 93).await;
+    }
+
+    // C takes B over. A is outside C's reachable scope and must be released by B.
+    install_controller(right, "screen-2", 94);
+    right.send_acquire_control(&middle_id).await.unwrap();
+    assert_input_arrives(right, middle, 94).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while lock(&left.session).is_some() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("participants omitted by a new controller must be released");
+
+    wait_for_peer_owner(left, &middle_id, &right_id, 94).await;
+    let mut stale = middle.peer_route_snapshot_frame(&left_id);
+    let Some(proto::control_frame::Body::PeerRouteSnapshot(snapshot)) = &mut stale.body else {
+        panic!("route snapshot expected")
+    };
+    snapshot.header.as_mut().unwrap().control_epoch = 93;
+    snapshot.active_controller_device_id = middle_id.to_string();
+    snapshot.active_control_epoch = 93;
+    left.handle_control(middle_id.clone(), stale).await.unwrap();
+    assert!(left.workspace_mesh_connected());
+    install_controller(left, "screen-0", 95);
+    assert_eq!(
+        lock(&left.takeover_pending_peers).get(&middle_id),
+        Some(&ControlEpoch(94))
+    );
+    left.send_acquire_control(&middle_id).await.unwrap();
+    assert_input_arrives(left, middle, 95).await;
+    assert_eq!(
+        left.network.connected_peers(),
+        std::slice::from_ref(&middle_id)
+    );
+    assert_eq!(right.network.connected_peers(), [middle_id]);
+    assert_eq!(middle.network.connected_peers().len(), 2);
+}
+
 #[tokio::test]
 async fn acquisition_repairs_stale_layout_before_requesting_ownership() {
     let directory = tempfile::tempdir().unwrap();
@@ -701,7 +953,7 @@ async fn check_component_rejection_recovery(target_can_inject: bool) {
                             sequence: 1,
                         }),
                         expected_control_epoch: 0,
-                        participant_device_ids: vec![source_id.to_string(), target_id.to_string()],
+                        participant_device_ids: vec![source_id.to_string()],
                     },
                 )),
             },

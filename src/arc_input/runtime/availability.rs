@@ -119,6 +119,47 @@ impl ArcInputRuntime {
             .collect()
     }
 
+    /// A receiver grants the authenticated controller access to this machine.
+    /// Other participants may be reachable only from that controller; naming
+    /// them neither connects them nor delegates this receiver's trust to them.
+    pub(super) fn accepts_control_scope(
+        &self,
+        controller: &ServiceInstanceId,
+        participants: &BTreeSet<ServiceInstanceId>,
+    ) -> bool {
+        let local = &self.identity.service_instance_id;
+        if participants.len() < 2
+            || !participants.contains(local)
+            || !participants.contains(controller)
+        {
+            return false;
+        }
+        let Some(mut layout) = self.store.snapshot().layout else {
+            return false;
+        };
+        let members = layout
+            .displays
+            .values()
+            .map(|display| display.device_id.clone())
+            .collect::<BTreeSet<_>>();
+        if !participants.is_subset(&members) {
+            return false;
+        }
+        // Do not accept a path through a screen omitted from the claim, or
+        // revive an unavailable edge merely because the controller lists it.
+        layout.portals.retain(|portal| {
+            [&portal.source_display, &portal.target_display]
+                .iter()
+                .all(|id| {
+                    layout
+                        .displays
+                        .get(*id)
+                        .is_some_and(|display| participants.contains(&display.device_id))
+                })
+        });
+        arcrelay_input::active_component_devices(&layout, local).contains(controller)
+    }
+
     /// A split/merge never extends an old token to new participants. Releasing
     /// first also cancels held input and in-flight native gestures on removal.
     pub(super) fn reconcile_control_component(&self) -> Result<(), RuntimeError> {
@@ -130,10 +171,14 @@ impl ArcInputRuntime {
         } else {
             self.input_control_component()
         };
+        let participants = lock(&self.control_participants).clone();
         let invalid =
             lock(&self.session).as_ref().is_some_and(|session| {
-                *lock(&self.control_participants) != component
-                    || !component.contains(&session.controller)
+                (if locally_controlled {
+                    participants != component
+                } else {
+                    !self.accepts_control_scope(&session.controller, &participants)
+                }) || !component.contains(&session.controller)
                     || !component.contains(&session.current_target)
                     || self.store.snapshot().layout.as_ref().is_none_or(|layout| {
                         !layout.displays.contains_key(&session.current_display)

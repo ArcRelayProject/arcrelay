@@ -246,15 +246,12 @@ impl ArcInputRuntime {
                 self.identity.service_instance_id.clone(),
             )?,
         };
-        let token_epoch = ControlEpoch(expected_epoch.map_or_else(
-            || {
-                self.control_epoch_clock
-                    .fetch_add(1, Ordering::AcqRel)
-                    .saturating_add(1)
-                    .max(1)
-            },
-            |expected| expected.0.saturating_add(1).max(1),
-        ));
+        let token_epoch = ControlEpoch(
+            self.control_epoch_clock
+                .fetch_add(1, Ordering::AcqRel)
+                .saturating_add(1)
+                .max(expected_epoch.map_or(1, |expected| expected.0.saturating_add(1))),
+        );
         self.control_epoch_clock
             .fetch_max(token_epoch.0, Ordering::AcqRel);
         let participants = self.input_component();
@@ -263,16 +260,9 @@ impl ArcInputRuntime {
             .filter(|peer| **peer != self.identity.service_instance_id)
             .cloned()
             .collect::<Vec<_>>();
-        *lock(&self.control_participants) = participants;
-        {
-            let mut pending = lock(&self.takeover_pending_peers);
-            pending.clear();
-            if let Some(expected) = expected_epoch {
-                for peer in &control_targets {
-                    pending.insert(peer.clone(), expected);
-                }
-            }
-        }
+        let previous_participants =
+            std::mem::replace(&mut *lock(&self.control_participants), participants);
+        self.prepare_control_acquisitions(&control_targets, &previous_participants, expected_epoch);
         *lock(&self.session) = Some(ControlSession {
             workspace_id: layout.workspace_id,
             controller: self.identity.service_instance_id.clone(),
@@ -345,6 +335,7 @@ impl ArcInputRuntime {
             return Err(RuntimeError::NoControlSession);
         }
         let _ = self.events.send(RuntimeEvent::SnapshotChanged);
+        self.broadcast_peer_route_snapshots();
         tracing::info!(
             event = "input.control.acquired",
             control_epoch = token_epoch.0,
@@ -369,6 +360,31 @@ impl ArcInputRuntime {
             return Err(error);
         }
         Ok(token_epoch)
+    }
+
+    pub(super) fn prepare_control_acquisitions(
+        &self,
+        targets: &[ServiceInstanceId],
+        previous_participants: &BTreeSet<ServiceInstanceId>,
+        previous_epoch: Option<ControlEpoch>,
+    ) {
+        let states = lock(&self.peer_control_states);
+        let mut pending = lock(&self.takeover_pending_peers);
+        pending.clear();
+        for peer in targets {
+            let previous = previous_epoch.filter(|_| previous_participants.contains(peer));
+            let expected = match states.get(peer) {
+                Some(state) if previous.is_none_or(|epoch| state.version >= epoch.0) => state
+                    .active
+                    .as_ref()
+                    .filter(|(controller, _)| controller != &self.identity.service_instance_id)
+                    .map(|(_, epoch)| *epoch),
+                _ => previous,
+            };
+            if let Some(expected) = expected {
+                pending.insert(peer.clone(), expected);
+            }
+        }
     }
 
     async fn take_control_from_capture(self: &Arc<Self>) -> Result<(), RuntimeError> {
@@ -1925,14 +1941,11 @@ impl ArcInputRuntime {
         }) {
             return false;
         }
-        drop(capabilities);
-        let observed = lock(&self.observed_control).active.clone();
-        observed.as_ref().is_none_or(|(controller, epoch)| {
-            !component.contains(controller)
-                || lock(&self.session).as_ref().is_some_and(|session| {
-                    &session.controller == controller && &session.control_epoch == epoch
-                })
-        })
+        // Ownership hints may describe a controller outside our scope, or a
+        // retired session. They inform each target's compare-and-swap request;
+        // they must not block local activity waiting for a session we may
+        // never join in an asymmetric workspace.
+        true
     }
 
     pub(super) fn map_physical_keyboard(
