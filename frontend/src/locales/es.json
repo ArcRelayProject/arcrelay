@@ -2842,5 +2842,7 @@
   "加密连接 · 等待本机处理样本": "Conexión cifrada · Esperando muestras locales",
   "本机处理 · {latency} ms": "Procesamiento local · {latency} ms",
   "样本 P95": "P95 de muestras",
-  "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Muestra una de cada 128 entradas procesadas, sin transferencia de red. Las estadísticas completas y métricas QUIC están en los registros de diagnóstico."
+  "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Muestra una de cada 128 entradas procesadas, sin transferencia de red. Las estadísticas completas y métricas QUIC están en los registros de diagnóstico.",
+  "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。": "Esta versión se actualiza a través de Microsoft Store. Busca e instala las actualizaciones en la tienda.",
+  "在 Microsoft Store 中检查更新": "Buscar actualizaciones en Microsoft Store"
 }

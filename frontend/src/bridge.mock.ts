@@ -453,8 +453,17 @@ export const bridge = {
   ): Promise<void> {},
   async discardSystemShareRequest(_requestId: string): Promise<void> {},
   async checkForAppUpdate(): Promise<AppUpdateCheckResult> {
-    return { currentVersion: "0.3.0", channel: mockData.appSettings.updateChannel, update: null };
+    return bridge.getAppUpdateStatus();
   },
+  async getAppUpdateStatus(): Promise<AppUpdateCheckResult> {
+    return {
+      currentVersion: "0.3.0",
+      channel: mockData.appSettings.updateChannel,
+      source: "github",
+      update: null,
+    };
+  },
+  async openMicrosoftStore(): Promise<void> {},
   async installAppUpdate(): Promise<void> {},
   async onAppUpdateChecked(listener: (result: AppUpdateCheckResult) => void): Promise<UnlistenFn> {
     return () => {};

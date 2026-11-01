@@ -36,13 +36,15 @@ export type AppSettings = { revision: number, deviceName: string, theme: ThemePr
 
 export type AppSettingsPatch = { deviceName?: string, theme?: ThemePreference, language?: LanguagePreference, launchAtStartup?: boolean, launchSilently?: boolean, autoUpdateEnabled?: boolean, updateChannel?: UpdateChannel, notifications?: NotificationPreferencesPatch, sounds?: SoundPreferencesPatch, clipboardEnabled?: boolean, clipboardReceiveFiles?: boolean, clipboardShortcut?: string, clipboardAutoFocusSearch?: boolean, clipboardSortBy?: ClipboardSortPreference, clipboardSyncEnabled?: boolean, clipboardSyncUpdateSystemClipboard?: boolean, clipboardSyncEditsAndDeletes?: boolean, clipboardSyncFavorites?: boolean, clipboardLockWhenOwnerUnconfirmed?: boolean, nearbyDiscoverable?: boolean, enhancedScreenshotEnabled?: boolean, screenshotShortcut?: string, screenshotIncludeCursor?: boolean, screenshotFormat?: ScreenshotFormat, screenshotFileNameTemplate?: string, webFiles?: WebGatewaySettingsPatch, };
 
-export type AppUpdateCheckResult = { currentVersion: string, channel: UpdateChannel, update: AppUpdateMetadata | null, };
+export type AppUpdateCheckResult = { currentVersion: string, channel: UpdateChannel, source: AppUpdateSource, update: AppUpdateMetadata | null, };
 
 export type AppUpdateMetadata = { version: string, notes: string | null, publishedAt: string | null, };
 
 export type AppUpdateProgress = { phase: AppUpdateProgressPhase, downloadedBytes: number, totalBytes: number | null, };
 
 export type AppUpdateProgressPhase = "downloading" | "downloaded" | "installed" | "failed";
+
+export type AppUpdateSource = "github" | "microsoftStore";
 
 export type ApplicationEvent = "started" | "exited" | "foreground" | "background";
 
@@ -656,6 +658,7 @@ export interface CommandMap {
   get_action_output: { args: { actionId: string; }; result: ActionOutputSnapshot };
   get_action_presets: { args: { }; result: Array<ActionPresetView> };
   get_app_settings: { args: { }; result: AppSettings };
+  get_app_update_status: { args: { }; result: AppUpdateCheckResult };
   get_application_bundle_path: { args: { }; result: string };
   get_application_drag_icon_path: { args: { }; result: string };
   get_bootstrap_state: { args: { }; result: BootstrapState };
@@ -708,6 +711,7 @@ export interface CommandMap {
   open_gaze_calibration_windows: { args: { }; result: Array<GazeCalibrationScreenView> };
   open_input_permission_settings: { args: { }; result: null };
   open_log_directory: { args: { }; result: null };
+  open_microsoft_store: { args: { }; result: null };
   open_remote_entry: { args: { peerId: string; relativePath: string; shareId: string; }; result: RemoteFileOpenResult };
   open_sniptra_settings: { args: { }; result: string };
   open_system_folder: { args: { id: string; }; result: null };

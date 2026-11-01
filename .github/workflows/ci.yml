@@ -39,6 +39,7 @@ jobs:
       - run: npm test
       - run: npx playwright install chromium
       - run: npm run test:runtime-ui
+      - run: npx playwright test --config playwright.visual.config.ts app-update.spec.ts
       - run: npm run check:installers
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: npm run version:check
@@ -77,6 +78,12 @@ jobs:
       - run: cargo test --locked --bin arcrelay-desktop windowing::clipboard_windows -- --nocapture
       - run: cargo test --locked --bin arcrelay-desktop arc_input::runtime::tests::workspace_sync -- --nocapture
       - run: cargo test --locked --bin arcrelay-desktop windows_cursor -- --nocapture
+      - name: Test standalone update routing
+        run: cargo test --locked --bin arcrelay-desktop app_update -- --nocapture
+      - name: Test Store-only update routing without package identity
+        env:
+          ARCRELAY_WINDOWS_MSIX_PACKAGE: "1"
+        run: cargo test --locked --bin arcrelay-desktop app_update -- --nocapture
 
   windows-system-folders:
     runs-on: windows-latest

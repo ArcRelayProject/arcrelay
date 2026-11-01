@@ -11,6 +11,9 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::settings::UpdateChannel;
 
+mod source;
+use source::AppUpdateSource;
+
 const UPDATE_PROGRESS_EVENT: &str = "app-update-progress";
 const UPDATE_NOTIFICATION_VERSION_FILE: &str = "last-update-notification-version";
 const STABLE_UPDATE_ENDPOINT: &str =
@@ -44,7 +47,73 @@ pub struct AppUpdateMetadata {
 pub struct AppUpdateCheckResult {
     current_version: String,
     channel: UpdateChannel,
+    source: AppUpdateSource,
     update: Option<AppUpdateMetadata>,
+}
+
+#[arcrelay_desktop_ipc::command]
+pub fn get_app_update_status(
+    app: AppHandle,
+    desktop_state: State<'_, crate::backend::DesktopState>,
+) -> Result<AppUpdateCheckResult, String> {
+    app_update_status(&app, desktop_state.inner())
+}
+
+fn app_update_status(
+    app: &AppHandle,
+    desktop_state: &crate::backend::DesktopState,
+) -> Result<AppUpdateCheckResult, String> {
+    Ok(AppUpdateCheckResult {
+        current_version: app.package_info().version.to_string(),
+        channel: desktop_state.settings.snapshot().update_channel,
+        source: AppUpdateSource::current()?,
+        update: None,
+    })
+}
+
+#[arcrelay_desktop_ipc::command]
+pub fn open_microsoft_store() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::w;
+        use windows::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+        // Only a fixed Store product URI can be launched through this command.
+        let result = unsafe {
+            ShellExecuteW(
+                None,
+                w!("open"),
+                w!("ms-windows-store://pdp/?ProductId=9MVV92X74MH5"),
+                None,
+                None,
+                SW_SHOWNORMAL,
+            )
+        };
+        if result.0 as isize <= 32 {
+            return Err(format!(
+                "failed to open Microsoft Store: {}",
+                result.0 as isize
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Microsoft Store is only available on Windows".to_string())
+    }
+}
+
+impl AppUpdateState {
+    fn require_github(&self, source: AppUpdateSource) -> Result<(), String> {
+        if let Err(error) = source.require_github() {
+            // Also discard any previously cached standalone installer.
+            *self
+                .pending
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = None;
+            return Err(error);
+        }
+        Ok(())
+    }
 }
 
 impl UpdateChannel {
@@ -89,8 +158,17 @@ pub async fn check_for_app_update(
     desktop_state: State<'_, crate::backend::DesktopState>,
 ) -> Result<AppUpdateCheckResult, String> {
     let _checking = update_state.checking.lock().await;
-    let current_version = app.package_info().version.to_string();
-    let channel = desktop_state.settings.snapshot().update_channel;
+    let status = app_update_status(&app, desktop_state.inner())?;
+    if update_state.require_github(status.source).is_err() {
+        let _ = app.emit("app-update-checked", &status);
+        return Ok(status);
+    }
+    let AppUpdateCheckResult {
+        current_version,
+        channel,
+        source,
+        ..
+    } = status;
     let endpoint = channel
         .endpoint()
         .parse::<tauri::Url>()
@@ -166,6 +244,7 @@ pub async fn check_for_app_update(
     let result = AppUpdateCheckResult {
         current_version,
         channel,
+        source,
         update: metadata,
     };
     let _ = app.emit("app-update-checked", &result);
@@ -200,6 +279,8 @@ pub async fn install_app_update(
     state: State<'_, AppUpdateState>,
     desktop_state: State<'_, crate::backend::DesktopState>,
 ) -> Result<(), String> {
+    // Enforce this before consuming a pending update, downloading, or exiting.
+    state.require_github(AppUpdateSource::current()?)?;
     let pending = state
         .pending
         .lock()
@@ -282,6 +363,14 @@ pub async fn install_app_update(
 
 /// One scheduler per Rust host, independent of WebView creation or visibility.
 pub fn start_scheduler(app: AppHandle) {
+    match AppUpdateSource::current() {
+        Ok(AppUpdateSource::Github) => {}
+        Ok(AppUpdateSource::MicrosoftStore) => return,
+        Err(error) => {
+            tracing::warn!(%error, "could not determine update source; updater disabled");
+            return;
+        }
+    }
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(10)).await;
         loop {
@@ -313,6 +402,16 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .is_none());
+    }
+
+    #[test]
+    fn store_installation_is_rejected_before_pending_update_lookup() {
+        let state = AppUpdateState::default();
+        let error = state
+            .require_github(AppUpdateSource::MicrosoftStore)
+            .unwrap_err();
+        assert!(error.contains("Microsoft Store"));
+        assert!(state.require_github(AppUpdateSource::Github).is_ok());
     }
 
     #[test]

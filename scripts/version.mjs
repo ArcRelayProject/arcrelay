@@ -25,14 +25,17 @@ function currentVersions() {
   const packageJson = JSON.parse(read("package.json"));
   const packageLock = JSON.parse(read("package-lock.json"));
   const tauri = JSON.parse(read("tauri.conf.json"));
-  const projectYaml = [...read("gen/apple-macos/project.yml").matchAll(
-    /^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION):\s+([^\s]+)$/gm,
-  )].map((match) => match[1]);
-  const xcodeProject = [...read("gen/apple-macos/ArcRelay.xcodeproj/project.pbxproj").matchAll(
-    /^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION) = ([^;]+);$/gm,
-  )].map((match) => match[1]);
+  const projectYaml = [
+    ...read("gen/apple-macos/project.yml").matchAll(
+      /^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION):\s+([^\s]+)$/gm,
+    ),
+  ].map((match) => match[1]);
+  const xcodeProject = [
+    ...read("gen/apple-macos/ArcRelay.xcodeproj/project.pbxproj").matchAll(
+      /^\s+(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION) = ([^;]+);$/gm,
+    ),
+  ].map((match) => match[1]);
   const frontend = [
-    matchOne("frontend/src/App.svelte", /currentVersion:\s*"([^"]+)"/, "frontend version"),
     matchOne("frontend/src/bridge.mock.ts", /currentVersion:\s*"([^"]+)"/, "mock version"),
   ];
 
@@ -115,14 +118,14 @@ function setVersion(next) {
     (whole, prefix) => `${prefix}${next};`,
     12,
   );
-  for (const path of ["frontend/src/App.svelte", "frontend/src/bridge.mock.ts"]) {
-    replace(
-      path,
-      /currentVersion:\s*"[^"]+"/,
-      `currentVersion: "${next}"`,
-      1,
-    );
-  }
+  // The production UI reads its version from the Rust host. Only browser
+  // previews retain a version literal that needs release-time synchronization.
+  replace(
+    "frontend/src/bridge.mock.ts",
+    /currentVersion:\s*"[^"]+"/,
+    `currentVersion: "${next}"`,
+    1,
+  );
   check(next);
 }
 

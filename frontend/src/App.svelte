@@ -208,11 +208,7 @@
     },
   };
   let settingsSaving = false;
-  let appUpdateStatus: AppUpdateCheckResult = {
-    currentVersion: "0.3.0",
-    channel: "stable",
-    update: null,
-  };
+  let appUpdateStatus: AppUpdateCheckResult | null = null;
   let appUpdateProgress: AppUpdateProgress | null = null;
   let appUpdateChecking = false;
   let appUpdateInstalling = false;
@@ -342,11 +338,16 @@
         if (disposed) {
           return;
         }
-        const [initialState, settings, maximized] = await Promise.all([
+        const [initialState, settings, maximized, updateStatus] = await Promise.all([
           bridge.getBootstrapState(),
           bridge.getAppSettings(),
           bridge.isWindowMaximized(),
+          bridge.getAppUpdateStatus().catch((error) => {
+            showToast(errorMessage(error), "error");
+            return null;
+          }),
         ]);
+        appUpdateStatus = updateStatus;
         void bridge
           .getRuntimeModules()
           .then((modules) => {
@@ -669,10 +670,16 @@
   async function checkForAppUpdate(silent = false) {
     if (appUpdateChecking || appUpdateInstalling) return;
     appUpdateChecking = true;
-    const previousVersion = appUpdateStatus.update?.version;
+    const previousVersion = appUpdateStatus?.update?.version;
     try {
+      if (appUpdateStatus?.source === "microsoftStore") {
+        if (!silent) await bridge.openMicrosoftStore();
+        return;
+      }
       appUpdateStatus = await bridge.checkForAppUpdate();
-      if (appUpdateStatus.update) {
+      if (appUpdateStatus.source === "microsoftStore") {
+        if (!silent) await bridge.openMicrosoftStore();
+      } else if (appUpdateStatus.update) {
         appUpdateProgress = null;
         if (!silent || appUpdateStatus.update.version !== previousVersion) {
           showToast(`发现新版本 ${appUpdateStatus.update.version}`);
@@ -688,8 +695,8 @@
   }
 
   function confirmInstallAppUpdate() {
-    const update = appUpdateStatus.update;
-    if (!update || appUpdateInstalling) return;
+    const update = appUpdateStatus?.update;
+    if (appUpdateStatus?.source !== "github" || !update || appUpdateInstalling) return;
     const transferActive = [...transferStatuses.values()].some((status) =>
       ["preparing", "awaitingApproval", "connecting", "transferring", "paused"].includes(status),
     );
