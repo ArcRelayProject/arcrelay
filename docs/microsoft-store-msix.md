@@ -22,4 +22,24 @@ Download the `microsoft-store-msix` workflow artifact and submit `ArcRelay.msixb
 
 The Store package includes the ArcRelay executable, Tauri resources, both Sniptra sidecars, and the Windows Share Target as one package identity. It does not include the nested sparse Share Target package used by the standalone NSIS/MSI installers.
 
+## Updates
+
+Microsoft Store installations must update through Microsoft Store. Settings opens
+ArcRelay's Store product page instead of checking GitHub releases, and hides the
+standalone automatic-check and stable/test-channel controls. The Rust host skips
+the GitHub scheduler and rejects standalone installer requests before downloading
+or exiting, including requests with a previously cached update.
+
+The MSIX workflow's `ARCRELAY_WINDOWS_MSIX_PACKAGE=1` build marker makes the binary
+Store-only even when launched without package identity. Runtime detection also
+recognizes executables inside their Windows package directory. A standalone
+installation's sparse Share Target identity does not change its update source,
+because its executable is outside that package directory. Detection failures
+disable update checks rather than falling back to a standalone installer.
+
+This change must be submitted as a new Store package to reach existing Store
+installations. Until then, avoid the old in-app GitHub updater. For an affected
+installation, try Windows Settings → Apps → ArcRelay → Advanced options → Repair;
+preserve application data before resetting or uninstalling.
+
 Before the first public submission, run the Windows App Certification Kit against the downloaded bundle and test install the Store-signed flight on both x64 and ARM64 Windows 11 devices.

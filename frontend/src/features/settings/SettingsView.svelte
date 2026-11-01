@@ -59,7 +59,7 @@
   export let settingsTab: SettingsTab;
   export let appSettings: AppSettings;
   export let settingsSaving = false;
-  export let appUpdateStatus: AppUpdateCheckResult;
+  export let appUpdateStatus: AppUpdateCheckResult | null;
   export let appUpdateProgress: AppUpdateProgress | null = null;
   export let appUpdateChecking = false;
   export let appUpdateInstalling = false;
@@ -1692,58 +1692,68 @@
       </div>
       <h3 class="settings-group-title">{uiTranslate("更新", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
-        <button
-          class="settings-row settings-toggle-row"
-          role="switch"
-          aria-checked={appSettings.autoUpdateEnabled}
-          disabled={settingsSaving}
-          on:click={() =>
-            patchAppSettings(
-              { autoUpdateEnabled: !appSettings.autoUpdateEnabled },
-              appSettings.autoUpdateEnabled ? "已关闭自动检查更新" : "已开启自动检查更新",
-            )}
-        >
-          <span class="row-icon"><ClockCounterClockwise size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("自动检查更新", $uiLanguage)}</strong><small
-              >{uiTranslate("启动后及每 6 小时检查一次所选更新通道。", $uiLanguage)}</small
-            ></span
+        {#if appUpdateStatus?.source === "github"}
+          <button
+            class="settings-row settings-toggle-row"
+            role="switch"
+            aria-checked={appSettings.autoUpdateEnabled}
+            disabled={settingsSaving}
+            on:click={() =>
+              patchAppSettings(
+                { autoUpdateEnabled: !appSettings.autoUpdateEnabled },
+                appSettings.autoUpdateEnabled ? "已关闭自动检查更新" : "已开启自动检查更新",
+              )}
           >
-          <span class:checked={appSettings.autoUpdateEnabled} class="switch-control"
-            ><span></span></span
-          >
-        </button>
-        <div class="settings-row setting-field-row">
-          <span class="row-icon"><RocketLaunch size={21} /></span>
-          <span class="row-copy"
-            ><strong>{uiTranslate("更新通道", $uiLanguage)}</strong><small
-              >{uiTranslate(
-                "稳定版适合日常使用；测试版会随 main 的每次成功构建更新。",
-                $uiLanguage,
-              )}</small
-            ></span
-          >
-          <AppSelect
-            aria-label={uiTranslate("更新通道", $uiLanguage)}
-            value={appSettings.updateChannel}
-            options={updateChannelOptions}
-            disabled={settingsSaving || appUpdateChecking || appUpdateInstalling}
-            onValueChange={async (updateChannel) => {
-              await patchAppSettings(
-                { updateChannel },
-                updateChannel === "stable" ? "已切换到稳定版通道" : "已切换到测试版通道",
-              );
-              appUpdateStatus = { ...appUpdateStatus, channel: updateChannel, update: null };
-              await checkForAppUpdate(false);
-            }}
-          />
-        </div>
+            <span class="row-icon"><ClockCounterClockwise size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("自动检查更新", $uiLanguage)}</strong><small
+                >{uiTranslate("启动后及每 6 小时检查一次所选更新通道。", $uiLanguage)}</small
+              ></span
+            >
+            <span class:checked={appSettings.autoUpdateEnabled} class="switch-control"
+              ><span></span></span
+            >
+          </button>
+          <div class="settings-row setting-field-row">
+            <span class="row-icon"><RocketLaunch size={21} /></span>
+            <span class="row-copy"
+              ><strong>{uiTranslate("更新通道", $uiLanguage)}</strong><small
+                >{uiTranslate(
+                  "稳定版适合日常使用；测试版会随 main 的每次成功构建更新。",
+                  $uiLanguage,
+                )}</small
+              ></span
+            >
+            <AppSelect
+              aria-label={uiTranslate("更新通道", $uiLanguage)}
+              value={appSettings.updateChannel}
+              options={updateChannelOptions}
+              disabled={settingsSaving || appUpdateChecking || appUpdateInstalling}
+              onValueChange={async (updateChannel) => {
+                await patchAppSettings(
+                  { updateChannel },
+                  updateChannel === "stable" ? "已切换到稳定版通道" : "已切换到测试版通道",
+                );
+                if (appUpdateStatus)
+                  appUpdateStatus = { ...appUpdateStatus, channel: updateChannel, update: null };
+                await checkForAppUpdate(false);
+              }}
+            />
+          </div>
+        {/if}
 
         <div class="settings-row setting-field-row app-update-row">
           <span class="row-icon accent-icon"><ClockCounterClockwise size={21} /></span>
           <span class="row-copy">
             <strong>{uiTranslate("应用更新", $uiLanguage)}</strong>
-            {#if appUpdateInstalling && appUpdateProgress?.phase === "downloading"}
+            {#if appUpdateStatus?.source === "microsoftStore"}
+              <small
+                >{uiTranslate(
+                  "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。",
+                  $uiLanguage,
+                )}</small
+              >
+            {:else if appUpdateInstalling && appUpdateProgress?.phase === "downloading"}
               <small>
                 {uiTranslate("正在下载更新…", $uiLanguage)}
                 {#if appUpdateProgress.totalBytes}
@@ -1761,7 +1771,7 @@
                   value={appUpdateProgress.downloadedBytes}
                 ></progress>
               {/if}
-            {:else if appUpdateStatus.update}
+            {:else if appUpdateStatus?.update}
               <small
                 >{uiTranslate("可更新到", $uiLanguage)}
                 {appUpdateStatus.update.version}{uiTranslate(
@@ -1769,7 +1779,7 @@
                   $uiLanguage,
                 )}</small
               >
-            {:else}
+            {:else if appUpdateStatus}
               <small
                 >{uiT("当前版本 {version}，更新通道为 {channel}。", $uiLanguage, {
                   version: appUpdateStatus.currentVersion,
@@ -1786,9 +1796,16 @@
               class="secondary-button"
               disabled={appUpdateChecking || appUpdateInstalling}
               on:click={() => checkForAppUpdate(false)}
-              >{uiTranslate(appUpdateChecking ? "正在检查…" : "检查更新", $uiLanguage)}</button
+              >{uiTranslate(
+                appUpdateChecking
+                  ? "正在检查…"
+                  : appUpdateStatus?.source === "microsoftStore"
+                    ? "在 Microsoft Store 中检查更新"
+                    : "检查更新",
+                $uiLanguage,
+              )}</button
             >
-            {#if appUpdateStatus.update}
+            {#if appUpdateStatus?.source === "github" && appUpdateStatus.update}
               <button
                 class="primary-button"
                 disabled={appUpdateInstalling}
@@ -1825,7 +1842,7 @@
         <div>
           <BrandLogo size={22} /><span
             ><strong>ArcRelay</strong><small
-              >{uiTranslate("版本", $uiLanguage)} {appUpdateStatus.currentVersion}</small
+              >{uiTranslate("版本", $uiLanguage)} {appUpdateStatus?.currentVersion ?? "—"}</small
             ></span
           >
         </div>

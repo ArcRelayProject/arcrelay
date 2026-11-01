@@ -112,6 +112,8 @@ fn main() {
             gesture_debug::clear_gesture_debug,
             gesture_debug::trigger_gesture_debug,
             app_update::check_for_app_update,
+            app_update::get_app_update_status,
+            app_update::open_microsoft_store,
             app_update::install_app_update,
             arc_input::commands::get_input_runtime_snapshot,
             arc_input::commands::save_input_workspace,

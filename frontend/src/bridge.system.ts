@@ -90,6 +90,12 @@ export const systemBridge = {
   async checkForAppUpdate(): Promise<AppUpdateCheckResult> {
     return invoke("check_for_app_update");
   },
+  async getAppUpdateStatus(): Promise<AppUpdateCheckResult> {
+    return invoke("get_app_update_status");
+  },
+  async openMicrosoftStore(): Promise<void> {
+    return invoke("open_microsoft_store");
+  },
   async installAppUpdate(): Promise<void> {
     await invoke("install_app_update");
   },
