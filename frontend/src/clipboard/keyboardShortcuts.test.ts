@@ -8,10 +8,7 @@ import {
   type ClipboardShortcutEvent,
 } from "./keyboardShortcuts.ts";
 
-function key(
-  code: string,
-  options: Partial<ClipboardShortcutEvent> = {},
-): ClipboardShortcutEvent {
+function key(code: string, options: Partial<ClipboardShortcutEvent> = {}): ClipboardShortcutEvent {
   return {
     key: options.key ?? code.replace(/^Key/, "").replace(/^Digit/, ""),
     code,
@@ -42,10 +39,22 @@ test("leaves printable search characters untouched", () => {
 });
 
 test("uses Command or Ctrl plus a visible rank while search is focused", () => {
-  assert.deepEqual(action(key("Digit1", { key: "1", metaKey: true }), "search"), { type: "pasteRank", index: 0 });
-  assert.deepEqual(action(key("Digit5", { key: "5", ctrlKey: true }), "search"), { type: "pasteRank", index: 4 });
-  assert.deepEqual(action(key("Digit9", { metaKey: true }), "search"), { type: "pasteRank", index: 8 });
-  assert.deepEqual(action(key("Numpad9", { ctrlKey: true }), "results"), { type: "pasteRank", index: 8 });
+  assert.deepEqual(action(key("Digit1", { key: "1", metaKey: true }), "search"), {
+    type: "pasteRank",
+    index: 0,
+  });
+  assert.deepEqual(action(key("Digit5", { key: "5", ctrlKey: true }), "search"), {
+    type: "pasteRank",
+    index: 4,
+  });
+  assert.deepEqual(action(key("Digit9", { metaKey: true }), "search"), {
+    type: "pasteRank",
+    index: 8,
+  });
+  assert.deepEqual(action(key("Numpad9", { ctrlKey: true }), "results"), {
+    type: "pasteRank",
+    index: 8,
+  });
   assert.equal(action(key("Digit1", { ctrlKey: true, repeat: true }), "results"), null);
 });
 
@@ -59,32 +68,68 @@ test("enables one-key commands only in results mode", () => {
 
 test("uses Space as a stable preview close shortcut", () => {
   assert.equal(resolvePreviewKeyboardAction(key("Space", { key: " " })), "close");
-  assert.equal(resolvePreviewKeyboardAction(key("Space", { key: " ", repeat: true })), "suppressRepeat");
+  assert.equal(
+    resolvePreviewKeyboardAction(key("Space", { key: " ", repeat: true })),
+    "suppressRepeat",
+  );
   assert.equal(resolvePreviewKeyboardAction(key("Space", { key: " ", metaKey: true })), null);
   assert.equal(resolvePreviewKeyboardAction(key("Space", { key: " ", isComposing: true })), null);
 });
 
 test("keeps shared navigation and paste actions available in both modes", () => {
   for (const mode of ["search", "results"] as const) {
-    assert.deepEqual(action(key("ArrowDown", { key: "ArrowDown" }), mode), { type: "move", delta: 1 });
-    assert.deepEqual(action(key("Enter", { key: "Enter" }), mode), { type: "paste", plainText: false });
-    assert.deepEqual(action(key("Enter", { key: "Enter", shiftKey: true }), mode), { type: "paste", plainText: true });
+    assert.deepEqual(action(key("ArrowDown", { key: "ArrowDown" }), mode), {
+      type: "move",
+      delta: 1,
+    });
+    assert.deepEqual(action(key("Enter", { key: "Enter" }), mode), {
+      type: "paste",
+      plainText: false,
+    });
+    assert.deepEqual(action(key("Enter", { key: "Enter", shiftKey: true }), mode), {
+      type: "paste",
+      plainText: true,
+    });
   }
 });
 
 test("switches modes explicitly and ignores input-method composition", () => {
   assert.deepEqual(action(key("Tab", { key: "Tab" }), "search"), { type: "focusResults" });
   assert.deepEqual(action(key("Tab", { key: "Tab" }), "results"), { type: "move", delta: 1 });
-  assert.deepEqual(action(key("Tab", { key: "Tab", shiftKey: true }), "results"), { type: "move", delta: -1 });
+  assert.deepEqual(action(key("Tab", { key: "Tab", shiftKey: true }), "results"), {
+    type: "move",
+    delta: -1,
+  });
   assert.deepEqual(action(key("Slash", { key: "/" }), "results"), { type: "focusSearch" });
   assert.equal(action(key("KeyJ", { key: "j", isComposing: true }), "results"), null);
+});
+
+test("leaves IME confirmation keys untouched even after compositionend", () => {
+  for (const composition of [{ isComposing: true }, { isComposing: false, keyCode: 229 }]) {
+    for (const mode of ["search", "results"] as const) {
+      assert.equal(action(key("Enter", { key: "Enter", ...composition }), mode), null);
+      assert.equal(
+        action(key("Enter", { key: "Enter", shiftKey: true, ...composition }), mode),
+        null,
+      );
+      assert.equal(action(key("Digit1", { metaKey: true, ...composition }), mode), null);
+      assert.equal(action(key("ArrowDown", { key: "ArrowDown", ...composition }), mode), null);
+    }
+    assert.equal(resolvePreviewKeyboardAction(key("Space", { key: " ", ...composition })), null);
+  }
 });
 
 test("preserves standard modified editing shortcuts", () => {
   assert.equal(action(key("KeyC", { key: "c", metaKey: true }), "search"), null);
   assert.equal(action(key("KeyA", { key: "a", ctrlKey: true }), "search"), null);
-  assert.deepEqual(action(key("KeyF", { key: "f", metaKey: true }), "results"), { type: "focusSearch" });
-  assert.deepEqual(action(key("KeyF", { key: "f", metaKey: true }), "search"), { type: "cancelSearch" });
-  assert.deepEqual(action(key("KeyF", { key: "f", ctrlKey: true }), "search"), { type: "cancelSearch" });
+  assert.deepEqual(action(key("KeyF", { key: "f", metaKey: true }), "results"), {
+    type: "focusSearch",
+  });
+  assert.deepEqual(action(key("KeyF", { key: "f", metaKey: true }), "search"), {
+    type: "cancelSearch",
+  });
+  assert.deepEqual(action(key("KeyF", { key: "f", ctrlKey: true }), "search"), {
+    type: "cancelSearch",
+  });
   assert.deepEqual(action(key("KeyK", { key: "k", metaKey: true }), "search"), { type: "actions" });
 });
