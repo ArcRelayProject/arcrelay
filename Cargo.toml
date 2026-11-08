@@ -140,3 +140,9 @@ tauri-build = { version = "2.6.3", features = [] }
 arcrelay-core = { features = ["test-support"], version = "0.1.0", git = "https://github.com/ArcRelayProject/arcrelay-core.git", rev = "4b42753512a0920298c0f44dd808cd7f37f86766" }
 tokio = { version = "1", features = ["test-util"] }
 tempfile = "3"
+
+# AppKit window/view construction must run on the process main thread.
+[[test]]
+name = "tray_transfer_appkit"
+path = "tests/tray_transfer_appkit.rs"
+harness = false
