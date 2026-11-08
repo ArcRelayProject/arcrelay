@@ -113,33 +113,19 @@ fn ensure_window(app: &AppHandle) -> tauri::Result<()> {
             .shadow(true)
             .resizable(false)
             .skip_taskbar(true)
+            // AppKit handles file URLs for both the tray and the entire panel.
+            .disable_drag_drop_handler()
             .accept_first_mouse(true)
             .focused(false)
             .visible(false)
             .build()?;
     macos::configure_panel(&window)?;
     let handle = app.clone();
-    window.on_window_event(move |event| match event {
-        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Enter { paths, .. })
-            if !paths.is_empty() =>
-        {
-            enter(&handle, DropTarget::Panel)
-        }
-        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => receive(
-            &handle,
-            paths
-                .iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect(),
-        ),
-        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Leave) => {
-            leave(&handle, DropTarget::Panel, true)
-        }
-        tauri::WindowEvent::CloseRequested { api, .. } => {
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             let _ = hide(&handle);
         }
-        _ => {}
     });
     Ok(())
 }
