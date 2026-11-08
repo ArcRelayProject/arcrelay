@@ -23,14 +23,22 @@ export interface ClipboardShortcutEvent {
   altKey: boolean;
   shiftKey: boolean;
   isComposing: boolean;
+  keyCode?: number;
   repeat?: boolean;
+}
+
+export function isClipboardCompositionEvent(
+  event: Pick<ClipboardShortcutEvent, "isComposing" | "keyCode">,
+): boolean {
+  // WebKit can end composition before dispatching its confirming keydown.
+  return event.isComposing || event.keyCode === 229;
 }
 
 export function resolvePreviewKeyboardAction(
   event: ClipboardShortcutEvent,
 ): "close" | "suppressRepeat" | null {
   const unmodified = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-  if (event.isComposing || !unmodified || event.code !== "Space") return null;
+  if (isClipboardCompositionEvent(event) || !unmodified || event.code !== "Space") return null;
   return event.repeat ? "suppressRepeat" : "close";
 }
 
@@ -43,7 +51,7 @@ export function resolveClipboardKeyboardAction(
   event: ClipboardShortcutEvent,
   mode: ClipboardKeyboardMode,
 ): ClipboardKeyboardAction | null {
-  if (event.isComposing) return null;
+  if (isClipboardCompositionEvent(event)) return null;
 
   const primaryModifier = event.metaKey || event.ctrlKey;
   const unmodified = !primaryModifier && !event.altKey && !event.shiftKey;
@@ -54,7 +62,13 @@ export function resolveClipboardKeyboardAction(
   if (primaryModifier && !event.altKey && !event.shiftKey && event.code === "KeyK") {
     return { type: "actions" };
   }
-  if (mode === "search" && event.key === "Tab" && !primaryModifier && !event.altKey && !event.shiftKey) {
+  if (
+    mode === "search" &&
+    event.key === "Tab" &&
+    !primaryModifier &&
+    !event.altKey &&
+    !event.shiftKey
+  ) {
     return { type: "focusResults" };
   }
   if (mode === "results" && event.key === "Tab" && !primaryModifier && !event.altKey) {

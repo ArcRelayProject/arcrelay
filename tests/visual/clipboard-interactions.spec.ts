@@ -14,6 +14,52 @@ async function openHtml(page: import("@playwright/test").Page) {
   await expect(page.locator(".rendered-text h3")).toHaveText("设备列表");
 }
 
+for (const multiSelect of [false, true]) {
+  test(`IME Enter confirms search text without ${multiSelect ? "multi-paste" : "paste"}`, async ({
+    page,
+  }) => {
+    await openClipboard(page);
+    await page.evaluate(async () => {
+      const { clipboardBridge } = await import("/src/clipboard/bridge.mock.ts");
+      (window as any).__pasted = [];
+      clipboardBridge.pasteAs = async (id: number) => {
+        (window as any).__pasted.push(id);
+      };
+      clipboardBridge.pasteRecords = async () => {
+        (window as any).__pasted.push("multiple");
+        return 2;
+      };
+    });
+    if (multiSelect) {
+      await page.locator('[data-clipboard-id="102"] .clipboard-row').click({ modifiers: ["Meta"] });
+      await page.locator('[data-clipboard-id="103"] .clipboard-row').click();
+      await expect(page.locator(".clipboard-row.multi-selected")).toHaveCount(2);
+    }
+    const search = page.locator(".clipboard-header input");
+    await search.focus();
+    // Reproduce WebKit's ordering: compositionend precedes Enter and isComposing is false.
+    const consumed = await search.evaluate((input) => {
+      input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "abc" }));
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Enter",
+        code: "Enter",
+        isComposing: false,
+        keyCode: 229,
+      });
+      input.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(consumed).toBe(false);
+    expect(await page.evaluate(() => (window as any).__pasted)).toEqual([]);
+    await expect(search).toBeFocused();
+    await search.press("Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__pasted.length)).toBe(1);
+  });
+}
+
 test("image preview omits the header and Space closes from a focused image tool", async ({
   page,
 }) => {

@@ -92,6 +92,7 @@
   import { clearFilePreviewCache } from "./filePreviewCache";
   import { loadAppSettings, localeFor, onAppSettingsChanged, tr } from "./i18n";
   import {
+    isClipboardCompositionEvent,
     resolveClipboardKeyboardAction,
     resolvePreviewKeyboardAction,
     type ClipboardKeyboardMode,
@@ -1513,6 +1514,8 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    // Let the IME confirm text before menus, multi-paste or shortcuts see Enter.
+    if (isClipboardCompositionEvent(event)) return;
     if (handleInlineMenuKey(event)) return;
     if (
       captureIds.length > 0 ||
@@ -1522,7 +1525,7 @@
     )
       return;
     // Native navigation keys call this directly instead of dispatching a DOM event.
-    if (handlePreviewKeyDown(event) || event.isComposing) return;
+    if (handlePreviewKeyDown(event)) return;
     if (dragBusy) {
       if (event.key === "Escape") {
         event.preventDefault();
