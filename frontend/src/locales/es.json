@@ -1856,6 +1856,8 @@
   "收起文件清单": "Contraer lista",
   "继续拖入文件": "Arrastra más archivos aquí",
   "文件仅添加到此处，点击设备后才会发送。": "Se envían al hacer clic en un dispositivo.",
+  "查看全部 {count} 个文件": "Ver los {count} archivos",
+  "拖入文件或点击添加": "Arrastra archivos o haz clic para añadirlos",
   "松开以添加文件": "Suelta para añadir",
   "将追加到待发送列表，不会立即发送。": "Se añaden a la lista sin enviarse.",
   "或点击“添加文件”，选择要发送的文件": "O haz clic en «Añadir archivos»",

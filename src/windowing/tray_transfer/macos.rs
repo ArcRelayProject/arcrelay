@@ -21,6 +21,7 @@ use panel_type::TrayTransferPanel;
 
 struct DropViewIvars {
     app: AppHandle,
+    target: DropTarget,
 }
 
 define_class!(
@@ -36,7 +37,7 @@ define_class!(
         #[unsafe(method(draggingEntered:))]
         fn dragging_entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
             if accepts(sender) {
-                enter(&self.ivars().app, DropTarget::Tray);
+                enter(&self.ivars().app, self.ivars().target);
                 NSDragOperation::Copy
             } else { NSDragOperation::None }
         }
@@ -45,9 +46,9 @@ define_class!(
             if accepts(sender) { NSDragOperation::Copy } else { NSDragOperation::None }
         }
         #[unsafe(method(draggingExited:))]
-        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) { leave(&self.ivars().app, DropTarget::Tray, true); }
+        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) { leave(&self.ivars().app, self.ivars().target, true); }
         #[unsafe(method(draggingEnded:))]
-        fn dragging_ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) { leave(&self.ivars().app, DropTarget::Tray, false); }
+        fn dragging_ended(&self, _sender: &ProtocolObject<dyn NSDraggingInfo>) { leave(&self.ivars().app, self.ivars().target, false); }
         #[unsafe(method(prepareForDragOperation:))]
         fn prepare_drop(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool { accepts(sender) }
         #[unsafe(method(performDragOperation:))]
@@ -65,13 +66,13 @@ define_class!(
         fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool { true }
         // Preserve tray-icon's target/action and right-click menu handling.
         #[unsafe(method(mouseDown:))]
-        fn mouse_down(&self, event: &NSEvent) { if let Some(button) = unsafe { self.superview() } { button.mouseDown(event); } }
+        fn mouse_down(&self, event: &NSEvent) { if self.ivars().target == DropTarget::Tray { if let Some(button) = unsafe { self.superview() } { button.mouseDown(event); } } }
         #[unsafe(method(mouseUp:))]
-        fn mouse_up(&self, event: &NSEvent) { if let Some(button) = unsafe { self.superview() } { button.mouseUp(event); } }
+        fn mouse_up(&self, event: &NSEvent) { if self.ivars().target == DropTarget::Tray { if let Some(button) = unsafe { self.superview() } { button.mouseUp(event); } } }
         #[unsafe(method(rightMouseDown:))]
-        fn right_mouse_down(&self, event: &NSEvent) { if let Some(button) = unsafe { self.superview() } { button.rightMouseDown(event); } }
+        fn right_mouse_down(&self, event: &NSEvent) { if self.ivars().target == DropTarget::Tray { if let Some(button) = unsafe { self.superview() } { button.rightMouseDown(event); } } }
         #[unsafe(method(rightMouseUp:))]
-        fn right_mouse_up(&self, event: &NSEvent) { if let Some(button) = unsafe { self.superview() } { button.rightMouseUp(event); } }
+        fn right_mouse_up(&self, event: &NSEvent) { if self.ivars().target == DropTarget::Tray { if let Some(button) = unsafe { self.superview() } { button.rightMouseUp(event); } } }
     }
 );
 
@@ -120,7 +121,10 @@ pub(super) fn install(app: &AppHandle) -> tauri::Result<()> {
         let Some(button) = item.button(mtm) else {
             return;
         };
-        let allocated = DropView::alloc(mtm).set_ivars(DropViewIvars { app: handle });
+        let allocated = DropView::alloc(mtm).set_ivars(DropViewIvars {
+            app: handle,
+            target: DropTarget::Tray,
+        });
         let view: Retained<DropView> =
             unsafe { msg_send![super(allocated), initWithFrame: button.bounds()] };
         view.setAutoresizingMask(
@@ -130,6 +134,13 @@ pub(super) fn install(app: &AppHandle) -> tauri::Result<()> {
         view.registerForDraggedTypes(&NSArray::from_slice(&[unsafe { NSPasteboardTypeFileURL }]));
         button.addSubview(&view); // The button retains its drop target for its lifetime.
     })
+}
+
+fn unregister_drag_destinations(view: &NSView) {
+    view.unregisterDraggedTypes();
+    for child in view.subviews() {
+        unregister_drag_destinations(&child);
+    }
 }
 
 pub(super) fn configure_panel(window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -151,8 +162,31 @@ pub(super) fn configure_panel(window: &tauri::WebviewWindow) -> tauri::Result<()
             .value(),
     );
     let content = panel.content_view();
-    content.setWantsLayer(true);
-    if let Some(layer) = content.layer() {
+    let native_window = content.window().ok_or(tauri::Error::WindowNotFound)?;
+    let mtm = MainThreadMarker::new().expect("panel setup runs on AppKit thread");
+    // WKWebView's file-drop adapter reads the legacy filenames pasteboard type.
+    // Use the same file-URL destination as the tray, across the whole panel.
+    // A parent destination preserves WebView hit testing, scrolling and buttons.
+    unregister_drag_destinations(&content);
+    let allocated = DropView::alloc(mtm).set_ivars(DropViewIvars {
+        app: window.app_handle().clone(),
+        target: DropTarget::Panel,
+    });
+    let destination: Retained<DropView> =
+        unsafe { msg_send![super(allocated), initWithFrame: content.frame()] };
+    destination.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+    );
+    destination
+        .registerForDraggedTypes(&NSArray::from_slice(&[unsafe { NSPasteboardTypeFileURL }]));
+    native_window.setContentView(Some(&destination));
+    content.setFrame(destination.bounds());
+    content.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+    );
+    destination.addSubview(&content);
+    destination.setWantsLayer(true);
+    if let Some(layer) = destination.layer() {
         layer.setCornerRadius(14.0);
         layer.setMasksToBounds(true);
     }
