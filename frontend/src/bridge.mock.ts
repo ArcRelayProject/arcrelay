@@ -1,3 +1,11 @@
+let mockClipboardSensitiveSettings: import("./ipc/generated").ClipboardSensitiveSettings = {
+  enabled: true,
+  credentialAssignments: true,
+  bearerTokens: true,
+  privateKeys: true,
+  customKeywords: [],
+  saveSensitive: false,
+};
 let mockClipboardRetentionDays = 30;
 import { defaultSoundPreferences } from "./soundDefaults";
 let mockSoundMuteUntil: number | null = null;
@@ -376,6 +384,15 @@ export const bridge = {
   },
   async onTrayNavigationPending(_listener: () => void): Promise<UnlistenFn> {
     return () => {};
+  },
+  async getClipboardSensitiveSettings() {
+    return structuredClone(mockClipboardSensitiveSettings);
+  },
+  async setClipboardSensitiveSettings(
+    settings: import("./ipc/generated").ClipboardSensitiveSettings,
+  ) {
+    mockClipboardSensitiveSettings = structuredClone(settings);
+    return structuredClone(mockClipboardSensitiveSettings);
   },
   async getClipboardRetentionDays(): Promise<number> {
     return mockClipboardRetentionDays;

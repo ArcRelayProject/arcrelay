@@ -288,6 +288,8 @@ fn main() {
             commands::clipboard_target_application,
             commands::clipboard_app_pins,
             commands::clipboard_set_app_pin,
+            commands::get_clipboard_sensitive_settings,
+            commands::set_clipboard_sensitive_settings,
             commands::get_clipboard_retention_days,
             commands::set_clipboard_retention_days,
             commands::clipboard_prepare_drag,

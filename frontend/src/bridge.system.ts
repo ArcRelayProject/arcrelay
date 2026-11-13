@@ -64,6 +64,9 @@ export const systemBridge = {
   },
   takePendingTrayNavigation: () => invoke("take_pending_tray_navigation"),
   onTrayNavigationPending: (listener: () => void) => listen("tray-navigation-pending", listener),
+  getClipboardSensitiveSettings: () => invoke("get_clipboard_sensitive_settings"),
+  setClipboardSensitiveSettings: (settings: import("./ipc/generated").ClipboardSensitiveSettings) =>
+    invoke("set_clipboard_sensitive_settings", { settings }),
   getClipboardRetentionDays: () => invoke("get_clipboard_retention_days"),
   setClipboardRetentionDays: (days: number) => invoke("set_clipboard_retention_days", { days }),
   async getAppSettings(): Promise<AppSettings> {

@@ -2846,5 +2846,21 @@
   "样本 P95": "P95 des échantillons",
   "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Affiche un échantillon pour 128 événements traités, hors transfert réseau. Les statistiques complètes par étape et QUIC figurent dans les journaux.",
   "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。": "Cette version est mise à jour via Microsoft Store. Recherchez et installez les mises à jour dans le Store.",
-  "在 Microsoft Store 中检查更新": "Rechercher des mises à jour dans Microsoft Store"
+  "在 Microsoft Store 中检查更新": "Rechercher des mises à jour dans Microsoft Store",
+  "敏感内容": "Contenu sensible",
+  "识别敏感内容": "Détecter le contenu sensible",
+  "仅影响本机之后复制和编辑的文本，不会重新处理已有历史。普通文本中出现 password 不会触发内置规则。": "S’applique aux futurs textes copiés ou modifiés sur cet appareil. L’historique existant ne change pas. Mentionner password dans un texte ordinaire ne déclenche aucune règle intégrée.",
+  "独立凭据": "Identifiants isolés",
+  "仅识别单独复制的 password=…、api_key=… 等完整凭据；不匹配文档中提及的关键词和常见占位符。": "Détecte les identifiants copiés seuls, comme password=… ou api_key=…. Ignore les mentions dans les documents et les valeurs de remplacement courantes.",
+  "Bearer 令牌": "Jetons Bearer",
+  "识别单独复制的 Bearer 令牌或 Authorization 请求头。": "Détecte un jeton Bearer ou un en-tête Authorization copié seul.",
+  "私钥内容": "Clés privées",
+  "识别带有完整 BEGIN / END 标记的私钥。": "Détecte les clés privées avec des marqueurs BEGIN / END complets.",
+  "自定义关键词": "Mots-clés personnalisés",
+  "每行一个，匹配整段文本中的字面内容；英文字母不区分大小写，不支持正则表达式。最多 100 条，每条最多 256 字节。": "Un par ligne. Recherche littérale dans tout le contenu, sans distinction de casse ASCII. Expressions régulières non prises en charge. Jusqu’à 100 mots-clés de 256 octets chacun.",
+  "例如：内部资料": "Par exemple : usage interne",
+  "最多 100 条关键词，每条最多 256 字节，且不能包含控制字符。": "100 mots-clés maximum, 256 octets chacun, sans caractères de contrôle.",
+  "保存关键词": "Enregistrer les mots-clés",
+  "保存命中的敏感内容": "Enregistrer le contenu sensible détecté",
+  "关闭时不保存命中规则的文本。开启后保存并隐藏列表预览；若开启剪贴板同步，内容仍会参与同步。": "Désactivé : les textes correspondants ne sont pas enregistrés. Activé : ils sont enregistrés avec un aperçu masqué et synchronisés si la synchronisation du presse-papiers est activée."
 }

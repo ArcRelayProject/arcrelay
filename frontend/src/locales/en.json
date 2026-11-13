@@ -2846,5 +2846,21 @@
   "样本 P95": "Sample P95",
   "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Shows one sample per 128 processed events, excluding network transfer. Full stage statistics and QUIC metrics are in diagnostic logs.",
   "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。": "This version updates through Microsoft Store. Check for and install updates in the Store.",
-  "在 Microsoft Store 中检查更新": "Check for updates in Microsoft Store"
+  "在 Microsoft Store 中检查更新": "Check for updates in Microsoft Store",
+  "敏感内容": "Sensitive content",
+  "识别敏感内容": "Detect sensitive content",
+  "仅影响本机之后复制和编辑的文本，不会重新处理已有历史。普通文本中出现 password 不会触发内置规则。": "Applies to text copied or edited on this device from now on. Existing history is unchanged. Mentioning password in ordinary text does not trigger built-in rules.",
+  "独立凭据": "Standalone credentials",
+  "仅识别单独复制的 password=…、api_key=… 等完整凭据；不匹配文档中提及的关键词和常见占位符。": "Detects complete credentials copied on their own, such as password=… or api_key=…. Ignores mentions in documents and common placeholders.",
+  "Bearer 令牌": "Bearer tokens",
+  "识别单独复制的 Bearer 令牌或 Authorization 请求头。": "Detects a Bearer token or Authorization header copied on its own.",
+  "私钥内容": "Private keys",
+  "识别带有完整 BEGIN / END 标记的私钥。": "Detects private keys with complete BEGIN / END markers.",
+  "自定义关键词": "Custom keywords",
+  "每行一个，匹配整段文本中的字面内容；英文字母不区分大小写，不支持正则表达式。最多 100 条，每条最多 256 字节。": "One per line. Matches literal text anywhere in the content, ignoring ASCII letter case. Regular expressions are not supported. Up to 100 keywords, 256 bytes each.",
+  "例如：内部资料": "For example: internal only",
+  "最多 100 条关键词，每条最多 256 字节，且不能包含控制字符。": "Use at most 100 keywords, each up to 256 bytes, without control characters.",
+  "保存关键词": "Save keywords",
+  "保存命中的敏感内容": "Save matching sensitive content",
+  "关闭时不保存命中规则的文本。开启后保存并隐藏列表预览；若开启剪贴板同步，内容仍会参与同步。": "When off, matching text is not saved. When on, it is saved with a hidden list preview and can still sync if clipboard sync is enabled."
 }
