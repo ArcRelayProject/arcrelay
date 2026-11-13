@@ -2846,5 +2846,21 @@
   "样本 P95": "Stichproben-P95",
   "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Zeigt eine Stichprobe je 128 verarbeitete Ereignisse, ohne Netzwerkübertragung. Vollständige Stufenstatistiken und QUIC-Metriken stehen im Diagnoseprotokoll.",
   "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。": "Diese Version wird über den Microsoft Store aktualisiert. Suchen und installieren Sie Updates im Store.",
-  "在 Microsoft Store 中检查更新": "Im Microsoft Store nach Updates suchen"
+  "在 Microsoft Store 中检查更新": "Im Microsoft Store nach Updates suchen",
+  "敏感内容": "Vertrauliche Inhalte",
+  "识别敏感内容": "Vertrauliche Inhalte erkennen",
+  "仅影响本机之后复制和编辑的文本，不会重新处理已有历史。普通文本中出现 password 不会触发内置规则。": "Gilt für künftig auf diesem Gerät kopierte oder bearbeitete Texte. Der bestehende Verlauf bleibt unverändert. Die bloße Erwähnung von password löst keine Regel aus.",
+  "独立凭据": "Einzelne Zugangsdaten",
+  "仅识别单独复制的 password=…、api_key=… 等完整凭据；不匹配文档中提及的关键词和常见占位符。": "Erkennt einzeln kopierte Zugangsdaten wie password=… oder api_key=…. Erwähnungen in Dokumenten und übliche Platzhalter werden ignoriert.",
+  "Bearer 令牌": "Bearer-Token",
+  "识别单独复制的 Bearer 令牌或 Authorization 请求头。": "Erkennt einzeln kopierte Bearer-Token oder Authorization-Header.",
+  "私钥内容": "Private Schlüssel",
+  "识别带有完整 BEGIN / END 标记的私钥。": "Erkennt private Schlüssel mit vollständigen BEGIN-/END-Markierungen.",
+  "自定义关键词": "Eigene Schlüsselwörter",
+  "每行一个，匹配整段文本中的字面内容；英文字母不区分大小写，不支持正则表达式。最多 100 条，每条最多 256 字节。": "Ein Eintrag pro Zeile. Wörtliche Suche im gesamten Inhalt, ohne ASCII-Groß-/Kleinschreibung. Keine regulären Ausdrücke. Höchstens 100 Einträge mit je 256 Byte.",
+  "例如：内部资料": "Zum Beispiel: nur intern",
+  "最多 100 条关键词，每条最多 256 字节，且不能包含控制字符。": "Höchstens 100 Schlüsselwörter mit je 256 Byte, ohne Steuerzeichen.",
+  "保存关键词": "Schlüsselwörter speichern",
+  "保存命中的敏感内容": "Erkannte vertrauliche Inhalte speichern",
+  "关闭时不保存命中规则的文本。开启后保存并隐藏列表预览；若开启剪贴板同步，内容仍会参与同步。": "Deaktiviert: Treffer werden nicht gespeichert. Aktiviert: Sie werden mit ausgeblendeter Listenvorschau gespeichert und bei aktiver Zwischenablagesynchronisierung weiterhin synchronisiert."
 }

@@ -143,6 +143,8 @@ export type ClipboardOcrPoint = { x: number, y: number, };
 
 export type ClipboardPasteMode = "source" | "plain_text" | "rich_text" | "json_compact" | "json_formatted" | "yaml" | "image_jpg" | "image_png";
 
+export type ClipboardSensitiveSettings = { enabled: boolean, credentialAssignments: boolean, bearerTokens: boolean, privateKeys: boolean, customKeywords: Array<string>, saveSensitive: boolean, };
+
 export type ClipboardSortPreference = "createdAt" | "updatedAt";
 
 export type ClipboardTargetApplication = { id: string, name: string, };
@@ -663,6 +665,7 @@ export interface CommandMap {
   get_application_drag_icon_path: { args: { }; result: string };
   get_bootstrap_state: { args: { }; result: BootstrapState };
   get_clipboard_retention_days: { args: { }; result: number };
+  get_clipboard_sensitive_settings: { args: { }; result: ClipboardSensitiveSettings };
   get_clipboard_window_pinned: { args: { }; result: boolean };
   get_gaze_status: { args: { }; result: GazeStatusView };
   get_gesture_debug_report: { args: { }; result: GestureDebugReport };
@@ -759,6 +762,7 @@ export interface CommandMap {
   set_clipboard_context_menu_open: { args: { open: boolean; }; result: null };
   set_clipboard_navigation_ready: { args: { ready: boolean; }; result: number };
   set_clipboard_retention_days: { args: { days: number; }; result: number };
+  set_clipboard_sensitive_settings: { args: { settings: ClipboardSensitiveSettings; }; result: ClipboardSensitiveSettings };
   set_clipboard_window_editing: { args: { editing: boolean; }; result: number };
   set_clipboard_window_pinned: { args: { pinned: boolean; }; result: null };
   set_detailed_logging: { args: { enabled: boolean; }; result: LogStatus };

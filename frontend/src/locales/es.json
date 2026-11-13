@@ -2846,5 +2846,21 @@
   "样本 P95": "P95 de muestras",
   "显示每 128 次处理的固定抽样，不含网络传输；完整分段统计和 QUIC 指标见诊断日志。": "Muestra una de cada 128 entradas procesadas, sin transferencia de red. Las estadísticas completas y métricas QUIC están en los registros de diagnóstico.",
   "此版本通过 Microsoft Store 更新。请在商店中检查并安装更新。": "Esta versión se actualiza a través de Microsoft Store. Busca e instala las actualizaciones en la tienda.",
-  "在 Microsoft Store 中检查更新": "Buscar actualizaciones en Microsoft Store"
+  "在 Microsoft Store 中检查更新": "Buscar actualizaciones en Microsoft Store",
+  "敏感内容": "Contenido sensible",
+  "识别敏感内容": "Detectar contenido sensible",
+  "仅影响本机之后复制和编辑的文本，不会重新处理已有历史。普通文本中出现 password 不会触发内置规则。": "Se aplica al texto que se copie o edite en este dispositivo a partir de ahora. El historial existente no cambia. Mencionar password en texto normal no activa las reglas integradas.",
+  "独立凭据": "Credenciales aisladas",
+  "仅识别单独复制的 password=…、api_key=… 等完整凭据；不匹配文档中提及的关键词和常见占位符。": "Detecta credenciales copiadas por separado, como password=… o api_key=…. Ignora menciones en documentos y marcadores de posición habituales.",
+  "Bearer 令牌": "Tokens Bearer",
+  "识别单独复制的 Bearer 令牌或 Authorization 请求头。": "Detecta un token Bearer o cabecera Authorization copiados por separado.",
+  "私钥内容": "Claves privadas",
+  "识别带有完整 BEGIN / END 标记的私钥。": "Detecta claves privadas con marcadores BEGIN / END completos.",
+  "自定义关键词": "Palabras clave personalizadas",
+  "每行一个，匹配整段文本中的字面内容；英文字母不区分大小写，不支持正则表达式。最多 100 条，每条最多 256 字节。": "Una por línea. Busca texto literal en todo el contenido sin distinguir mayúsculas ASCII. No admite expresiones regulares. Hasta 100 palabras clave de 256 bytes cada una.",
+  "例如：内部资料": "Por ejemplo: solo interno",
+  "最多 100 条关键词，每条最多 256 字节，且不能包含控制字符。": "Máximo 100 palabras clave de 256 bytes cada una, sin caracteres de control.",
+  "保存关键词": "Guardar palabras clave",
+  "保存命中的敏感内容": "Guardar el contenido sensible detectado",
+  "关闭时不保存命中规则的文本。开启后保存并隐藏列表预览；若开启剪贴板同步，内容仍会参与同步。": "Si se desactiva, no se guarda el texto coincidente. Si se activa, se guarda con la vista previa oculta y sigue sincronizándose si la sincronización del portapapeles está activada."
 }

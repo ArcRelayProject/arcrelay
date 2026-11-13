@@ -1,6 +1,7 @@
 use super::*;
 use arcrelay_core::domain::clipboard::{
-    ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition, ClipboardTimelineQuery,
+    ClipboardSensitiveSettings, ClipboardSummary, ClipboardTimelinePage, ClipboardTimelinePosition,
+    ClipboardTimelineQuery,
 };
 use arcrelay_core::domain::input_control::simulated_key_strokes;
 use image::ImageDecoder;
@@ -1829,4 +1830,32 @@ pub async fn set_clipboard_retention_days(
         .await
         .map_err(|e| e.to_string())?;
     Ok(days)
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn get_clipboard_sensitive_settings(
+    state: State<'_, DesktopState>,
+) -> Result<ClipboardSensitiveSettings, String> {
+    state
+        .clipboard
+        .sensitive_settings()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[arcrelay_desktop_ipc::command]
+pub async fn set_clipboard_sensitive_settings(
+    state: State<'_, DesktopState>,
+    settings: ClipboardSensitiveSettings,
+) -> Result<ClipboardSensitiveSettings, String> {
+    state
+        .clipboard
+        .update_sensitive_settings(settings)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .clipboard
+        .sensitive_settings()
+        .await
+        .map_err(|e| e.to_string())
 }

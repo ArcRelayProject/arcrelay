@@ -54,6 +54,7 @@
   import FileSharingSettings from "./FileSharingSettings.svelte";
   import SoundSettings from "./SoundSettings.svelte";
   import ClipboardRetentionSettings from "./ClipboardRetentionSettings.svelte";
+  import ClipboardSensitiveSettings from "./ClipboardSensitiveSettings.svelte";
 
   export let snapshot: BootstrapState | null = null;
   export let settingsTab: SettingsTab;
@@ -1283,6 +1284,7 @@
         </label>
         <ClipboardRetentionSettings />
       </div>
+      <ClipboardSensitiveSettings />
       <h3 class="settings-group-title">{uiTranslate("跨设备同步", $uiLanguage)}</h3>
       <div class="settings-list settings-card-list">
         <button
