@@ -12,23 +12,31 @@
     display: DisplaySurface,
     edge: Portal["sourceEdge"],
     segment: { startUm: number; endUm: number },
+    projector: typeof project,
   ) {
     const rect = display.deskRectUm;
     if (edge === "Left" || edge === "Right") {
       const x = edge === "Left" ? rect.x : rect.x + rect.width;
       return {
-        start: project(x, rect.y + segment.startUm),
-        end: project(x, rect.y + segment.endUm),
+        start: projector(x, rect.y + segment.startUm),
+        end: projector(x, rect.y + segment.endUm),
       };
     }
     const y = edge === "Top" ? rect.y : rect.y + rect.height;
-    return { start: project(rect.x + segment.startUm, y), end: project(rect.x + segment.endUm, y) };
+    return {
+      start: projector(rect.x + segment.startUm, y),
+      end: projector(rect.x + segment.endUm, y),
+    };
   }
 
   $: source = displays[portal.sourceDisplay];
   $: target = displays[portal.targetDisplay];
-  $: sourceSegment = source ? edgeSegment(source, portal.sourceEdge, portal.sourceSegment) : null;
-  $: targetSegment = target ? edgeSegment(target, portal.targetEdge, portal.targetSegment) : null;
+  $: sourceSegment = source
+    ? edgeSegment(source, portal.sourceEdge, portal.sourceSegment, project)
+    : null;
+  $: targetSegment = target
+    ? edgeSegment(target, portal.targetEdge, portal.targetSegment, project)
+    : null;
 </script>
 
 {#if source && target && sourceSegment && targetSegment}
@@ -41,6 +49,7 @@
       source: source.name,
       target: target.name,
     })}
+    on:pointerdown|stopPropagation
     on:click|stopPropagation={onselect}
     on:keydown={(event) => (event.key === "Enter" || event.key === " ") && onselect()}
   >
@@ -81,7 +90,7 @@
   }
   .segment {
     stroke: #665deb;
-    stroke-width: 6;
+    stroke-width: 3;
     stroke-linecap: round;
   }
   .hit-area {
@@ -89,8 +98,8 @@
     stroke-width: 20;
   }
   .selected .segment {
-    stroke: #f97316;
-    stroke-width: 8;
+    stroke: var(--accent-strong);
+    stroke-width: 5;
   }
   .inactive .segment {
     opacity: 0.36;

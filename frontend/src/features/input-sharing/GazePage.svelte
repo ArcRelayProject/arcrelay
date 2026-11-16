@@ -1,10 +1,15 @@
 <script lang="ts">
+  import { Portal } from "bits-ui";
+  export let actionsTarget: HTMLElement | undefined = undefined;
   import { translate as uiTranslate, t, language as uiLanguage } from "../../i18n";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import {
     ArrowClockwise,
     Camera,
+    CaretDown,
+    User,
+    SlidersHorizontal,
     Check,
     CheckCircle,
     Crosshair,
@@ -21,7 +26,8 @@
   import { diagnosticMessage } from "../../diagnosticMessages";
   import { bridge } from "../../bridge";
   import AppSelect from "../../components/AppSelect.svelte";
-  import calibrationMonitor from "../../assets/illustrations/gaze-calibration-monitor.png";
+  import { workspaceBounds, workspaceProjection } from "./workspaceViewport";
+  import { friendlyDeviceName } from "./inputSharingUi";
   import type { GazeCalibrationOverlayEvent } from "../../ipc/generated";
   import { SubscriptionScope, observeSnapshot } from "../../subscriptions";
   import type { DisplaySurface, GazeCamera, GazeStatus, RuntimeSnapshot } from "../../types";
@@ -91,6 +97,8 @@
   let presenceName = "本机用户";
   let diagnosticsOpen = false;
   let camerasLoaded = false;
+  $: miniature = workspaceProjection(workspaceBounds(allDisplays), 240, 180);
+  $: mainDisplays = Object.values(snapshot.configuration.layout?.displays ?? {});
 
   $: running = Boolean(status && !["idle", "stopped", "failed"].includes(status.state));
   $: modelsReady = status?.modelPack.state === "ready";
@@ -104,7 +112,6 @@
   $: allDisplays = Object.values(snapshot.configuration.layout?.displays ?? {})
     .filter((display) => snapshot.displayAvailability[display.displayId] !== "Offline")
     .sort((a, b) => a.deskRectUm.y - b.deskRectUm.y || a.deskRectUm.x - b.deskRectUm.x);
-  $: deviceCount = new Set(allDisplays.map((display) => display.deviceId)).size;
   $: overallProgress = targets.length
     ? Math.round(((Math.max(0, targetIndex) + dwellProgress) / targets.length) * 100)
     : 0;
@@ -637,10 +644,7 @@
             )}
           </h2>
           <p>
-            {uiTranslate(
-              "约 36 MB，只下载一份且不随 CPU 架构重复；模型和摄像头画面均只在本机处理。",
-              $uiLanguage,
-            )}
+            {uiTranslate("约 36 MB，下载后即可设置眼动。", $uiLanguage)}
           </p>
           {#if modelsBusy}
             <div class="model-download">
@@ -661,246 +665,206 @@
         </div>
       </article>
     {/if}
-    <div class="stepper" aria-label={uiTranslate("标定步骤", $uiLanguage)}>
-      <span
-        class:active={phase === "ready" || phase === "checking"}
-        class:done={phase !== "ready" && phase !== "checking"}
-        ><i>{phase === "ready" || phase === "checking" ? "1" : "✓"}</i>{uiTranslate(
-          "准备",
-          $uiLanguage,
-        )}</span
-      ><b></b>
-      <span
-        class:active={phase === "calibrating" || phase === "transition"}
-        class:done={phase === "complete"}
-        ><i>{phase === "complete" ? "✓" : "2"}</i>{uiTranslate("标定", $uiLanguage)}</span
-      ><b></b>
-      <span class:active={phase === "complete"}><i>3</i>{uiTranslate("完成", $uiLanguage)}</span>
-    </div>
-
+    {#if phase !== "ready"}
+      <div class="stepper" aria-label={uiTranslate("标定步骤", $uiLanguage)}>
+        <span class:active={phase === "checking"} class:done={phase !== "checking"}
+          ><i>{phase === "checking" ? "1" : "✓"}</i>{uiTranslate("准备", $uiLanguage)}</span
+        ><b></b>
+        <span
+          class:active={phase === "calibrating" || phase === "transition"}
+          class:done={phase === "complete"}
+          ><i>{phase === "complete" ? "✓" : "2"}</i>{uiTranslate("标定", $uiLanguage)}</span
+        ><b></b>
+        <span class:active={phase === "complete"}><i>3</i>{uiTranslate("完成", $uiLanguage)}</span>
+      </div>
+    {/if}
     {#if phase === "ready"}
-      <article class="hero-card">
-        <div class="hero-copy">
-          <span class="eyebrow"
-            ><Crosshair size={15} weight="bold" />{uiTranslate(
-              "多设备头部与眼动融合标定",
-              $uiLanguage,
-            )}</span
-          >
-          <h2>{uiTranslate("依次注视每块屏幕上的九个位置", $uiLanguage)}</h2>
-          <p>
-            {uiTranslate(
-              "ArcRelay 会同时学习头部方向和个人眼动偏差；每个点采集多帧，并在不确定时保持当前屏幕，避免误切。",
+      {#if modelsReady}<Portal to={actionsTarget} disabled={!actionsTarget}
+          ><div class="gaze-actions">
+            {#if running}<button class="input-secondary" disabled={busy} on:click={stop}
+                ><Stop size={16} />{uiTranslate("停止识别", $uiLanguage)}</button
+              >
+            {:else}<button
+                class="input-primary"
+                disabled={!modelsReady || busy || !selectedCamera || !allDisplays.length}
+                on:click={() => (status?.calibrated ? resumeTracking() : beginCalibration())}
+                ><Play size={16} />{uiTranslate(
+                  status?.calibrated ? "启动识别" : "开始标定",
+                  $uiLanguage,
+                )}</button
+              >{/if}
+          </div></Portal
+        >
+      {/if}
+      <section class="camera-settings">
+        <div class="gaze-setting-row">
+          <span><Camera size={19} />{uiTranslate("摄像头", $uiLanguage)}</span><AppSelect
+            bind:value={selectedCamera}
+            options={cameraOptions}
+            disabled={!modelsReady || running || busy}
+            placeholder={uiTranslate(
+              modelsReady ? "未发现摄像头" : "请先下载眼动模型",
               $uiLanguage,
             )}
-          </p>
-          <label class="camera-field"
-            ><span>{uiTranslate("用于标定的摄像头", $uiLanguage)}</span><AppSelect
-              bind:value={selectedCamera}
-              options={cameraOptions}
-              disabled={!modelsReady || running || busy}
-              placeholder={uiTranslate(
-                modelsReady ? "未发现摄像头" : "请先下载眼动模型",
-                $uiLanguage,
-              )}
-              aria-label={uiTranslate("用于标定的摄像头", $uiLanguage)}
-            /></label
-          >
-          <div class="privacy-line">
-            <LockKey size={15} weight="fill" /><span
-              ><strong>{uiTranslate("完全本机处理", $uiLanguage)}</strong>　{uiTranslate(
-                "只同步圆点位置与进度，摄像头画面和人脸特征不会离开本机。",
-                $uiLanguage,
-              )}</span
-            >
-          </div>
-          <div class="hero-actions">
-            {#if status?.calibrated && !running}
-              <button
-                class="start-button"
-                disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout}
-                on:click={resumeTracking}
-                ><Play size={17} weight="fill" />{uiTranslate(
-                  busy ? "正在启动…" : "启动识别",
-                  $uiLanguage,
-                )}</button
-              >
-              <button class="text-button" disabled={busy} on:click={() => beginCalibration()}
-                ><ArrowClockwise size={15} />{uiTranslate("全部重新标定", $uiLanguage)}</button
-              >
-            {:else if !status?.calibrated}
-              <button
-                class="start-button"
-                disabled={!modelsReady || busy || !selectedCamera || !snapshot.configuration.layout}
-                on:click={() => beginCalibration()}
-                ><Play size={17} weight="fill" />{uiTranslate(
-                  busy ? "正在启动…" : "开始标定",
-                  $uiLanguage,
-                )}</button
-              >
-            {:else}
-              <button class="text-button" disabled={busy} on:click={() => beginCalibration()}
-                ><ArrowClockwise size={15} />{uiTranslate("全部重新标定", $uiLanguage)}</button
-              >
-            {/if}
-            <button
-              class="text-button"
-              disabled={!modelsReady || busy}
-              on:click={() => (diagnosticsOpen = true)}
-              ><Camera size={15} />{uiTranslate("视觉诊断", $uiLanguage)}</button
-            >
-            <button class="text-button" disabled={!modelsReady || busy} on:click={refreshCameras}
-              ><ArrowClockwise size={15} />{uiTranslate("重新检测摄像头", $uiLanguage)}</button
-            >
-            {#if modelsReady}<button
-                class="text-button"
-                disabled={busy || running}
-                on:click={removeModels}
-                ><Trash size={15} />{uiTranslate("移除模型", $uiLanguage)}</button
-              >{/if}
-          </div>
+            aria-label={uiTranslate("摄像头", $uiLanguage)}
+          />
         </div>
-        <div class="preview-panel" aria-hidden="true">
-          <img src={calibrationMonitor} alt="" />
-          <div class="preview-meta">
-            <span
-              ><Monitor size={15} />{allDisplays.length} {uiTranslate("块屏幕", $uiLanguage)}</span
-            ><span>{deviceCount} {uiTranslate("台设备", $uiLanguage)}</span><span
-              ><Eye size={15} />{uiTranslate("头部 + 眼动", $uiLanguage)}</span
-            >
-          </div>
-        </div>
-      </article>
-      <div class="readiness-grid">
-        <section>
-          <span class:ok={Boolean(cameras.length)}
-            >{#if cameras.length}<Check size={16} weight="bold" />{:else}<WarningCircle
-                size={16}
-              />{/if}</span
+        <p class="privacy-copy">
+          <LockKey size={15} />{uiTranslate("摄像头画面仅在本机处理", $uiLanguage)}
+        </p>
+      </section>
+      <section class="calibration-settings">
+        <header>
+          <h2>{uiTranslate("屏幕标定", $uiLanguage)}</h2>
+          <button
+            class="input-text-button"
+            disabled={!modelsReady || busy || !selectedCamera || !allDisplays.length}
+            on:click={() => beginCalibration()}>{uiTranslate("全部重新标定", $uiLanguage)}</button
           >
-          <div>
-            <strong>{uiTranslate("摄像头", $uiLanguage)}</strong>
-            <p>
-              {cameras.length
-                ? t("{part0} 个设备可用", $uiLanguage, { part0: cameras.length })
-                : uiTranslate("等待摄像头权限", $uiLanguage)}
-            </p>
+        </header>
+        <div class="calibration-layout">
+          <div class="miniature">
+            <svg
+              viewBox="0 0 240 180"
+              role="img"
+              aria-label={uiTranslate("在线屏幕排列", $uiLanguage)}
+              >{#each allDisplays as display}<g
+                  ><rect
+                    x={miniature.x + display.deskRectUm.x * miniature.scale}
+                    y={miniature.y + display.deskRectUm.y * miniature.scale}
+                    width={display.deskRectUm.width * miniature.scale}
+                    height={display.deskRectUm.height * miniature.scale}
+                    rx="5"
+                  /><text
+                    x={miniature.x +
+                      (display.deskRectUm.x + display.deskRectUm.width / 2) * miniature.scale}
+                    y={miniature.y +
+                      (display.deskRectUm.y + display.deskRectUm.height / 2) * miniature.scale +
+                      5}
+                    text-anchor="middle"
+                    >{mainDisplays.findIndex((d) => d.displayId === display.displayId) + 1}</text
+                  ></g
+                >{/each}</svg
+            ><small>{uiTranslate("仅显示在线屏幕", $uiLanguage)}</small>
           </div>
-        </section>
-        <section>
-          <span class:ok={Boolean(allDisplays.length)}
-            >{#if allDisplays.length}<Check size={16} weight="bold" />{:else}<WarningCircle
-                size={16}
-              />{/if}</span
-          >
-          <div>
-            <strong>{uiTranslate("标定范围", $uiLanguage)}</strong>
-            <p>
-              {allDisplays.length}
-              {uiTranslate("块屏幕 ·", $uiLanguage)}
-              {deviceCount}
-              {uiTranslate("台设备", $uiLanguage)}
-            </p>
-          </div>
-        </section>
-        <section>
-          <span class:ok={running}
-            >{#if running}<Check size={16} weight="bold" />{:else}<Camera size={16} />{/if}</span
-          >
-          <div>
-            <strong>{uiTranslate("眼动服务", $uiLanguage)}</strong>
-            <p>
-              {running
-                ? t("{part0} 正在运行", $uiLanguage, { part0: status?.cameraName ?? "摄像头" })
-                : uiTranslate("开始标定时自动启动", $uiLanguage)}
-            </p>
-          </div>
-        </section>
-      </div>
-      {#if status?.calibrated}
-        <section class="existing-profile">
-          <CheckCircle size={18} weight="fill" />
-          <div class="profile-copy">
-            <strong>{uiTranslate("标定已保存，重启后可直接恢复", $uiLanguage)}</strong>
-            <p>
-              {uiTranslate("某块屏幕识别不准时，只优化这一块即可保留其他屏幕的数据。", $uiLanguage)}
-            </p>
-          </div>
-          <div class="profile-screens">
-            {#each allDisplays as display}
-              <span class:missing={!calibratedDisplayIds.has(display.displayId)}>
-                <Monitor size={14} /><b>{display.name}</b>
-                <button
-                  disabled={busy || !selectedCamera}
+          <div class="calibration-list">
+            {#each allDisplays as display}<div class="calibration-row">
+                <Monitor size={18} /><span title={display.name}
+                  >{uiTranslate("屏幕", $uiLanguage)}
+                  {mainDisplays.findIndex((d) => d.displayId === display.displayId) + 1} · {friendlyDeviceName(
+                    display.deviceId,
+                    snapshot,
+                    $uiLanguage,
+                  )}</span
+                ><small
+                  >{uiTranslate(
+                    calibratedDisplayIds.has(display.displayId) ? "已标定" : "未标定",
+                    $uiLanguage,
+                  )}</small
+                ><button
+                  class="input-text-button"
+                  disabled={!modelsReady || busy || !selectedCamera}
                   on:click={() => beginCalibration(display.displayId)}
                   >{uiTranslate(
                     calibratedDisplayIds.has(display.displayId) ? "优化标定" : "补充标定",
                     $uiLanguage,
                   )}</button
                 >
-              </span>
-            {/each}
+              </div>{/each}
+            {#if !allDisplays.length}<p>{uiTranslate("暂无在线屏幕", $uiLanguage)}</p>{/if}
           </div>
-          <button class="delete-profile" on:click={clearCalibration}
-            ><Trash size={15} />{uiTranslate("删除全部", $uiLanguage)}</button
-          >
-        </section>
-      {/if}
-      <section class:recognized={status?.presenceState === "ownerPresent"} class="presence-card">
-        <div class="recognition-icon"><LockKey size={22} weight="duotone" /></div>
-        <div class="profile-copy">
-          <strong>{uiTranslate("本机用户在场识别", $uiLanguage)}</strong>
-          <p>
-            {uiTranslate(
-              status?.presenceProfileEnrolled
-                ? `${status.presenceProfileName ?? uiTranslate("本机用户", $uiLanguage)} · ${uiTranslate(presenceLabel, $uiLanguage)}`
-                : "录入后可保护隐私遮罩、通知预览并触发自动化。",
-              $uiLanguage,
-            )}
-          </p>
         </div>
-        {#if status?.presenceEnrollmentActive}
-          <div class="presence-progress">
-            <span
-              >{uiTranslate(presencePoseLabel, $uiLanguage)} · {status.presenceEnrollmentSamples}/{status.presenceEnrollmentRequiredSamples}</span
-            >
-            <div class="bar">
-              <span
-                style={`width:${(status.presenceEnrollmentSamples / Math.max(1, status.presenceEnrollmentRequiredSamples)) * 100}%`}
-              ></span>
-            </div>
-          </div>
-          <button class="text-button" on:click={cancelPresenceEnrollment}
-            >{uiTranslate("取消", $uiLanguage)}</button
-          >
-        {:else if status?.presenceProfileEnrolled}
-          <div class="presence-state">
-            <b>{uiTranslate(presenceLabel, $uiLanguage)}</b><span
-              >{status.presenceFaceCount}
-              {uiTranslate("张人脸", $uiLanguage)}{status.presenceOwnerSimilarity == null
-                ? ""
-                : t(" · 相似度 {part0}", $uiLanguage, {
-                    part0: status.presenceOwnerSimilarity.toFixed(2),
-                  })}</span
-            >
-          </div>
-          <button class="delete-profile" on:click={clearPresenceProfile}
-            ><Trash size={15} />{uiTranslate("删除模板", $uiLanguage)}</button
-          >
-        {:else}
-          <label class="presence-name"
-            ><span>{uiTranslate("显示名称", $uiLanguage)}</span><input
-              bind:value={presenceName}
-              maxlength="80"
-            /></label
-          >
-          <button
-            class="start-button"
-            disabled={busy || !selectedCamera}
-            on:click={beginPresenceEnrollment}>{uiTranslate("开始录入", $uiLanguage)}</button
-          >
-        {/if}
       </section>
+      <details class="gaze-disclosure">
+        <summary
+          ><User size={18} />{uiTranslate("在场识别", $uiLanguage)}<small
+            >{uiTranslate(
+              status?.presenceProfileEnrolled ? presenceLabel : "未设置",
+              $uiLanguage,
+            )}</small
+          ><CaretDown size={16} /></summary
+        >
+        <section class:recognized={status?.presenceState === "ownerPresent"} class="presence-card">
+          <div class="recognition-icon"><LockKey size={22} weight="duotone" /></div>
+          <div class="profile-copy">
+            <strong>{uiTranslate("本机用户在场识别", $uiLanguage)}</strong>
+            <p>
+              {uiTranslate(
+                status?.presenceProfileEnrolled
+                  ? `${status.presenceProfileName ?? uiTranslate("本机用户", $uiLanguage)} · ${uiTranslate(presenceLabel, $uiLanguage)}`
+                  : "录入后可保护隐私遮罩、通知预览并触发自动化。",
+                $uiLanguage,
+              )}
+            </p>
+          </div>
+          {#if status?.presenceEnrollmentActive}
+            <div class="presence-progress">
+              <span
+                >{uiTranslate(presencePoseLabel, $uiLanguage)} · {status.presenceEnrollmentSamples}/{status.presenceEnrollmentRequiredSamples}</span
+              >
+              <div class="bar">
+                <span
+                  style={`width:${(status.presenceEnrollmentSamples / Math.max(1, status.presenceEnrollmentRequiredSamples)) * 100}%`}
+                ></span>
+              </div>
+            </div>
+            <button class="text-button" on:click={cancelPresenceEnrollment}
+              >{uiTranslate("取消", $uiLanguage)}</button
+            >
+          {:else if status?.presenceProfileEnrolled}
+            <div class="presence-state">
+              <b>{uiTranslate(presenceLabel, $uiLanguage)}</b><span
+                >{status.presenceFaceCount}
+                {uiTranslate("张人脸", $uiLanguage)}{status.presenceOwnerSimilarity == null
+                  ? ""
+                  : t(" · 相似度 {part0}", $uiLanguage, {
+                      part0: status.presenceOwnerSimilarity.toFixed(2),
+                    })}</span
+              >
+            </div>
+            <button class="delete-profile" on:click={clearPresenceProfile}
+              ><Trash size={15} />{uiTranslate("删除模板", $uiLanguage)}</button
+            >
+          {:else}
+            <label class="presence-name"
+              ><span>{uiTranslate("显示名称", $uiLanguage)}</span><input
+                bind:value={presenceName}
+                maxlength="80"
+              /></label
+            >
+            <button
+              class="start-button"
+              disabled={busy || !selectedCamera}
+              on:click={beginPresenceEnrollment}>{uiTranslate("开始录入", $uiLanguage)}</button
+            >
+          {/if}
+        </section>
+      </details>
+      <details class="gaze-disclosure">
+        <summary
+          ><SlidersHorizontal size={18} />{uiTranslate("更多选项", $uiLanguage)}<CaretDown
+            size={16}
+          /></summary
+        >
+        <div class="more-options">
+          <button
+            class="input-secondary"
+            disabled={!modelsReady || busy}
+            on:click={() => (diagnosticsOpen = true)}
+            ><Camera size={16} />{uiTranslate("视觉诊断", $uiLanguage)}</button
+          ><button class="input-secondary" disabled={!modelsReady || busy} on:click={refreshCameras}
+            ><ArrowClockwise size={16} />{uiTranslate("重新检测摄像头", $uiLanguage)}</button
+          >{#if modelsReady}<button
+              class="input-secondary"
+              disabled={busy || running}
+              on:click={removeModels}>{uiTranslate("移除模型", $uiLanguage)}</button
+            >{/if}<button
+            class="input-secondary"
+            disabled={busy || !status?.calibrated}
+            on:click={clearCalibration}>{uiTranslate("删除全部标定", $uiLanguage)}</button
+          >
+        </div>
+      </details>
     {:else if phase === "checking"}
       <article class="state-card">
         <div class="check-visual" style={`--check-progress:${preflightProgress * 360}deg`}>
@@ -981,7 +945,7 @@
       </article>
     {/if}
 
-    {#if phase === "ready"}
+    {#if phase === "ready" && running}
       <section
         class:recognized={Boolean(running && status?.target)}
         class="recognition-card"
@@ -1019,30 +983,28 @@
             >
           {/each}
         </div>
-        <dl>
-          <div>
-            <dt>{uiTranslate("推理延迟", $uiLanguage)}</dt>
-            <dd>{status?.inferenceMs?.toFixed(0) ?? "—"} ms</dd>
-          </div>
-          <div>
-            <dt>{uiTranslate("人脸置信度", $uiLanguage)}</dt>
-            <dd>{status?.faceConfidence?.toFixed(2) ?? "—"}</dd>
-          </div>
-        </dl>
-        {#if running}<button class="stop-tracking" on:click={stop} disabled={busy}
-            ><Stop size={14} />{uiTranslate("停止", $uiLanguage)}</button
-          >{/if}
+        <details class="recognition-details">
+          <summary>{uiTranslate("识别详情", $uiLanguage)}</summary>
+          <dl>
+            <div>
+              <dt>{uiTranslate("推理延迟", $uiLanguage)}</dt>
+              <dd>{status?.inferenceMs?.toFixed(0) ?? "—"} ms</dd>
+            </div>
+            <div>
+              <dt>{uiTranslate("人脸置信度", $uiLanguage)}</dt>
+              <dd>{status?.faceConfidence?.toFixed(2) ?? "—"}</dd>
+            </div>
+          </dl>
+        </details>
       </section>
     {/if}
     {#if status?.error}<div class="error-banner">
         <WarningCircle size={17} /><span>{diagnosticMessage(status.error, $uiLanguage)}</span>
       </div>{/if}
-    <div class="safety-note">
-      <strong>{uiTranslate("自动切屏：", $uiLanguage)}</strong>{uiTranslate(
-        "稳定看向另一块屏幕后，ArcRelay 会移动鼠标到屏幕中央；按 ⌘⌥⇧ Esc 可随时紧急释放，不会自动点击或输入。",
-        $uiLanguage,
-      )}
-    </div>
+    <p class="safety-note">
+      {uiTranslate("不会自动点击或输入", $uiLanguage)} · <kbd>⌘ ⌥ ⇧ Esc</kbd>
+      {uiTranslate("返回本机", $uiLanguage)}
+    </p>
   {/if}
 </section>
 
@@ -1151,20 +1113,6 @@
     color: #fff;
     background: var(--success);
   }
-  .hero-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1.12fr) minmax(310px, 0.88fr);
-    gap: 32px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 26px 28px;
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-card);
-  }
-  .hero-copy {
-    align-self: center;
-  }
   .eyebrow {
     display: inline-flex;
     align-items: center;
@@ -1174,7 +1122,6 @@
     font-weight: 750;
     letter-spacing: 0.02em;
   }
-  .hero-card h2,
   .state-card h2 {
     margin: 8px 0 7px;
     color: var(--text);
@@ -1183,7 +1130,6 @@
     line-height: 1.18;
     letter-spacing: -0.035em;
   }
-  .hero-copy > p,
   .state-card > p {
     max-width: 590px;
     margin: 0;
@@ -1191,41 +1137,12 @@
     font-size: 12px;
     line-height: 1.7;
   }
-  .camera-field {
-    display: grid;
-    gap: 7px;
-    max-width: 420px;
-    margin-top: 20px;
-    color: var(--text-secondary);
-    font-size: 11px;
-  }
-  .privacy-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    max-width: 540px;
-    margin-top: 13px;
-    color: var(--text-muted);
-    font-size: 10px;
-    line-height: 1.55;
-  }
-  .privacy-line :global(svg) {
-    flex: none;
-    margin-top: 1px;
-    color: var(--success);
-  }
-  .privacy-line strong {
-    color: var(--text-secondary);
-  }
   .hero-actions {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 15px;
     margin-top: 20px;
-  }
-  .hero-copy .hero-actions {
-    justify-content: flex-start;
   }
   .start-button {
     display: inline-flex;
@@ -1258,82 +1175,6 @@
     background: transparent;
     font-size: 11px;
   }
-  .preview-panel {
-    display: grid;
-    align-content: center;
-    gap: 8px;
-    padding: 0 4px;
-  }
-  .preview-panel img {
-    display: block;
-    width: 100%;
-    max-height: 255px;
-    object-fit: contain;
-    filter: drop-shadow(0 16px 22px rgba(31, 33, 47, 0.12));
-  }
-  .preview-meta {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    color: var(--text-muted);
-    font-size: 10px;
-  }
-  .preview-meta span {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .readiness-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  .readiness-grid section {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
-    background: var(--surface-raised);
-  }
-  .readiness-grid section > span {
-    display: grid;
-    width: 28px;
-    height: 28px;
-    flex: none;
-    place-items: center;
-    border-radius: 9px;
-    color: var(--text-muted);
-    background: var(--surface-sunken);
-  }
-  .readiness-grid section > span.ok {
-    color: var(--success);
-    background: var(--success-soft);
-  }
-  .readiness-grid strong {
-    display: block;
-    color: var(--text);
-    font-size: 11px;
-  }
-  .readiness-grid p {
-    margin: 2px 0 0;
-    color: var(--text-muted);
-    font-size: 10px;
-  }
-  .existing-profile {
-    display: grid;
-    grid-template-columns: auto minmax(170px, 0.75fr) minmax(300px, 1.25fr) auto;
-    align-items: center;
-    gap: 12px;
-    border: 1px solid color-mix(in srgb, var(--success) 28%, var(--border));
-    border-radius: 12px;
-    padding: 12px 13px;
-    background: color-mix(in srgb, var(--success-soft) 55%, var(--surface));
-  }
-  .existing-profile > :global(svg) {
-    color: var(--success);
-  }
   .profile-copy strong {
     display: block;
     color: var(--text);
@@ -1344,34 +1185,6 @@
     color: var(--text-secondary);
     font-size: 10px;
   }
-  .profile-screens {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .profile-screens > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid color-mix(in srgb, var(--success) 22%, var(--border));
-    border-radius: 8px;
-    padding: 5px 6px 5px 8px;
-    color: var(--text-secondary);
-    background: var(--surface);
-    font-size: 9px;
-  }
-  .profile-screens > span.missing {
-    border-color: color-mix(in srgb, var(--warning) 32%, var(--border));
-  }
-  .profile-screens b {
-    max-width: 120px;
-    overflow: hidden;
-    color: var(--text);
-    font-size: 9px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .profile-screens button,
   .delete-profile {
     display: inline-flex;
     align-items: center;
@@ -1382,11 +1195,6 @@
     color: var(--text-secondary);
     background: var(--surface);
     font-size: 9px;
-  }
-  .profile-screens button {
-    border: 0;
-    color: var(--accent-strong);
-    background: var(--accent-soft);
   }
   .presence-card {
     display: grid;
@@ -1686,17 +1494,6 @@
     font-size: 9px;
     font-variant-numeric: tabular-nums;
   }
-  .stop-tracking {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    padding: 7px 9px;
-    color: var(--text-secondary);
-    background: var(--surface);
-    font-size: 9px;
-  }
   .error-banner {
     display: flex;
     align-items: center;
@@ -1716,36 +1513,175 @@
     background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
     font-size: 10px;
   }
-  .safety-note strong {
-    color: var(--text);
-  }
   @media (max-width: 900px) {
-    .hero-card {
-      grid-template-columns: 1fr;
-    }
-    .preview-panel {
-      display: none;
-    }
-    .readiness-grid {
-      grid-template-columns: 1fr;
-    }
-    .hero-card h2,
     .state-card h2 {
       font-size: 20px;
     }
     .stepper {
       grid-template-columns: auto 30px auto 30px auto;
     }
-    .existing-profile,
     .recognition-card {
       grid-template-columns: auto 1fr;
     }
-    .profile-screens,
     .recognition-screens {
       grid-column: 1/-1;
     }
     .recognition-card dl {
       display: none;
+    }
+  }
+
+  .gaze-page {
+    display: block;
+    width: min(100%, 1040px);
+    padding-bottom: 24px;
+  }
+  .gaze-actions {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 36px;
+    margin: 0;
+  }
+  .camera-settings {
+    padding: 4px 0 20px;
+    border-block: 1px solid var(--border);
+  }
+  .gaze-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 58px;
+  }
+  .gaze-setting-row > span,
+  .privacy-copy {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+  }
+  .privacy-copy {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .calibration-settings {
+    padding: 25px 0;
+  }
+  .calibration-settings header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .calibration-settings h2 {
+    font-size: 17px;
+    margin: 0;
+  }
+  .calibration-layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 28px;
+    align-items: center;
+    margin-top: 15px;
+  }
+  .miniature svg {
+    display: block;
+    width: 100%;
+    height: 180px;
+  }
+  .miniature rect {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-width: 1.2;
+  }
+  .miniature text {
+    fill: var(--text);
+    font-size: 18px;
+    font-weight: 650;
+  }
+  .miniature small {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+  .calibration-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 62px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .calibration-row > span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .calibration-row small {
+    color: var(--text-muted);
+    font-size: 11px;
+    flex: none;
+  }
+  .calibration-row > button {
+    flex: none;
+  }
+  .gaze-disclosure {
+    border-top: 1px solid var(--border);
+  }
+  .gaze-disclosure > summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 54px;
+    list-style: none;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .gaze-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+  .gaze-disclosure > summary :global(svg:last-child) {
+    margin-left: auto;
+  }
+  .gaze-disclosure > summary small {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .gaze-disclosure > summary small + :global(svg) {
+    margin-left: 0;
+  }
+  .more-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 5px 0 18px;
+  }
+  .safety-note {
+    border: 0;
+    padding: 16px 0;
+    color: var(--text-muted);
+    background: transparent;
+    font-size: 12px;
+  }
+  .safety-note kbd {
+    font: inherit;
+  }
+  .recognition-details summary {
+    font-size: 11px;
+    cursor: pointer;
+  }
+  @media (max-width: 980px) {
+    .gaze-actions {
+      margin-top: 0;
+    }
+    .calibration-layout {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .miniature {
+      max-width: 240px;
     }
   }
 </style>

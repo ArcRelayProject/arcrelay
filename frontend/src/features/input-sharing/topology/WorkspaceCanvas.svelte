@@ -8,14 +8,13 @@
   } from "../../../types";
   import { displayStatusLabel } from "../workspaceMembership";
   import { snapDisplayPosition } from "../topologyGeometry";
-  import DeviceGroup from "./DeviceGroup.svelte";
+  import { workspaceBounds, workspaceProjection, type DeskBounds } from "../workspaceViewport";
   import DisplaySurface from "./DisplaySurface.svelte";
   import PortalOverlay from "./PortalOverlay.svelte";
 
   export let layout: WorkspaceLayout;
   export let displayAvailability: RuntimeSnapshot["displayAvailability"] = {};
   export let controller: string | null = null;
-  export let localServiceInstanceId = "";
   export let deviceNames: Record<string, string> = {};
   export let mode: "select" | "test" = "select";
   export let selectedDisplayId: string | null = null;
@@ -25,8 +24,20 @@
   export let onSelectPortal: (id: string) => void;
   export let onMoveDisplay: (id: string, x: number, y: number) => void;
   export let onResizeDisplay: (id: string, width: number) => void;
+  export let onClearSelection: () => void = () => {};
+  export let onSelectionBounds: (
+    bounds: { x: number; y: number; width: number; height: number } | null,
+  ) => void = () => {};
+  let bounds: DeskBounds | null = null;
+  let membership = "";
+  let pan = { x: 0, y: 0 };
+  let panDrag: { x: number; y: number; originalX: number; originalY: number } | null = null;
+  export function fitToView() {
+    bounds = workspaceBounds(Object.values(layout.displays));
+    pan = { x: 0, y: 0 };
+    zoom = 1;
+  }
 
-  const padding = 72;
   let width = 0;
   let height = 0;
   let drag: {
@@ -35,6 +46,7 @@
     startY: number;
     originalX: number;
     originalY: number;
+    projectScale: number;
   } | null = null;
   let resize: {
     id: string;
@@ -53,21 +65,38 @@
           Number(right.displayId === selectedDisplayId),
       )
     : displayList;
-  $: minX = Math.min(...displayList.map((display) => display.deskRectUm.x), 0);
-  $: minY = Math.min(...displayList.map((display) => display.deskRectUm.y), 0);
-  $: maxX = Math.max(
-    ...displayList.map((display) => display.deskRectUm.x + display.deskRectUm.width),
-    1,
+  $: if (
+    displayList
+      .map((display) => display.displayId)
+      .sort()
+      .join("|") !== membership
+  ) {
+    membership = displayList
+      .map((display) => display.displayId)
+      .sort()
+      .join("|");
+    fitToView();
+  }
+  $: measured = width > 0 && height > 0;
+  $: projection = workspaceProjection(
+    bounds ?? workspaceBounds(displayList),
+    width,
+    height,
+    zoom,
+    pan,
   );
-  $: maxY = Math.max(
-    ...displayList.map((display) => display.deskRectUm.y + display.deskRectUm.height),
-    1,
+  $: scale = projection.scale;
+  $: selectedDisplay = selectedDisplayId ? layout.displays[selectedDisplayId] : null;
+  $: onSelectionBounds(
+    selectedDisplay
+      ? {
+          x: projection.x + selectedDisplay.deskRectUm.x * scale,
+          y: projection.y + selectedDisplay.deskRectUm.y * scale,
+          width: selectedDisplay.deskRectUm.width * scale,
+          height: selectedDisplay.deskRectUm.height * scale,
+        }
+      : null,
   );
-  $: measured = width > padding * 2 && height > padding * 2;
-  $: scale = measured
-    ? Math.min((width - padding * 2) / (maxX - minX), (height - padding * 2) / (maxY - minY)) * zoom
-    : 0;
-  $: deviceGroups = groupDisplays(displayList, deviceNames, displayAvailability, $uiLanguage);
 
   function observeCanvas(node: HTMLElement) {
     let frame = 0;
@@ -92,41 +121,40 @@
     };
   }
 
-  function groupDisplays(
-    displays: DisplayType[],
-    names: Record<string, string>,
-    availability: RuntimeSnapshot["displayAvailability"],
-    currentLanguage: typeof $uiLanguage,
-  ) {
-    const groups = new Map<string, DisplayType[]>();
-    for (const display of displays) {
-      const values = groups.get(display.deviceId) ?? [];
-      values.push(display);
-      groups.set(display.deviceId, values);
-    }
-    return [...groups].map(([deviceId, values], index) => ({
-      deviceId,
-      label:
-        names[deviceId] ??
-        uiTranslate(
-          deviceId === localServiceInstanceId
-            ? "这台设备"
-            : index === 0 && !localServiceInstanceId
-              ? "这台设备"
-              : "远程电脑",
-          currentLanguage,
-        ),
-      x: Math.min(...values.map((display) => display.deskRectUm.x)),
-      y: Math.min(...values.map((display) => display.deskRectUm.y)),
-      online: values.some((display) => availability[display.displayId] === "Ready"),
-    }));
+  $: project = (x: number, y: number) => ({
+    x: projection.x + x * scale,
+    y: projection.y + y * scale,
+  });
+  function beginPan(event: PointerEvent) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    onClearSelection();
+    panDrag = { x: event.clientX, y: event.clientY, originalX: pan.x, originalY: pan.y };
+    window.addEventListener("pointermove", movePan);
+    window.addEventListener("pointerup", endPan, { once: true });
   }
-
-  function project(x: number, y: number) {
-    return { x: padding + (x - minX) * scale, y: padding + (y - minY) * scale };
+  function movePan(event: PointerEvent) {
+    if (panDrag)
+      pan = {
+        x: panDrag.originalX + event.clientX - panDrag.x,
+        y: panDrag.originalY + event.clientY - panDrag.y,
+      };
+  }
+  function endPan() {
+    panDrag = null;
+    window.removeEventListener("pointermove", movePan);
+    window.removeEventListener("pointerup", endPan);
+  }
+  function wheel(event: WheelEvent) {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey)
+      zoom = Math.min(3, Math.max(0.2, zoom * Math.exp(-event.deltaY * 0.01)));
+    else pan = { x: pan.x - event.deltaX, y: pan.y - event.deltaY };
   }
 
   function beginDrag(event: PointerEvent, display: DisplayType) {
+    if (event.button !== 0) return;
+    event.stopPropagation();
     if (mode !== "select") {
       onSelectDisplay(display.displayId);
       return;
@@ -139,6 +167,7 @@
       startY: event.clientY,
       originalX: display.deskRectUm.x,
       originalY: display.deskRectUm.y,
+      projectScale: scale,
     };
     window.addEventListener("pointermove", moveDrag);
     window.addEventListener("pointerup", endDrag, { once: true });
@@ -148,9 +177,11 @@
     if (!drag) return;
     const snap = 5_000;
     const nextX =
-      Math.round((drag.originalX + (event.clientX - drag.startX) / scale) / snap) * snap;
+      Math.round((drag.originalX + (event.clientX - drag.startX) / drag.projectScale) / snap) *
+      snap;
     const nextY =
-      Math.round((drag.originalY + (event.clientY - drag.startY) / scale) / snap) * snap;
+      Math.round((drag.originalY + (event.clientY - drag.startY) / drag.projectScale) / snap) *
+      snap;
     const visualSnapUm = Math.min(25_000, Math.max(5_000, 14 / Math.max(scale, Number.EPSILON)));
     const snapped = snapDisplayPosition(drag.id, nextX, nextY, layout.displays, visualSnapUm);
     onMoveDisplay(drag.id, snapped.x, snapped.y);
@@ -200,6 +231,7 @@
     window.removeEventListener("pointerup", endDrag);
     window.removeEventListener("pointermove", moveResize);
     window.removeEventListener("pointerup", endResize);
+    endPan();
   });
 
   function isOnline(display: DisplayType) {
@@ -207,22 +239,32 @@
   }
 </script>
 
-<div class="canvas" use:observeCanvas aria-busy={!measured}>
+<div class="canvas" use:observeCanvas aria-busy={!measured} on:wheel|nonpassive={wheel}>
   {#if measured}
     <svg viewBox={`0 0 ${width} ${height}`} aria-label={uiTranslate("物理桌面工作区", $uiLanguage)}>
       <defs>
         <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" stroke-opacity=".08" />
+          <circle cx="1" cy="1" r=".8" fill="currentColor" opacity=".14" />
         </pattern>
       </defs>
-      <rect {width} {height} fill="url(#grid)" />
-      {#each deviceGroups as group}
-        {@const groupPoint = project(group.x, group.y)}
-        <DeviceGroup
-          name={`${group.label} · ${uiTranslate(group.online ? "在线" : "离线", $uiLanguage)}`}
-          x={groupPoint.x}
-          y={groupPoint.y - 18}
-          width={180}
+      <rect {width} {height} fill="url(#grid)" on:pointerdown={beginPan} role="presentation" />
+      {#each renderList as display (display.displayId)}
+        {@const point = project(display.deskRectUm.x, display.deskRectUm.y)}
+        <DisplaySurface
+          {display}
+          number={displayList.indexOf(display) + 1}
+          label={deviceNames[display.deviceId] ?? display.name}
+          x={point.x}
+          y={point.y}
+          width={display.deskRectUm.width * scale}
+          height={display.deskRectUm.height * scale}
+          selected={selectedDisplayId === display.displayId}
+          controller={controller === display.deviceId}
+          online={isOnline(display)}
+          statusLabel={displayStatusLabel(displayAvailability[display.displayId])}
+          onpointerdown={(event) => beginDrag(event, display)}
+          onresizepointerdown={(event) => beginResize(event, display)}
+          onselect={() => onSelectDisplay(display.displayId)}
         />
       {/each}
       {#each layout.portals as portal (portal.portalId)}
@@ -234,23 +276,6 @@
           onselect={() => onSelectPortal(portal.portalId)}
         />
       {/each}
-      {#each renderList as display (display.displayId)}
-        {@const point = project(display.deskRectUm.x, display.deskRectUm.y)}
-        <DisplaySurface
-          {display}
-          x={point.x}
-          y={point.y}
-          width={Math.max(display.deskRectUm.width * scale, 90)}
-          height={Math.max(display.deskRectUm.height * scale, 60)}
-          selected={selectedDisplayId === display.displayId}
-          controller={controller === display.deviceId}
-          online={isOnline(display)}
-          statusLabel={displayStatusLabel(displayAvailability[display.displayId])}
-          onpointerdown={(event) => beginDrag(event, display)}
-          onresizepointerdown={(event) => beginResize(event, display)}
-          onselect={() => onSelectDisplay(display.displayId)}
-        />
-      {/each}
     </svg>
   {/if}
 </div>
@@ -260,15 +285,18 @@
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 470px;
+    min-height: 300px;
     overflow: hidden;
     border-radius: 14px;
     color: var(--text-secondary, #344054);
-    background: var(--surface-soft, #f8f9fc);
+    background: var(--surface);
+    touch-action: none;
+    user-select: none;
   }
   svg {
     width: 100%;
     height: 100%;
     display: block;
+    cursor: grab;
   }
 </style>

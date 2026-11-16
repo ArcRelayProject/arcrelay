@@ -2,22 +2,16 @@
   import { diagnosticMessage } from "../../diagnosticMessages";
   import { t, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { onMount } from "svelte";
+  import { Dialog } from "bits-ui";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import {
-    ArrowsOutCardinal,
-    ArrowLeft,
-    Bug,
-    Eye,
-    GridFour,
-    Keyboard,
-    Power,
-  } from "phosphor-svelte";
+  import { ArrowLeft, Bug, Eye, Gear, ArrowCounterClockwise, Keyboard } from "phosphor-svelte";
 
   import { SubscriptionScope, observeSnapshot } from "../../subscriptions";
   import { bridge } from "../../bridge";
   import type { RuntimeSnapshot } from "../../types";
   import DiagnosticsPage from "./DiagnosticsPage.svelte";
   import InputOverviewPage from "./InputOverviewPage.svelte";
+  import InputMenu from "./InputMenu.svelte";
   import InputSetupFlow from "./InputSetupFlow.svelte";
   import InputWorkspacePage from "./InputWorkspacePage.svelte";
   import KeyboardPage from "./KeyboardPage.svelte";
@@ -27,7 +21,6 @@
     canTakeInputControl,
     friendlyDeviceName,
     recoverableOfflinePeer,
-    workspaceIsReady,
   } from "./inputSharingUi";
 
   export let notify: (message: string, error?: boolean) => void;
@@ -47,38 +40,72 @@
             requestedSection ?? "",
           )
         ? (requestedSection as Section)
-        : "overview";
+        : "workspace";
   let snapshot: RuntimeSnapshot | null = null;
   let loading = true;
   let busy = false;
+  let workspaceSaving = false;
   let showSetup = false;
   let setupInitialStep: 1 | 2 | 3 | 4 = 1;
-
-  const sections = [
-    { id: "overview" as const, label: "总览", icon: GridFour },
-    { id: "workspace" as const, label: "布局与通道", icon: ArrowsOutCardinal },
-    { id: "keyboard" as const, label: "键盘行为", icon: Keyboard },
-    { id: "gaze" as const, label: "眼动", icon: Eye },
-    { id: "diagnostics" as const, label: "诊断", icon: Bug },
-  ];
+  let headerActions: HTMLDivElement | undefined;
+  let workspacePage: InputWorkspacePage | undefined;
+  let keyboardPage: KeyboardPage | undefined;
+  function hasUnsavedChanges() {
+    return workspacePage?.hasUnsavedChanges() || keyboardPage?.hasUnsavedChanges();
+  }
+  let discardOpen = false;
+  let pendingNavigation: (() => void) | null = null;
+  function requestNavigation(action: () => void) {
+    if (hasUnsavedChanges()) {
+      pendingNavigation = action;
+      discardOpen = true;
+    } else action();
+  }
+  function goTo(next: Section) {
+    if (next !== section) requestNavigation(() => (section = next));
+  }
+  function discardChanges() {
+    discardOpen = false;
+    pendingNavigation?.();
+    pendingNavigation = null;
+  }
+  function beforeUnload(event: BeforeUnloadEvent) {
+    if (hasUnsavedChanges()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  }
 
   $: enabled = Boolean(snapshot?.configuration.inputSharingEnabled);
-  $: controlling = Boolean(snapshot && snapshot.controller === snapshot.serviceInstanceId);
-  $: remoteController =
-    snapshot?.controller && snapshot.controller !== snapshot.serviceInstanceId
-      ? friendlyDeviceName(snapshot.controller, snapshot, $uiLanguage)
-      : null;
-  $: ready = snapshot ? workspaceIsReady(snapshot) : false;
   $: offlinePeer = snapshot ? recoverableOfflinePeer(snapshot) : null;
-  $: status = !enabled
-    ? "已关闭"
-    : controlling || remoteController
-      ? "输入活动"
-      : offlinePeer
-        ? "需要处理"
-        : ready
-          ? "自动互通"
-          : "待设置";
+  $: childPage = !["workspace", "overview"].includes(section);
+  $: menuItems = [
+    {
+      label: uiTranslate("键盘行为", $uiLanguage),
+      icon: Keyboard,
+      navigate: true,
+      action: () => goTo("keyboard"),
+    },
+    {
+      label: uiTranslate("眼动", $uiLanguage),
+      icon: Eye,
+      navigate: true,
+      action: () => goTo("gaze"),
+    },
+    {
+      label: uiTranslate("诊断与调试", $uiLanguage),
+      icon: Bug,
+      separator: true,
+      navigate: true,
+      action: () => goTo("diagnostics"),
+    },
+    {
+      label: uiTranslate("管理设备", $uiLanguage),
+      icon: Gear,
+      separator: true,
+      action: () => openSetup(1),
+    },
+  ];
 
   async function refresh(silent = false) {
     try {
@@ -163,12 +190,14 @@
   }
 
   function openSetup(step: 1 | 2 | 3 | 4 = 1) {
-    setupInitialStep = step;
-    showSetup = true;
+    requestNavigation(() => {
+      setupInitialStep = step;
+      showSetup = true;
+    });
   }
 
   function navigate(next: "workspace" | "keyboard" | "diagnostics") {
-    section = next;
+    goTo(next);
   }
 
   function applySnapshot(next: RuntimeSnapshot) {
@@ -213,6 +242,22 @@
   });
 </script>
 
+<svelte:window on:beforeunload={beforeUnload} />
+
+<Dialog.Root bind:open={discardOpen}>
+  <Dialog.Portal
+    ><Dialog.Overlay class="input-discard-overlay" /><Dialog.Content class="input-discard-dialog"
+      ><Dialog.Title>{uiTranslate("放弃未保存的更改？", $uiLanguage)}</Dialog.Title
+      ><Dialog.Description class="sr-only">{uiTranslate("未保存", $uiLanguage)}</Dialog.Description>
+      <div>
+        <Dialog.Close class="input-secondary">{uiTranslate("取消", $uiLanguage)}</Dialog.Close
+        ><button class="input-primary" on:click={discardChanges}
+          >{uiTranslate("放弃更改", $uiLanguage)}</button
+        >
+      </div></Dialog.Content
+    ></Dialog.Portal
+  >
+</Dialog.Root>
 <main
   class="input-sharing-host content full-content"
   class:diagnostics-view={section === "diagnostics"}
@@ -251,118 +296,75 @@
           initialStep={setupInitialStep}
         />
       {:else}
-        <header class="input-sharing-header">
+        {#if childPage}
+          <button class="back-link" on:click={() => goTo("workspace")}
+            ><ArrowLeft size={17} />{uiTranslate("跨屏输入", $uiLanguage)}</button
+          >
+        {/if}
+        <header class="input-sharing-header" class:child-page={childPage}>
           <div>
-            <div class="title-line">
-              <h1>
-                {uiTranslate(
-                  section === "keyboard"
-                    ? "键盘行为"
-                    : section === "gaze"
-                      ? "眼动追踪"
-                      : section === "diagnostics"
-                        ? "诊断"
-                        : "跨屏输入",
+            <h1>
+              {uiTranslate(
+                section === "keyboard"
+                  ? "键盘行为"
+                  : section === "gaze"
+                    ? "眼动"
+                    : section === "diagnostics"
+                      ? "诊断与调试"
+                      : "跨屏输入",
+                $uiLanguage,
+              )}{#if section === "diagnostics"}<small class="debug-label">Debug</small>{/if}
+            </h1>
+            {#if section === "keyboard"}<p>
+                {uiTranslate("按熟悉的方式使用键盘", $uiLanguage)}
+              </p>{:else if section === "gaze"}<p>
+                {uiTranslate("看向另一块屏幕，鼠标随之切换", $uiLanguage)}
+              </p>{/if}
+          </div>
+          {#if !childPage}
+            <div class="header-control">
+              <button
+                class="sharing-switch"
+                class:enabled
+                role="switch"
+                aria-checked={enabled}
+                aria-label={uiTranslate("跨屏输入", $uiLanguage)}
+                disabled={busy || workspaceSaving || (!enabled && !canTakeInputControl(snapshot))}
+                title={uiTranslate(
+                  !canTakeInputControl(snapshot)
+                    ? (snapshot.capabilities.limitation ?? "需要开启辅助功能权限")
+                    : enabled
+                      ? "关闭跨屏输入"
+                      : "启用跨屏输入",
                   $uiLanguage,
                 )}
-              </h1>
-              <span class:controlling class:warning={Boolean(offlinePeer)}
-                >{uiTranslate(status, $uiLanguage)}</span
+                on:click={toggleInputSharing}><span></span></button
               >
+              <InputMenu label={uiTranslate("跨屏输入更多选项", $uiLanguage)} items={menuItems} />
             </div>
-            <p>
-              {uiTranslate(
-                section === "workspace"
-                  ? "按桌面上的真实位置排列屏幕，相邻重叠边段会自动连通。"
-                  : section === "keyboard"
-                    ? "让快捷键在不同系统上保持相同意图。"
-                    : section === "gaze"
-                      ? "用本机摄像头预选正在注视的屏幕与位置。"
-                      : section === "diagnostics"
-                        ? "查看连接质量、跨屏通道和最近事件。"
-                        : offlinePeer
-                          ? "布局已保留，但一台设备暂时不可用。"
-                          : "在设备之间自然移动鼠标和键盘。",
-                $uiLanguage,
-              )}
-            </p>
-          </div>
-          <div class="header-control">
-            <small
-              >{uiTranslate(
-                offlinePeer
-                  ? t("等待{part0}重新连接", $uiLanguage, {
-                      part0: friendlyDeviceName(
-                        offlinePeer.serviceInstanceId,
-                        snapshot!,
-                        $uiLanguage,
-                      ),
-                    })
-                  : enabled
-                    ? "任一设备活动即可自动接管 · ⌘⌥⇧ Esc 紧急释放"
-                    : "启用一次后持续待命",
-                $uiLanguage,
-              )}</small
-            >
-            <button
-              class:controlling={enabled}
-              class="control-button"
-              disabled={busy || (!enabled && !canTakeInputControl(snapshot))}
-              title={uiTranslate(
-                !canTakeInputControl(snapshot)
-                  ? (snapshot.capabilities.limitation ?? "需要开启辅助功能权限")
-                  : "",
-                $uiLanguage,
-              )}
-              on:click={toggleInputSharing}
-            >
-              <Power size={18} weight="bold" />
-              {uiTranslate(
-                busy ? "处理中…" : enabled ? "关闭跨屏输入" : "启用跨屏输入",
-                $uiLanguage,
-              )}
-            </button>
-          </div>
+          {:else}
+            <div class="header-control" bind:this={headerActions}></div>
+          {/if}
         </header>
-
-        <nav class="section-tabs" aria-label={uiTranslate("跨屏输入设置", $uiLanguage)}>
-          {#each sections as item}
-            <button class:active={section === item.id} on:click={() => (section = item.id)}>
-              <svelte:component
-                this={item.icon}
-                size={18}
-                weight={section === item.id ? "fill" : "regular"}
-              />
-              {uiTranslate(item.label, $uiLanguage)}
-            </button>
-          {/each}
-        </nav>
-
-        {#if snapshot.controller}
-          <div class="control-session" role="status" aria-live="polite">
-            <span class="live-dot"></span>
-            <div>
-              <strong
-                >{t("当前输入来自：{name}", $uiLanguage, {
-                  name: controlling
-                    ? uiTranslate("这台设备", $uiLanguage)
-                    : (remoteController ?? uiTranslate("目标设备", $uiLanguage)),
-                })}</strong
-              ><small
-                >{uiTranslate(
-                  "检测到另一台设备的本地输入时会自动切换 · 会话已加密",
-                  $uiLanguage,
-                )}</small
-              >
-            </div>
-            {#if section !== "overview"}<button
-                class="session-secondary"
-                on:click={() => (section = "overview")}
-                ><ArrowLeft size={15} />{uiTranslate("切回总览", $uiLanguage)}</button
-              >{/if}
+        {#if !canTakeInputControl(snapshot) && !childPage}
+          <div class="recovery-notice" role="status">
+            <span>{uiTranslate("需要开启辅助功能权限", $uiLanguage)}</span><button
+              on:click={() => openSetup(3)}>{uiTranslate("权限设置", $uiLanguage)}</button
+            >
           </div>
         {/if}
-
+        {#if enabled && offlinePeer && !childPage}
+          <div class="recovery-notice" role="status">
+            <span
+              >{friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot, $uiLanguage)} · {uiTranslate(
+                "已离线",
+                $uiLanguage,
+              )}</span
+            ><button disabled={busy} on:click={reconnectOfflinePeer}
+              ><ArrowCounterClockwise size={15} />{uiTranslate("重新连接", $uiLanguage)}</button
+            ><button on:click={forgetOfflinePeer}>{uiTranslate("移除设备", $uiLanguage)}</button>
+          </div>
+        {/if}
         <div class="input-sharing-content">
           {#if section === "overview"}
             <InputOverviewPage
@@ -374,13 +376,31 @@
               onForget={forgetOfflinePeer}
             />
           {:else if section === "workspace"}
-            <InputWorkspacePage {snapshot} onSnapshot={applySnapshot} {notify} />
+            <InputWorkspacePage
+              bind:this={workspacePage}
+              bind:saving={workspaceSaving}
+              inputBusy={busy}
+              {snapshot}
+              onSnapshot={applySnapshot}
+              {notify}
+            />
           {:else if section === "keyboard"}
-            <KeyboardPage {snapshot} onSnapshot={applySnapshot} {notify} />
+            <KeyboardPage
+              actionsTarget={headerActions}
+              bind:this={keyboardPage}
+              {snapshot}
+              onSnapshot={applySnapshot}
+              {notify}
+            />
           {:else if section === "gaze"}
-            <GazePage {snapshot} {notify} />
+            <GazePage actionsTarget={headerActions} {snapshot} {notify} />
           {:else}
-            <DiagnosticsPage {snapshot} {notify} onRefresh={() => refresh()} />
+            <DiagnosticsPage
+              actionsTarget={headerActions}
+              {snapshot}
+              {notify}
+              onRefresh={() => refresh()}
+            />
           {/if}
         </div>
       {/if}
@@ -395,222 +415,153 @@
 </main>
 
 <style>
+  :global(.input-discard-overlay) {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: #10182835;
+  }
+  :global(.input-discard-dialog) {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1101;
+    width: min(380px, calc(100vw - 32px));
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 16px 48px #10182825;
+  }
+  :global(.input-discard-dialog h2) {
+    font-size: 17px;
+    margin: 0 0 22px;
+  }
+  :global(.input-discard-dialog > div) {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  :global(.input-discard-dialog .sr-only) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
   .input-sharing-host {
     display: flex;
     min-width: 0;
     min-height: 0;
     flex-direction: column;
     gap: 0;
-    padding: 20px 32px 0;
+    padding: 24px 32px 0;
     overflow: hidden;
     color: var(--text);
     background: var(--surface);
   }
-  .gesture-debug-entry {
-    display: flex;
-    justify-content: flex-end;
-    padding-bottom: 12px;
-  }
-  .gesture-debug-entry button {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .gesture-debug-content {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-  }
   .input-sharing-header {
     display: flex;
-    min-height: 40px;
     align-items: center;
     justify-content: space-between;
+    min-height: 58px;
     gap: 24px;
-    padding-bottom: 10px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
   }
   .input-sharing-header h1 {
     margin: 0;
-    color: var(--text);
-    font-size: 24px;
-    font-weight: 720;
-    line-height: 1.1;
+    font-size: 27px;
+    font-weight: 700;
     letter-spacing: -0.035em;
+    line-height: 1.25;
   }
   .input-sharing-header p {
-    margin: 3px 0 0;
+    margin: 7px 0 0;
+    font-size: 14px;
     color: var(--text-secondary);
-    font-size: 11px;
-    line-height: 1.35;
   }
-  .title-line {
-    display: flex;
+  .child-page {
+    border-bottom: 0;
+    padding-top: 18px;
+    padding-bottom: 12px;
+  }
+  .debug-label {
+    margin-left: 12px;
+    color: var(--text-muted);
+    font-size: 17px;
+    font-weight: 450;
+    letter-spacing: normal;
+  }
+  .back-link {
+    display: inline-flex;
     align-items: center;
-    gap: 11px;
-  }
-  .title-line span {
-    padding: 5px 10px;
-    border-radius: 999px;
-    color: var(--success);
-    background: var(--success-soft);
-    font-size: 11px;
-    font-weight: 750;
-  }
-  .title-line span.controlling {
-    color: var(--accent-strong);
-    background: var(--accent-soft);
-  }
-  .title-line span.warning {
-    color: var(--warning);
-    background: var(--warning-soft);
+    gap: 8px;
+    align-self: flex-start;
+    border: 0;
+    padding: 0;
+    color: var(--text-secondary);
+    background: transparent;
+    font-size: 13px;
   }
   .header-control {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
+    gap: 16px;
   }
-  .header-control small {
-    max-width: 310px;
-    color: var(--text-muted);
-    font-size: 10px;
-    text-align: right;
-  }
-  .control-button {
-    display: inline-flex;
-    min-width: 132px;
-    min-height: 36px;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    border: 1px solid var(--accent);
-    border-radius: 9px;
-    padding: 0 14px;
-    color: #fff;
-    background: var(--accent);
-    font-size: 12px;
-    font-weight: 680;
-    transition: 120ms ease;
-  }
-  .control-button:hover {
-    background: var(--accent-strong);
-  }
-  .control-button.controlling {
-    border-color: var(--danger);
-    color: var(--danger);
-    background: var(--surface);
-  }
-  .control-button:disabled {
-    border-color: var(--border-strong);
-    color: var(--text-muted);
-    background: var(--surface-sunken);
-  }
-  .section-tabs {
-    display: flex;
-    gap: 32px;
-    border-bottom: 1px solid var(--border);
-  }
-  .section-tabs button {
-    position: relative;
-    display: inline-flex;
-    min-height: 40px;
-    align-items: center;
-    gap: 8px;
+  .sharing-switch {
+    width: 45px;
+    height: 26px;
+    padding: 3px;
     border: 0;
-    color: var(--text-secondary);
-    background: transparent;
-    font-size: 12px;
+    border-radius: 99px;
+    background: var(--border-strong);
   }
-  .section-tabs button::after {
-    position: absolute;
-    right: 0;
-    bottom: -1px;
-    left: 0;
-    height: 3px;
-    border-radius: 3px 3px 0 0;
-    background: transparent;
-    content: "";
+  .sharing-switch > span {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 3px #10182820;
+    transition: transform 120ms ease;
   }
-  .section-tabs button.active {
-    color: var(--accent-strong);
-    font-weight: 700;
-  }
-  .section-tabs button.active::after {
+  .sharing-switch.enabled {
     background: var(--accent);
   }
-  .control-session {
-    display: grid;
-    grid-template-columns: 9px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    margin-top: 10px;
-    padding: 6px 12px;
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+  .sharing-switch.enabled > span {
+    transform: translateX(19px);
   }
-  .live-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 15%, transparent);
-  }
-  .control-session > div {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    gap: 9px;
-  }
-  .control-session strong {
-    flex: none;
-    font-size: 12px;
-  }
-  .control-session small {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text-secondary);
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .session-secondary {
-    display: inline-flex;
-    min-height: 30px;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-    border-radius: 7px;
-    padding: 0 9px;
-    color: var(--accent-strong);
-    background: var(--surface);
-    font-size: 10px;
-    font-weight: 650;
+  .sharing-switch:disabled {
+    opacity: 0.5;
   }
   .input-sharing-content {
     min-height: 0;
     flex: 1;
     overflow: auto;
-    padding-top: 12px;
+    padding-top: 16px;
   }
-  .diagnostics-view .input-sharing-content {
-    padding-right: 4px;
-    scrollbar-gutter: stable;
+  .recovery-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
   }
-  .diagnostics-view .control-session {
-    min-height: 34px;
-    margin-top: 8px;
-    border-color: var(--border);
-    background: var(--surface-soft);
+  .recovery-notice > span {
+    flex: 1;
   }
-  .diagnostics-view .control-session strong {
-    flex-shrink: 1;
-    overflow-wrap: anywhere;
-    font-size: 11px;
-  }
-  .diagnostics-view .session-secondary {
-    border-color: transparent;
+  .recovery-notice button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 0;
+    color: var(--accent);
     background: transparent;
   }
   .input-loading {
@@ -621,18 +572,13 @@
     gap: 12px;
     color: var(--text-secondary);
   }
-  .input-loading > span {
-    width: 30px;
-    height: 30px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  .gesture-debug-content {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
   }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+  .gesture-debug-entry {
+    display: none;
   }
   :global(.input-sharing-host button) {
     font-family: inherit;
@@ -640,6 +586,10 @@
   }
   :global(.input-sharing-host button:disabled) {
     cursor: default;
+  }
+  :global(.input-sharing-host button:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
   }
   :global(.input-sharing-host .card) {
     border-color: var(--border);
@@ -652,19 +602,11 @@
     padding: 9px 13px;
     color: #fff;
     background: var(--accent);
-    transition: 120ms ease;
-  }
-  :global(.input-sharing-host .button:hover) {
-    background: var(--accent-strong);
   }
   :global(.input-sharing-host .button.secondary) {
     border-color: var(--border-strong);
     color: var(--text);
     background: var(--surface);
-  }
-  :global(.input-sharing-host .button.danger) {
-    border-color: var(--danger);
-    background: var(--danger);
   }
   :global(.input-sharing-host .muted) {
     color: var(--text-secondary);
@@ -674,7 +616,7 @@
   }
   :global(.input-sharing-host .badge) {
     display: inline-flex;
-    border-radius: 999px;
+    border-radius: 99px;
     padding: 4px 9px;
     color: var(--accent-strong);
     background: var(--accent-soft);
@@ -697,26 +639,7 @@
   }
   @media (max-width: 900px) {
     .input-sharing-host {
-      padding-inline: 20px;
-    }
-    .input-sharing-header {
-      align-items: flex-start;
-    }
-    .header-control small {
-      display: none;
-    }
-    .section-tabs {
-      gap: 14px;
-    }
-    .section-tabs button {
-      font-size: 11px;
-    }
-    .control-session {
-      grid-template-columns: 9px 1fr auto;
-    }
-    .control-session small,
-    .session-secondary {
-      display: none;
+      padding: 18px 20px 0;
     }
   }
 </style>

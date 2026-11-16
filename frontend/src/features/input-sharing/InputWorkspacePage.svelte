@@ -1,16 +1,19 @@
 <script lang="ts">
+  import { applyLayoutDraft } from "./workspaceDraft";
   import { diagnosticMessage } from "../../diagnosticMessages";
   import { t, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import AppSelect from "../../components/AppSelect.svelte";
+  import { Popover } from "bits-ui";
+  import InputMenu from "./InputMenu.svelte";
   import {
     ArrowsOutCardinal,
-    Crosshair,
-    FloppyDisk,
+    CornersOut,
+    Hand,
+    X,
     Minus,
     MinusCircle,
     Monitor,
     Ruler,
-    Selection,
     TestTube,
     Plus,
   } from "phosphor-svelte";
@@ -18,7 +21,7 @@
   import { bridge } from "../../bridge";
   import { friendlyDeviceName, portalEdgeTestRequest } from "./inputSharingUi";
   import { moveDisplayGroup, resizeDisplay as resizeDisplaySurface } from "./topologyGeometry";
-  import { onDestroy } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import PortalInspector from "./topology/PortalInspector.svelte";
   import WorkspaceCanvas from "./topology/WorkspaceCanvas.svelte";
   import { addWorkspaceDisplay, removeWorkspaceDisplay } from "./workspaceMembership";
@@ -33,8 +36,48 @@
   let mode: "select" | "test" = "select";
   let zoom = 1;
   let dirty = false;
-  let saving = false;
+  export let saving = false;
+  export let inputBusy = false;
   let addingDisplayId = "";
+  let addOpen = false;
+  let sizeOpen = false;
+  let canvas: WorkspaceCanvas;
+  let selectedBounds: { x: number; y: number; width: number; height: number } | null = null;
+  function updateSelectionBounds(bounds: typeof selectedBounds) {
+    selectedBounds = bounds;
+  }
+  export function hasUnsavedChanges() {
+    return dirty;
+  }
+  async function cancel() {
+    previewGeneration++;
+    clearTimeout(previewTimer);
+    configuration = structuredClone(snapshot.configuration);
+    dirty = false;
+    selectedDisplayId = null;
+    selectedPortalId = null;
+    sizeOpen = false;
+    await tick();
+    canvas?.fitToView();
+  }
+  function clearSelection() {
+    selectedDisplayId = null;
+    selectedPortalId = null;
+    sizeOpen = false;
+  }
+  function selectDisplay(id: string) {
+    if (selectedDisplayId !== id) sizeOpen = false;
+    selectedDisplayId = id;
+    selectedPortalId = null;
+  }
+  function restoreSize() {
+    if (!selectedDisplay) return;
+    const original =
+      snapshot.configuration.layout?.displays[selectedDisplay.displayId] ??
+      snapshot.configuration.rememberedDisplays[selectedDisplay.displayId];
+    if (original) resizeDisplay(selectedDisplay.displayId, original.physicalSizeUm.width);
+  }
+
   let previewGeneration = 0;
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
   onDestroy(() => {
@@ -71,12 +114,6 @@
     resizeDisplay(selectedDisplay.displayId, selectedDisplay.deskRectUm.width * factor);
   }
 
-  function selectDisplayForSizing() {
-    mode = "select";
-    selectedPortalId = null;
-    selectedDisplayId = selectedDisplayId ?? Object.keys(layout?.displays ?? {})[0] ?? null;
-  }
-
   function geometryChanged() {
     if (!layout) return;
     configuration = structuredClone(configuration);
@@ -103,6 +140,7 @@
     selectedDisplayId = addingDisplayId;
     selectedPortalId = null;
     addingDisplayId = "";
+    addOpen = false;
     geometryChanged();
   }
 
@@ -128,11 +166,14 @@
   }
 
   async function save() {
+    if (saving || inputBusy) return;
     previewGeneration++;
     clearTimeout(previewTimer);
     saving = true;
     try {
-      const next = await bridge.saveWorkspace(configuration);
+      const next = await bridge.saveWorkspace(
+        applyLayoutDraft(snapshot.configuration, configuration),
+      );
       onSnapshot(next);
       configuration = structuredClone(next.configuration);
       selectedPortalId = null;
@@ -186,406 +227,460 @@
   }
 </script>
 
-<section class="page">
+<section class="page" aria-label={uiTranslate("屏幕排列", $uiLanguage)}>
   <div class="page-toolbar">
-    <div class="tool-switch" aria-label={uiTranslate("布局工具", $uiLanguage)}>
-      <button class:active={mode === "select"} on:click={() => (mode = "select")}
-        ><Selection size={17} weight={mode === "select" ? "fill" : "regular"} />{uiTranslate(
-          "选择",
-          $uiLanguage,
-        )}</button
-      >
-      <button class:active={mode === "test"} on:click={() => (mode = "test")}
-        ><TestTube size={17} weight={mode === "test" ? "fill" : "regular"} />{uiTranslate(
-          "测试",
-          $uiLanguage,
-        )}</button
-      >
-    </div>
+    <h2>{uiTranslate("屏幕排列", $uiLanguage)}</h2>
     <div class="actions">
-      <label class="add-screen">
-        <span class="sr-only">{uiTranslate("添加屏幕", $uiLanguage)}</span>
-        <AppSelect
-          bind:value={addingDisplayId}
-          disabled={!availableDisplays.length}
-          aria-label={uiTranslate("添加屏幕", $uiLanguage)}
-          options={[
-            {
-              value: "",
-              label: uiTranslate(
-                availableDisplays.length ? "选择要添加的屏幕" : "所有已知屏幕均已添加",
-                $uiLanguage,
-              ),
+      <Popover.Root bind:open={addOpen}>
+        <Popover.Trigger class="input-secondary"
+          ><Plus size={17} />{uiTranslate("添加屏幕", $uiLanguage)}</Popover.Trigger
+        >
+        <Popover.Portal
+          ><Popover.Content
+            class="input-popover add-display-popover"
+            sideOffset={8}
+            align="end"
+            collisionPadding={12}
+          >
+            <h3>{uiTranslate("添加屏幕", $uiLanguage)}</h3>
+            <AppSelect
+              bind:value={addingDisplayId}
+              disabled={!availableDisplays.length}
+              aria-label={uiTranslate("选择要添加的屏幕", $uiLanguage)}
+              options={[
+                {
+                  value: "",
+                  label: uiTranslate(
+                    availableDisplays.length ? "选择要添加的屏幕" : "所有已知屏幕均已添加",
+                    $uiLanguage,
+                  ),
+                },
+                ...availableDisplays.map((display) => ({
+                  value: display.displayId,
+                  label: `${friendlyDeviceName(display.deviceId, snapshot, $uiLanguage)} · ${display.name}`,
+                })),
+              ]}
+            />
+            <button class="input-primary" disabled={!addingDisplayId} on:click={addDisplay}
+              >{uiTranslate("添加屏幕", $uiLanguage)}</button
+            >
+          </Popover.Content></Popover.Portal
+        >
+      </Popover.Root>
+      <InputMenu
+        label={uiTranslate("布局更多选项", $uiLanguage)}
+        items={[
+          {
+            label: uiTranslate("自动排列", $uiLanguage),
+            icon: ArrowsOutCardinal,
+            action: () => {
+              void autoArrange();
             },
-            ...availableDisplays.map((display) => ({
-              value: display.displayId,
-              label: [
-                friendlyDeviceName(display.deviceId, snapshot, $uiLanguage),
-                " · ",
-                display.name,
-              ].join(""),
-            })),
-          ]}
-        />
-      </label>
-      <button class="secondary-action" disabled={!addingDisplayId} on:click={addDisplay}
-        ><Plus size={17} />{uiTranslate("添加屏幕", $uiLanguage)}</button
-      >
-      <button class="secondary-action" on:click={autoArrange}
-        ><ArrowsOutCardinal size={17} />{uiTranslate("自动排列", $uiLanguage)}</button
-      >
-      <button
-        class:active={Boolean(selectedDisplayId)}
-        class="secondary-action"
-        on:click={selectDisplayForSizing}
-        ><Ruler size={17} />{uiTranslate("校准尺寸", $uiLanguage)}</button
-      >
-      <button class="save-action" disabled={!dirty || saving} on:click={save}
-        ><FloppyDisk size={17} />{uiTranslate(saving ? "保存中…" : "保存布局", $uiLanguage)}</button
-      >
+          },
+          {
+            label: uiTranslate(mode === "test" ? "结束测试" : "测试边缘", $uiLanguage),
+            icon: TestTube,
+            action: () => {
+              mode = mode === "test" ? "select" : "test";
+              clearSelection();
+            },
+          },
+        ]}
+      />
     </div>
   </div>
-
-  {#if layout}
-    <div class="workspace-row">
-      <div class="canvas card">
-        <WorkspaceCanvas
-          {layout}
-          displayAvailability={snapshot.displayAvailability}
-          controller={snapshot.controller}
-          localServiceInstanceId={snapshot.serviceInstanceId}
-          {deviceNames}
-          {mode}
-          {zoom}
-          {selectedDisplayId}
-          {selectedPortalId}
-          onSelectDisplay={(id: string) => {
-            selectedDisplayId = id;
-            selectedPortalId = null;
-            if (mode === "test") void testEdge(id);
-          }}
-          onSelectPortal={(id: string) => {
-            selectedPortalId = id;
-            selectedDisplayId = null;
-            if (mode === "test") {
-              const portal = layout?.portals.find((value) => value.portalId === id);
-              void testEdge(portal?.sourceDisplay ?? null, id);
-            }
-          }}
-          onMoveDisplay={moveDisplay}
-          onResizeDisplay={resizeDisplay}
-        />
-        {#if selectedDisplay}
-          <div
-            class="display-controls"
-            role="group"
-            aria-label={selectedDisplay.name}
-            on:pointerdown={(event) => event.stopPropagation()}
+  {#if layout && Object.keys(layout.displays).length}
+    <div class="canvas-area">
+      <WorkspaceCanvas
+        bind:this={canvas}
+        {layout}
+        displayAvailability={snapshot.displayAvailability}
+        controller={snapshot.controller}
+        {deviceNames}
+        {mode}
+        bind:zoom
+        {selectedDisplayId}
+        {selectedPortalId}
+        onSelectDisplay={(id) => {
+          selectDisplay(id);
+          if (mode === "test") void testEdge(id);
+        }}
+        onSelectPortal={(id) => {
+          selectedPortalId = id;
+          selectedDisplayId = null;
+        }}
+        onClearSelection={clearSelection}
+        onSelectionBounds={updateSelectionBounds}
+        onMoveDisplay={moveDisplay}
+        onResizeDisplay={resizeDisplay}
+      />
+      {#if selectedDisplay && selectedBounds && mode === "select"}
+        <div
+          class="selection-toolbar"
+          style:left={`clamp(150px, ${selectedBounds.x + selectedBounds.width / 2}px, calc(100% - 150px))`}
+          style:top={`${Math.max(10, selectedBounds.y - 50)}px`}
+        >
+          <span title={selectedDisplay.name}
+            >{uiTranslate("屏幕", $uiLanguage)}
+            {Object.keys(layout.displays).indexOf(selectedDisplay.displayId) + 1}</span
           >
-            <span class="display-control-icon"><Monitor size={18} weight="duotone" /></span>
-            <span class="display-control-copy"
-              ><strong>{selectedDisplay.name}</strong><small
-                >{uiTranslate("实际尺寸", $uiLanguage)} · {Math.round(
-                  selectedDisplay.deskRectUm.width / 1_000,
-                )} × {Math.round(selectedDisplay.deskRectUm.height / 1_000)} mm</small
-              ></span
+          <Popover.Root bind:open={sizeOpen}>
+            <Popover.Trigger class="size-trigger"
+              ><Ruler size={17} />{uiTranslate("尺寸", $uiLanguage)}</Popover.Trigger
             >
-            <button
-              aria-label={`${uiTranslate("缩小", $uiLanguage)} ${selectedDisplay.name}`}
-              title={uiTranslate("缩小", $uiLanguage)}
-              on:click={() => scaleSelectedDisplay(0.9)}><Minus size={16} /></button
+            <Popover.Portal
+              ><Popover.Content
+                class="input-popover"
+                side="top"
+                sideOffset={10}
+                collisionPadding={12}
+              >
+                <h3>{uiTranslate("屏幕尺寸", $uiLanguage)}</h3>
+                <p>{uiTranslate("调整图中的相对大小", $uiLanguage)}</p>
+                <div class="size-controls">
+                  <button
+                    class="input-icon-button"
+                    aria-label={uiTranslate("缩小屏幕", $uiLanguage)}
+                    on:click={() => scaleSelectedDisplay(0.9)}><Minus size={16} /></button
+                  ><output
+                    >{Math.round(selectedDisplay.deskRectUm.width / 1000)} × {Math.round(
+                      selectedDisplay.deskRectUm.height / 1000,
+                    )} mm</output
+                  ><button
+                    class="input-icon-button"
+                    aria-label={uiTranslate("放大屏幕", $uiLanguage)}
+                    on:click={() => scaleSelectedDisplay(1.1)}><Plus size={16} /></button
+                  >
+                </div>
+                <button class="input-text-button" on:click={restoreSize}
+                  >{uiTranslate("恢复原始尺寸", $uiLanguage)}</button
+                >
+              </Popover.Content></Popover.Portal
             >
-            <button
-              aria-label={`${uiTranslate("放大", $uiLanguage)} ${selectedDisplay.name}`}
-              title={uiTranslate("放大", $uiLanguage)}
-              on:click={() => scaleSelectedDisplay(1.1)}><Plus size={16} /></button
-            >
-            <button
-              class="remove-display"
-              aria-label={uiTranslate("从布局移除屏幕", $uiLanguage)}
-              title={uiTranslate("从布局移除屏幕", $uiLanguage)}
-              on:click={() => removeDisplay(selectedDisplay.displayId)}
-              ><MinusCircle size={17} /></button
-            >
-          </div>
-        {:else if selectedPortalId}
-          <div class="inspector-overlay">
-            <PortalInspector
-              {layout}
-              portalId={selectedPortalId}
-              onChange={behaviorChanged}
-              onFinish={() => {
-                selectedPortalId = null;
-                mode = "select";
-              }}
-              onTest={testSelectedPortal}
-            />
-          </div>
-        {/if}
-        <div class="canvas-footer">
-          <span
-            ><Crosshair size={16} />{uiTranslate(
-              mode === "select"
-                ? "同一设备的屏幕按系统排列整体移动；设备边缘靠近后会自动连通"
-                : "点击屏幕或高亮边段验证穿越结果",
-              $uiLanguage,
-            )}</span
+          </Popover.Root>
+          <InputMenu
+            label={uiTranslate("屏幕更多选项", $uiLanguage)}
+            items={[
+              {
+                label: uiTranslate("测试边缘", $uiLanguage),
+                icon: TestTube,
+                action: () => {
+                  void testEdge();
+                },
+              },
+              {
+                label: uiTranslate("从布局移除屏幕", $uiLanguage),
+                icon: MinusCircle,
+                danger: true,
+                separator: true,
+                action: () => removeDisplay(selectedDisplay!.displayId),
+              },
+            ]}
+          />
+          <button
+            class="selection-close"
+            aria-label={uiTranslate("取消选择", $uiLanguage)}
+            on:click={clearSelection}><X size={14} /></button
           >
-          <div>
-            <button
-              aria-label={uiTranslate("缩小", $uiLanguage)}
-              disabled={zoom <= 0.7}
-              on:click={() => (zoom = Math.max(0.7, +(zoom - 0.1).toFixed(1)))}>−</button
-            ><strong>{Math.round(zoom * 100)}%</strong><button
-              aria-label={uiTranslate("放大", $uiLanguage)}
-              disabled={zoom >= 1.4}
-              on:click={() => (zoom = Math.min(1.4, +(zoom + 0.1).toFixed(1)))}>＋</button
-            >
-          </div>
+        </div>
+      {:else if selectedPortalId}
+        <div class="inspector-overlay">
+          <PortalInspector
+            {layout}
+            portalId={selectedPortalId}
+            onChange={behaviorChanged}
+            onFinish={clearSelection}
+            onTest={testSelectedPortal}
+          />
+        </div>
+      {/if}
+      <div class="canvas-footer">
+        <span
+          ><Hand size={16} />{uiTranslate(
+            mode === "test" ? "点击屏幕或边缘进行测试" : "拖动设备，调整屏幕位置",
+            $uiLanguage,
+          )}</span
+        >
+        <div class="zoom-controls">
+          <button
+            aria-label={uiTranslate("缩小", $uiLanguage)}
+            disabled={zoom <= 0.2}
+            on:click={() => (zoom = Math.max(0.2, +(zoom - 0.1).toFixed(1)))}
+            ><Minus size={15} /></button
+          ><output>{Math.round(zoom * 100)}%</output><button
+            aria-label={uiTranslate("放大", $uiLanguage)}
+            disabled={zoom >= 3}
+            on:click={() => (zoom = Math.min(3, +(zoom + 0.1).toFixed(1)))}
+            ><Plus size={15} /></button
+          ><button class="fit-button" on:click={() => canvas.fitToView()}
+            ><CornersOut size={17} />{uiTranslate("显示全部", $uiLanguage)}</button
+          >
         </div>
       </div>
     </div>
   {:else}
-    <div class="empty card">
-      <span><ArrowsOutCardinal size={38} weight="duotone" /></span>
+    <div class="empty">
+      <Monitor size={36} />
       <h2>{uiTranslate("尚未检测到显示器", $uiLanguage)}</h2>
       <p>{uiTranslate("连接设备或授予系统权限后，显示器会自动加入工作区。", $uiLanguage)}</p>
     </div>
   {/if}
+  <footer class="workspace-footer">
+    <small><kbd>⌘ ⌥ ⇧ Esc</kbd> {uiTranslate("返回本机", $uiLanguage)}</small>{#if dirty}<div
+        class="save-controls"
+      >
+        <span>{uiTranslate("未保存", $uiLanguage)}</span><button
+          class="input-secondary"
+          disabled={saving}
+          on:click={cancel}>{uiTranslate("取消", $uiLanguage)}</button
+        ><button class="input-primary" disabled={saving || inputBusy} on:click={save}
+          >{uiTranslate(saving ? "保存中…" : "保存布局", $uiLanguage)}</button
+        >
+      </div>{/if}
+  </footer>
 </section>
 
 <style>
-  .add-screen :global(.app-select-trigger) {
-    min-height: 39px;
-    max-width: 220px;
-    border: 1px solid var(--border-strong);
-    border-radius: 9px;
-    padding: 0 10px;
-    color: var(--text);
-    background: var(--surface);
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-  .actions {
-    flex-wrap: wrap;
-  }
-  .tool-switch {
-    flex-shrink: 0;
-  }
-  .tool-switch button,
-  .secondary-action,
-  .save-action {
-    white-space: nowrap;
-  }
   .page {
-    min-height: 560px;
-    height: 100%;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding-bottom: 24px;
+    height: 100%;
+    min-height: 410px;
   }
   .page-toolbar {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: 16px;
-  }
-  .tool-switch {
-    display: inline-flex;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 11px;
-    background: var(--surface-soft);
-  }
-  .tool-switch button {
-    display: inline-flex;
-    min-height: 36px;
     align-items: center;
-    gap: 7px;
-    border: 0;
-    border-radius: 8px;
-    padding: 0 13px;
-    color: var(--text-secondary);
-    background: transparent;
+    gap: 12px;
   }
-  .tool-switch button.active {
-    color: var(--accent-strong);
-    background: var(--accent-soft);
-    box-shadow: 0 1px 3px #10182810;
+  .page-toolbar h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 650;
   }
   .actions {
     display: flex;
-    gap: 8px;
-  }
-  .secondary-action,
-  .save-action {
-    display: inline-flex;
-    min-height: 39px;
     align-items: center;
     gap: 7px;
-    border-radius: 9px;
-    padding: 0 13px;
-    font-weight: 650;
   }
-  .secondary-action {
+  :global(.input-secondary),
+  :global(.input-primary) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 7px 13px;
     border: 1px solid var(--border-strong);
+    border-radius: 8px;
     color: var(--text);
     background: var(--surface);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
   }
-  .save-action {
-    border: 1px solid var(--accent);
-    color: #fff;
+  :global(.input-primary) {
+    color: white;
     background: var(--accent);
+    border-color: var(--accent);
   }
-  .save-action:disabled {
-    border-color: var(--border-strong);
-    color: var(--text-muted);
-    background: var(--surface-sunken);
+  :global(.input-primary:disabled),
+  :global(.input-secondary:disabled) {
+    opacity: 0.45;
+    cursor: default;
   }
-  .workspace-row {
-    min-height: 0;
-    flex: 1;
-  }
-  .canvas {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    overflow: hidden;
-    padding: 8px;
-  }
-  .display-controls {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    display: flex;
-    min-width: 330px;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
-    box-shadow: var(--shadow-card);
-    backdrop-filter: blur(12px);
-  }
-  .display-control-icon {
-    display: grid;
-    width: 34px;
-    height: 34px;
+  :global(.input-icon-button) {
+    display: inline-grid;
     place-items: center;
-    flex: none;
-    border-radius: 9px;
-    color: var(--accent);
-    background: var(--accent-soft);
-  }
-  .display-control-copy {
-    display: grid;
-    min-width: 0;
-    flex: 1;
-    gap: 2px;
-  }
-  .display-control-copy strong,
-  .display-control-copy small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .display-control-copy strong {
-    font-size: 11px;
-  }
-  .display-control-copy small {
-    color: var(--text-muted);
-    font-size: 9px;
-  }
-  .display-controls button {
-    display: grid;
     width: 32px;
     height: 32px;
-    place-items: center;
-    flex: none;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text-secondary);
+    border-radius: 7px;
     background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
   }
-  .display-controls button:hover,
-  .secondary-action.active {
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-    color: var(--accent-strong);
-    background: var(--accent-soft);
+  :global(.input-text-button) {
+    border: 0;
+    padding: 0;
+    color: var(--accent);
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
   }
-  .display-controls button.remove-display {
-    color: var(--danger);
+  :global(.input-popover) {
+    z-index: 1000;
+    width: 280px;
+    max-width: calc(100vw - 24px);
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: 0 8px 28px #10182820;
+    font: 14px var(--font-family-ui);
+  }
+  :global(.input-popover h3) {
+    margin: 0;
+    font-size: 15px;
+  }
+  :global(.input-popover p) {
+    margin: 6px 0 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  :global(.add-display-popover) {
+    display: grid;
+    gap: 12px;
+    width: 330px;
+  }
+  :global(.size-controls) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 15px 0;
+  }
+  :global(.size-controls output) {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .canvas-area {
+    flex: 1;
+    min-height: 300px;
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .selection-toolbar {
+    position: absolute;
+    z-index: 3;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    max-width: calc(100% - 20px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 0 3px 14px #10182816;
+  }
+  .selection-toolbar > span {
+    padding: 0 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    color: var(--text-secondary);
+  }
+  :global(.size-trigger) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    color: var(--text);
+    background: transparent;
+    font-size: 13px;
+  }
+  .selection-close {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 30px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    color: var(--text-muted);
+    background: transparent;
   }
   .inspector-overlay {
     position: absolute;
-    z-index: 3;
-    top: 18px;
-    right: 18px;
+    z-index: 4;
+    top: 12px;
+    right: 12px;
     bottom: 64px;
-    width: 322px;
-    min-height: 0;
-  }
-  .inspector-overlay :global(.inspector) {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    background: color-mix(in srgb, var(--surface) 96%, transparent);
-    box-shadow: 0 12px 36px #10182824;
-    backdrop-filter: blur(14px);
+    width: min(322px, calc(100% - 24px));
+    overflow: auto;
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px #10182820;
   }
   .canvas-footer {
     position: absolute;
-    right: 18px;
-    bottom: 16px;
-    left: 18px;
+    bottom: 14px;
+    left: 16px;
+    right: 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
+    gap: 10px;
     pointer-events: none;
   }
   .canvas-footer > span {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 7px 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
     color: var(--text-secondary);
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    font-size: 10px;
+    font-size: 12px;
   }
-  .canvas-footer > div {
+  .zoom-controls {
     display: flex;
     align-items: center;
-    overflow: hidden;
+    flex: none;
+    padding: 3px;
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: 10px;
     background: var(--surface);
     pointer-events: auto;
   }
-  .canvas-footer button,
-  .canvas-footer strong {
-    display: grid;
-    min-width: 34px;
-    height: 34px;
-    place-items: center;
+  .zoom-controls button,
+  .zoom-controls output {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 7px;
     border: 0;
     color: var(--text);
     background: transparent;
-    font-size: 11px;
+    font-size: 12px;
   }
-  .canvas-footer strong {
-    border-inline: 1px solid var(--border);
-    font-weight: 550;
+  .zoom-controls .fit-button {
+    border-left: 1px solid var(--border);
+    margin-left: 4px;
+    padding-inline: 10px;
+  }
+  .workspace-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 46px;
+    gap: 14px;
+    padding-bottom: 12px;
+  }
+  .workspace-footer small {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  kbd {
+    font: inherit;
+    margin-right: 5px;
+  }
+  .save-controls {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .save-controls > span {
+    margin-right: 15px;
+    color: var(--text-muted);
+    font-size: 12px;
   }
   .empty {
     flex: 1;
@@ -593,46 +688,26 @@
     place-content: center;
     justify-items: center;
     gap: 10px;
-    text-align: center;
-  }
-  .empty > span {
-    display: grid;
-    width: 64px;
-    height: 64px;
-    place-items: center;
-    border-radius: 17px;
-    color: var(--accent);
-    background: var(--accent-soft);
+    color: var(--text-secondary);
   }
   .empty h2 {
-    margin: 0;
+    font-size: 17px;
   }
   .empty p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 13px;
   }
-  @media (max-width: 980px) {
-    .page-toolbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-    .actions {
-      width: 100%;
-      flex-wrap: wrap;
-    }
-    .display-controls {
-      right: 12px;
-      left: 12px;
-      min-width: 0;
-    }
-    .inspector-overlay {
-      right: 12px;
-      left: 12px;
-      width: auto;
-    }
+  @media (max-width: 800px) {
     .canvas-footer > span {
-      max-width: calc(100% - 120px);
+      display: none;
+    }
+    .canvas-footer {
+      justify-content: flex-end;
+    }
+    .save-controls > span {
+      display: none;
+    }
+    .workspace-footer small {
+      font-size: 10px;
     }
   }
 </style>
