@@ -67,6 +67,7 @@ test("saving a dirty layout does not re-enable input sharing", async ({ page }) 
   );
   await page.getByRole("button", { name: "保存布局", exact: true }).click();
   await expect(page.getByRole("button", { name: "保存布局", exact: true })).toHaveCount(0);
+  await expect(page.locator(".recovery-notice")).toHaveCount(0);
   await expect(page.getByRole("switch", { name: "跨屏输入", exact: true })).toHaveAttribute(
     "aria-checked",
     "false",

@@ -353,7 +353,7 @@
             >
           </div>
         {/if}
-        {#if offlinePeer && !childPage}
+        {#if enabled && offlinePeer && !childPage}
           <div class="recovery-notice" role="status">
             <span
               >{friendlyDeviceName(offlinePeer.serviceInstanceId, snapshot, $uiLanguage)} · {uiTranslate(
