@@ -75,17 +75,26 @@ test("saving a dirty layout does not re-enable input sharing", async ({ page }) 
 });
 
 test("multiple screens belonging to one computer move as a group", async ({ page }) => {
-  const fourth = await screen(page, 4).boundingBox();
-  const fifth = await screen(page, 5).boundingBox();
-  await page.mouse.move(fourth!.x + 40, fourth!.y + 35);
+  const position = (number: number) =>
+    screen(page, number)
+      .locator(":scope > rect")
+      .evaluate((rect) => ({
+        x: Number(rect.getAttribute("x")),
+        y: Number(rect.getAttribute("y")),
+      }));
+  const fourth = await position(4);
+  const fifth = await position(5);
+  const dragBounds = await screen(page, 4).boundingBox();
+  await page.mouse.move(dragBounds!.x + 40, dragBounds!.y + 35);
   await page.mouse.down();
-  await page.mouse.move(fourth!.x + 70, fourth!.y + 70, { steps: 8 });
+  await page.mouse.move(dragBounds!.x + 70, dragBounds!.y + 70, { steps: 8 });
   await page.mouse.up();
-  const movedFourth = await screen(page, 4).boundingBox();
-  const movedFifth = await screen(page, 5).boundingBox();
-  expect(movedFourth!.x).not.toBe(fourth!.x);
-  expect(movedFifth!.x - movedFourth!.x).toBeCloseTo(fifth!.x - fourth!.x, 1);
-  expect(movedFifth!.y - movedFourth!.y).toBeCloseTo(fifth!.y - fourth!.y, 1);
+  // Selection changes stroke width, so compare projected geometry rather than visual bounds.
+  await expect.poll(async () => (await position(4)).x).not.toBe(fourth.x);
+  const movedFourth = await position(4);
+  const movedFifth = await position(5);
+  expect(movedFifth.x - movedFourth.x).toBeCloseTo(fifth.x - fourth.x, 1);
+  expect(movedFifth.y - movedFourth.y).toBeCloseTo(fifth.y - fourth.y, 1);
 });
 
 test("keyboard, gaze, and diagnostics remain accessible as secondary pages", async ({ page }) => {
