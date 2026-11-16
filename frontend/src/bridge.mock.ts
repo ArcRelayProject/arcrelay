@@ -121,12 +121,82 @@ function actionLabel(action: QuickAction) {
   }
 }
 const mockRecoveredInputPeers = new Set<string>();
+let complexInputPreviewInitialized = false;
+function initializeComplexInputPreview() {
+  const runtime = mockData.inputRuntime;
+  const layout = runtime.configuration.layout;
+  if (!layout) return;
+  const local = structuredClone(layout.displays["browser-display"]);
+  const remote = structuredClone(layout.displays["remote-display"]);
+  local.name = "Display 1";
+  local.deskRectUm = { x: 0, y: 0, width: 600000, height: 400000 };
+  local.physicalSizeUm = { width: 600000, height: 400000 };
+  remote.name = "Display 2";
+  remote.deskRectUm = { x: 300000, y: -170000, width: 300000, height: 170000 };
+  remote.physicalSizeUm = { width: 300000, height: 170000 };
+  const offline = (id: string, deviceId: string, x: number, width: number, height: number) => ({
+    ...structuredClone(remote),
+    displayId: id,
+    fingerprint: id,
+    deviceId,
+    name: id,
+    deskRectUm: { x, y: 0, width, height },
+    physicalSizeUm: { width, height },
+  });
+  layout.displays = {
+    [local.displayId]: local,
+    [remote.displayId]: remote,
+    "office-display": offline("office-display", "office-pc", -300000, 300000, 170000),
+    "windows-main": offline("windows-main", "windows-pc", 720000, 300000, 170000),
+    "windows-side": offline("windows-side", "windows-pc", 1020000, 160000, 110000),
+  };
+  layout.portals = [
+    {
+      ...layout.portals[0],
+      sourceEdge: "Top",
+      targetEdge: "Bottom",
+      sourceSegment: { startUm: 300000, endUm: 600000 },
+      targetSegment: { startUm: 0, endUm: 300000 },
+    },
+  ];
+  runtime.configuration.rememberedDisplays = structuredClone(layout.displays);
+  runtime.displayAvailability = {
+    [local.displayId]: "Ready",
+    [remote.displayId]: "Ready",
+    "office-display": "Offline",
+    "windows-main": "Offline",
+    "windows-side": "Offline",
+  };
+  const peer = runtime.nearbyPeers.find((peer) => peer.serviceInstanceId === remote.deviceId);
+  if (peer) {
+    peer.displayName = "MacBook Pro";
+    runtime.nearbyPeers.push(
+      {
+        ...structuredClone(peer),
+        serviceInstanceId: "office-pc",
+        displayName: "办公电脑",
+        connected: false,
+      },
+      {
+        ...structuredClone(peer),
+        serviceInstanceId: "windows-pc",
+        displayName: "Windows 电脑",
+        connected: false,
+      },
+    );
+  }
+}
+
 function browserInputRuntimeSnapshot(): InputRuntimeSnapshot {
-  const snapshot = structuredClone(mockData.inputRuntime);
   const scenario =
     typeof window === "undefined"
       ? null
       : new URLSearchParams(window.location.search).get("inputScenario");
+  if (scenario === "complex" && !complexInputPreviewInitialized) {
+    initializeComplexInputPreview();
+    complexInputPreviewInitialized = true;
+  }
+  const snapshot = structuredClone(mockData.inputRuntime);
   if (scenario === "recovery" && !mockRecoveredInputPeers.has("remote-office-mac")) {
     const peer = snapshot.nearbyPeers.find(
       (value) => value.serviceInstanceId === "remote-office-mac",

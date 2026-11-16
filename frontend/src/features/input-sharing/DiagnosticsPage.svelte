@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { Portal } from "bits-ui";
+  export let actionsTarget: HTMLElement | undefined = undefined;
   import { t, locale, translate as uiTranslate, language as uiLanguage } from "../../i18n";
   import { diagnosticMessage } from "../../diagnosticMessages";
+  import InputMenu from "./InputMenu.svelte";
   import AppSelect from "../../components/AppSelect.svelte";
   import { onMount } from "svelte";
   import {
@@ -8,14 +11,10 @@
     ArrowsClockwise,
     Bug,
     CaretDown,
-    Clock,
-    DotsThree,
-    Check,
     Copy,
     DesktopTower,
     DownloadSimple,
     FolderOpen,
-    Gauge,
     Monitor,
     Pulse,
     ShieldCheck,
@@ -85,7 +84,7 @@
     p95,
   });
   $: detailedLogging = Boolean(logStatus?.detailedUntilMs && logStatus.detailedUntilMs > now);
-  $: visibleEvents = rangedDiagnostics.slice(showAllEvents ? -20 : -4).reverse();
+  $: visibleEvents = rangedDiagnostics.slice(showAllEvents ? -20 : -3).reverse();
   $: latencyLabel = chart.scope === "receive" ? "本机接收处理耗时" : "本机采集处理耗时";
 
   async function copyReport() {
@@ -227,126 +226,116 @@
 </script>
 
 <section class="page" aria-label={uiTranslate("连接诊断", $uiLanguage)}>
-  <div class="diagnostic-toolbar">
-    <div class="range-control">
-      <Clock size={16} />
-      <AppSelect
-        bind:value={timeRange}
-        aria-label={uiTranslate("诊断时间范围", $uiLanguage)}
-        options={[
-          { value: "15", label: uiTranslate("最近 15 分钟", $uiLanguage) },
-          { value: "60", label: uiTranslate("最近 1 小时", $uiLanguage) },
-          { value: "1440", label: uiTranslate("最近 24 小时", $uiLanguage) },
+  <Portal to={actionsTarget} disabled={!actionsTarget}
+    ><div class="diagnostic-toolbar">
+      <button class="input-secondary" disabled={refreshing} on:click={refreshDiagnostics}
+        ><ArrowsClockwise size={16} />{uiTranslate(
+          refreshing ? "检测中" : "重新检测",
+          $uiLanguage,
+        )}</button
+      ><button class="input-primary" disabled={exportingLogs} on:click={exportLogs}
+        ><DownloadSimple size={16} />{uiTranslate(
+          exportingLogs ? "导出中…" : "导出诊断包",
+          $uiLanguage,
+        )}</button
+      ><InputMenu
+        label={uiTranslate("诊断更多选项", $uiLanguage)}
+        items={[
+          {
+            label: uiTranslate(copied ? "已复制" : "复制报告", $uiLanguage),
+            icon: Copy,
+            action: () => {
+              void copyReport();
+            },
+          },
         ]}
       />
-    </div>
-    <div class="toolbar-actions">
-      <button class="quiet-action" on:click={copyReport}>
-        {#if copied}<Check size={15} />{:else}<Copy size={15} />{/if}
-        {uiTranslate(copied ? "已复制" : "复制报告", $uiLanguage)}
-      </button>
-      <button class="refresh-action" disabled={refreshing} on:click={refreshDiagnostics}>
-        <ArrowsClockwise class={refreshing ? "spinning" : ""} size={15} />
-        {uiTranslate(refreshing ? "检测中" : "重新检测", $uiLanguage)}
-      </button>
-    </div>
-  </div>
-
-  <div class="health-card" data-tone={health.tone}>
-    <div class="health-heading">
-      <span class="health-icon">
-        {#if health.tone === "success"}<Check size={23} weight="bold" />
-        {:else if health.tone === "warning"}<Gauge size={23} />
-        {:else}<Pulse size={23} />{/if}
-      </span>
-      <div class="health-copy">
-        <h2>{uiTranslate(health.title, $uiLanguage)}</h2>
-        <p>{uiTranslate(health.detail, $uiLanguage)}</p>
-      </div>
-      <span class="health-status"
-        ><i></i>{uiTranslate(
-          health.tone === "success"
-            ? "运行正常"
-            : health.tone === "warning"
-              ? "需要关注"
-              : "等待就绪",
-          $uiLanguage,
-        )}</span
+    </div></Portal
+  >
+  <section class="diagnostic-section">
+    <header>
+      <h2>{uiTranslate("连接检查", $uiLanguage)}</h2>
+      <span data-tone={health.tone}>{uiTranslate(health.title, $uiLanguage)}</span>
+    </header>
+    {#if health.tone !== "success"}<p class="health-detail">
+        {uiTranslate(health.detail, $uiLanguage)}
+      </p>{/if}
+    <div class="check-row">
+      <Monitor size={18} /><strong>{uiTranslate("本机输入权限", $uiLanguage)}</strong><span
+        >{uiTranslate(captureReady ? "可捕获鼠标与键盘" : "请检查输入捕获权限", $uiLanguage)}</span
+      ><em data-tone={captureReady ? "success" : "warning"}
+        >{uiTranslate(captureReady ? "正常" : "受限", $uiLanguage)}</em
       >
     </div>
+    <div class="check-row">
+      <DesktopTower size={18} /><strong>{uiTranslate("远程设备", $uiLanguage)}</strong><span
+        >{remoteId
+          ? friendlyDeviceName(remoteId, snapshot, $uiLanguage)
+          : uiTranslate("目标设备", $uiLanguage)}{#if connected}<small>
+            · {uiTranslate("加密连接", $uiLanguage)}</small
+          >{/if}</span
+      ><em data-tone={!connected ? "neutral" : remoteInjectionReady ? "success" : "warning"}
+        >{uiTranslate(
+          !connected ? "未连接" : remoteInjectionReady ? "可用" : "能力受限",
+          $uiLanguage,
+        )}</em
+      >
+    </div>
+    <div class="edges">
+      <h3>{uiTranslate("跨屏边缘", $uiLanguage)}</h3>
+      {#each portals as portal}
+        <div class="portal-row">
+          <span class="portal-icon"><Monitor size={17} /></span>
+          <span class="portal-name"
+            ><span>{uiTranslate(displays[portal.sourceDisplay]?.name ?? "屏幕", $uiLanguage)}</span
+            ><span
+              ><ArrowRight size={12} />{uiTranslate(
+                displays[portal.targetDisplay]?.name ?? "屏幕",
+                $uiLanguage,
+              )}</span
+            ></span
+          >
+          <em data-tone={portal.status === "Active" ? "success" : "warning"}
+            ><i></i>{uiTranslate(portal.status === "Active" ? "可用" : "已暂停", $uiLanguage)}</em
+          >
+          <button
+            class="test-action"
+            disabled={portal.status !== "Active" || testingPortalId === portal.portalId}
+            on:click={() => testPortal(portal.portalId)}
+            >{uiTranslate(
+              testingPortalId === portal.portalId ? "测试中" : "测试",
+              $uiLanguage,
+            )}<ArrowRight size={13} /></button
+          >
+        </div>
+      {/each}
+      {#if portals.length === 0}<div class="empty-row">
+          <Monitor size={24} />{uiTranslate("当前没有相邻且重叠的跨屏边段。", $uiLanguage)}
+        </div>{/if}
+    </div>
+  </section>
+  <section class="diagnostic-section">
+    <h2>{uiTranslate("本机输入处理", $uiLanguage)}</h2>
     <div class="metric-grid">
       <article>
-        <span class="metric-label"
-          ><Pulse size={15} />{uiTranslate(latencyLabel, $uiLanguage)}<small
-            >{uiTranslate("样本 P95", $uiLanguage)}</small
-          ></span
-        >
-        <strong class="metric-value" data-tone={latencyTone(p95)}
-          >{p95 == null ? "—" : p95.toFixed(1)}{#if p95 != null}<span>ms</span>{/if}</strong
-        >
-        <small
-          >{uiTranslate(
-            p95 == null
-              ? "等待输入样本"
-              : p95 > 16
-                ? "高于本机 16 ms 参考线"
-                : "本机耗时，不含网络传输",
-            $uiLanguage,
-          )}</small
+        <span>{uiTranslate(latencyLabel, $uiLanguage)} P95</span><strong
+          data-tone={latencyTone(p95)}>{p95 == null ? "—" : `${p95.toFixed(1)} ms`}</strong
         >
       </article>
       <article>
-        <span class="metric-label"
-          ><Gauge size={15} />{uiTranslate("处理速率（估算）", $uiLanguage)}</span
+        <span>{uiTranslate("处理速率（估算）", $uiLanguage)}</span><strong
+          >{eventRate == null ? "—" : `${eventRate < 1 ? "< 1" : eventRate.toFixed(0)} Hz`}</strong
         >
-        <strong class="metric-value"
-          >{eventRate == null
-            ? "—"
-            : eventRate < 1
-              ? "< 1"
-              : eventRate.toFixed(0)}{#if eventRate != null}<span>Hz</span>{/if}</strong
-        >
-        <small>{uiTranslate("根据当前输入样本估算", $uiLanguage)}</small>
       </article>
       <article>
-        <span class="metric-label"><WifiHigh size={15} />{uiTranslate("丢包", $uiLanguage)}</span>
-        <strong class="metric-value neutral">—</strong>
-        <small>{uiTranslate("未采样", $uiLanguage)}</small>
-      </article>
-      <article>
-        <span class="metric-label"
-          ><DesktopTower size={15} />{uiTranslate("连接状态", $uiLanguage)}</span
+        <span>{uiTranslate("丢包", $uiLanguage)}</span><strong
+          >{uiTranslate("未采样", $uiLanguage)}</strong
         >
-        <strong
-          class="metric-value text-value"
-          data-tone={!connected ? "neutral" : remoteInjectionReady ? "success" : "warning"}
-          >{uiTranslate(
-            connected ? (remoteInjectionReady ? "可用" : "能力受限") : "未连接",
-            $uiLanguage,
-          )}</strong
-        >
-        <small>{activePortalCount(snapshot)} {uiTranslate("个自动边段可用", $uiLanguage)}</small>
       </article>
     </div>
-  </div>
-
-  <div class="diagnostic-grid">
-    <section class="panel quality-card" aria-labelledby="quality-title">
-      <div class="panel-heading">
-        <div>
-          <h3 id="quality-title">{uiTranslate("本机输入处理", $uiLanguage)}</h3>
-          <p><i class="legend-dot"></i>{uiTranslate(latencyLabel, $uiLanguage)}</p>
-        </div>
-        <span
-          class="peer-label"
-          title={remoteId ? friendlyDeviceName(remoteId, snapshot, $uiLanguage) : undefined}
-          ><DesktopTower size={14} /><span
-            >{remoteId
-              ? friendlyDeviceName(remoteId, snapshot, $uiLanguage)
-              : uiTranslate("目标设备", $uiLanguage)}</span
-          ></span
-        >
-      </div>
+    <p class="measurement-note">{uiTranslate("本机耗时，不含网络传输", $uiLanguage)}</p>
+    <details class="performance-details">
+      <summary>{uiTranslate("性能详情", $uiLanguage)}<CaretDown size={15} /></summary>
       <div class="chart-wrap">
         <div class="chart-scale" aria-hidden="true">
           <span>{chart.maximum} ms</span><span>0</span>
@@ -407,198 +396,71 @@
           >
         </div>
       </div>
-    </section>
-
-    <section class="panel path-card" aria-labelledby="path-title">
-      <div class="panel-heading">
-        <div>
-          <h3 id="path-title">{uiTranslate("连接路径", $uiLanguage)}</h3>
-          <p>{uiTranslate("从本机捕获到远程输入", $uiLanguage)}</p>
-        </div>
-        <ShieldCheck size={18} />
-      </div>
-      <ol class="path-list">
-        <li class="path-step">
-          <span class="path-icon"><Monitor size={20} /></span>
-          <div>
-            <strong>{uiTranslate("这台设备", $uiLanguage)}</strong><small
-              >{uiTranslate(
-                captureReady ? "鼠标与键盘捕获可用" : "请检查输入捕获权限",
-                $uiLanguage,
-              )}</small
-            >
-          </div>
-          <em data-tone={captureReady ? "success" : "warning"}
-            ><i></i>{uiTranslate(captureReady ? "正常" : "受限", $uiLanguage)}</em
-          >
-        </li>
-        <li class="path-step">
-          <span class="path-icon"><WifiHigh size={20} /></span>
-          <div>
-            <strong>{uiTranslate("本地网络", $uiLanguage)}</strong><small
-              >{uiTranslate(connected ? "加密连接" : "等待连接", $uiLanguage)}</small
-            >
-          </div>
-          <em data-tone={connected ? "success" : "neutral"}
-            ><i></i>{uiTranslate(connected ? "已连接" : "未连接", $uiLanguage)}</em
-          >
-        </li>
-        <li class="path-step">
-          <span class="path-icon"><DesktopTower size={20} /></span>
-          <div>
-            <strong
-              >{remoteId
-                ? friendlyDeviceName(remoteId, snapshot, $uiLanguage)
-                : uiTranslate("目标设备", $uiLanguage)}</strong
-            ><small
-              >{uiTranslate(
-                !connected
-                  ? "尚未连接"
-                  : remoteInjectionReady
-                    ? "鼠标与键盘注入可用"
-                    : remotePeer?.capabilities
-                      ? (remotePeer.capabilities.limitation ?? "输入注入能力不完整")
-                      : "等待目标能力信息",
-                $uiLanguage,
-              )}</small
-            >
-          </div>
-          <em data-tone={!connected ? "neutral" : remoteInjectionReady ? "success" : "warning"}
-            ><i></i>{uiTranslate(
-              !connected ? "未连接" : remoteInjectionReady ? "正常" : "受限",
-              $uiLanguage,
-            )}</em
-          >
-        </li>
-      </ol>
-      <div class="path-footer">
-        <ShieldCheck size={14} />{uiTranslate(
-          connected ? "设备间通信已加密" : "连接后显示完整路径",
-          $uiLanguage,
-        )}
-      </div>
-    </section>
-
-    <section class="panel portals-card" aria-labelledby="portals-title">
-      <div class="panel-heading">
-        <div>
-          <h3 id="portals-title">
-            {uiTranslate("跨屏边缘", $uiLanguage)}<span class="count">{portals.length}</span>
-          </h3>
-          <p>{uiTranslate("检查屏幕之间的穿越通道", $uiLanguage)}</p>
-        </div>
-      </div>
-      {#each portals as portal}
-        <div class="portal-row">
-          <span class="portal-icon"><Monitor size={17} /></span>
-          <span class="portal-name"
-            ><span>{uiTranslate(displays[portal.sourceDisplay]?.name ?? "屏幕", $uiLanguage)}</span
-            ><span
-              ><ArrowRight size={12} />{uiTranslate(
-                displays[portal.targetDisplay]?.name ?? "屏幕",
-                $uiLanguage,
-              )}</span
-            ></span
-          >
-          <em data-tone={portal.status === "Active" ? "success" : "warning"}
-            ><i></i>{uiTranslate(portal.status === "Active" ? "可用" : "已暂停", $uiLanguage)}</em
-          >
-          <button
-            class="test-action"
-            disabled={portal.status !== "Active" || testingPortalId === portal.portalId}
-            on:click={() => testPortal(portal.portalId)}
-            >{uiTranslate(
-              testingPortalId === portal.portalId ? "测试中" : "测试",
-              $uiLanguage,
-            )}<ArrowRight size={13} /></button
-          >
-        </div>
-      {/each}
-      {#if portals.length === 0}<div class="empty-row">
-          <Monitor size={24} />{uiTranslate("当前没有相邻且重叠的跨屏边段。", $uiLanguage)}
-        </div>{/if}
-    </section>
-
-    <section class="panel timeline-card" aria-labelledby="timeline-title">
-      <div class="panel-heading">
-        <div>
-          <h3 id="timeline-title">{uiTranslate("最近事件", $uiLanguage)}</h3>
-          <p>{uiTranslate("所选时间范围内的活动", $uiLanguage)}</p>
-        </div>
-        {#if rangedDiagnostics.length > 4}<button
-            class="text-action"
-            aria-expanded={showAllEvents}
-            on:click={() => (showAllEvents = !showAllEvents)}
-            >{uiTranslate(showAllEvents ? "收起" : "更多", $uiLanguage)}<CaretDown
-              class={showAllEvents ? "expanded" : ""}
-              size={14}
-            /></button
-          >{/if}
-      </div>
-      <div class="timeline-events">
-        {#each visibleEvents as record, index}
-          <div class="timeline-row">
-            <i class:accent={index === 0}></i><time
-              >{new Date(record.timestampMs).toLocaleTimeString($locale, {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}</time
-            ><span>{diagnosticMessage(record.message, $uiLanguage)}</span>
-          </div>
-        {/each}
-        {#if rangedDiagnostics.length === 0}<div class="empty-row">
-            <Clock size={24} />{uiTranslate("所选时间范围内暂无事件", $uiLanguage)}
-          </div>{/if}
-      </div>
-    </section>
-  </div>
-
-  <details class="log-tools">
-    <summary
-      ><span
-        ><DotsThree size={20} />{uiTranslate("日志与诊断工具", $uiLanguage)}{#if detailedLogging}<i
-            class="logging-dot"
-          ></i>{/if}</span
-      ><CaretDown size={15} /></summary
-    >
-    <div class="log-tools-content">
-      <p>{uiTranslate("需要进一步排查时，可开启详细日志或导出诊断包。", $uiLanguage)}</p>
-      <div class="log-actions">
-        <button
-          class="secondary-action"
-          class:logging={detailedLogging}
-          aria-pressed={detailedLogging}
-          disabled={changingLogLevel}
-          on:click={toggleDetailedLogging}
-          ><Bug size={15} />{uiTranslate(
-            detailedLogging ? "关闭详细日志" : "详细日志 15 分钟",
-            $uiLanguage,
-          )}</button
-        >
-        <button class="secondary-action" on:click={openLogs}
-          ><FolderOpen size={15} />{uiTranslate("日志目录", $uiLanguage)}</button
-        >
-        <button class="secondary-action" disabled={exportingLogs} on:click={exportLogs}
-          ><DownloadSimple size={15} />{uiTranslate(
-            exportingLogs ? "导出中…" : "导出诊断包",
-            $uiLanguage,
-          )}</button
-        >
-      </div>
+    </details>
+  </section>
+  <section class="diagnostic-section">
+    <h2>{uiTranslate("日志与工具", $uiLanguage)}</h2>
+    <div class="logging-row">
+      <span
+        >{uiTranslate("详细日志", $uiLanguage)}<small
+          >{uiTranslate("开启后记录 15 分钟", $uiLanguage)}</small
+        ></span
+      ><button
+        class="logging-switch"
+        role="switch"
+        aria-label={uiTranslate("详细日志", $uiLanguage)}
+        aria-checked={detailedLogging}
+        disabled={changingLogLevel}
+        class:enabled={detailedLogging}
+        on:click={toggleDetailedLogging}><i></i></button
+      ><button class="input-secondary" on:click={openLogs}
+        ><FolderOpen size={16} />{uiTranslate("日志目录", $uiLanguage)}</button
+      >
     </div>
-  </details>
-  <div class="privacy-note">
-    <ShieldCheck size={14} /><span
-      >{uiTranslate(
-        logStatus?.enabled
-          ? t("日志已写盘 · 保留 {part0} 天", $uiLanguage, { part0: logStatus.retentionDays })
-          : "磁盘日志暂不可用",
-        $uiLanguage,
-      )}
-      {uiTranslate("· 不记录具体按键、文字或剪贴板内容", $uiLanguage)}</span
-    >
-  </div>
+    <header class="events-heading">
+      <h3>{uiTranslate("最近事件", $uiLanguage)}</h3>
+      <AppSelect
+        bind:value={timeRange}
+        aria-label={uiTranslate("诊断时间范围", $uiLanguage)}
+        options={[
+          { value: "15", label: uiTranslate("最近 15 分钟", $uiLanguage) },
+          { value: "60", label: uiTranslate("最近 1 小时", $uiLanguage) },
+          { value: "1440", label: uiTranslate("最近 24 小时", $uiLanguage) },
+        ]}
+      /><button class="input-secondary" on:click={copyReport}
+        ><Copy size={15} />{uiTranslate(copied ? "已复制" : "复制报告", $uiLanguage)}</button
+      >
+    </header>
+    <div class="event-list">
+      {#each visibleEvents as record}<div>
+          <time
+            >{new Date(record.timestampMs).toLocaleTimeString($locale, {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}</time
+          ><code>{record.category}</code><span
+            >{diagnosticMessage(record.message, $uiLanguage)}</span
+          >
+        </div>{/each}{#if !visibleEvents.length}<p>
+          {uiTranslate("所选时间范围内暂无事件", $uiLanguage)}
+        </p>{/if}
+    </div>
+    {#if rangedDiagnostics.length > 3}<button
+        class="input-text-button"
+        aria-expanded={showAllEvents}
+        on:click={() => (showAllEvents = !showAllEvents)}
+        >{uiTranslate(showAllEvents ? "收起" : "更多", $uiLanguage)}</button
+      >{/if}
+  </section>
+  <p class="privacy-note">
+    <ShieldCheck size={14} />{uiTranslate(
+      logStatus?.enabled
+        ? t("日志已写盘 · 保留 {part0} 天", $uiLanguage, { part0: logStatus.retentionDays })
+        : "磁盘日志暂不可用",
+      $uiLanguage,
+    )}{uiTranslate("· 不记录具体按键、文字或剪贴板内容", $uiLanguage)}
+  </p>
 </section>
 
 <style>
@@ -611,9 +473,7 @@
     padding: 2px 2px 24px;
     container-type: inline-size;
   }
-  .diagnostic-toolbar,
-  .toolbar-actions,
-  .range-control {
+  .diagnostic-toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -622,19 +482,6 @@
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 10px;
-  }
-  .range-control {
-    color: var(--text-muted);
-  }
-  .range-control :global(.app-select-trigger) {
-    min-height: 32px;
-    border-color: transparent;
-    background: transparent;
-    padding: 5px 8px;
-    font-size: 12px;
-  }
-  .toolbar-actions {
-    flex-wrap: wrap;
   }
   button,
   summary {
@@ -666,89 +513,6 @@
     outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
-  .quiet-action,
-  .text-action {
-    color: var(--text-secondary);
-    background: transparent;
-  }
-  .quiet-action:hover,
-  .text-action:hover {
-    color: var(--accent-strong);
-    background: var(--accent-soft);
-  }
-  .refresh-action {
-    color: var(--text-inverse);
-    background: var(--accent);
-    border-color: var(--accent);
-    box-shadow: 0 2px 3px color-mix(in srgb, var(--accent) 14%, transparent);
-  }
-  .refresh-action:hover {
-    background: var(--accent-strong);
-  }
-  .health-card {
-    --health-color: var(--text-muted);
-    --health-soft: var(--surface-soft);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--surface-raised);
-  }
-  .health-card[data-tone="success"] {
-    --health-color: var(--diagnostic-success);
-    --health-soft: var(--success-soft);
-  }
-  .health-card[data-tone="warning"] {
-    --health-color: var(--warning);
-    --health-soft: var(--warning-soft);
-  }
-  .health-heading {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 18px 22px;
-    background: color-mix(in srgb, var(--health-soft) 48%, var(--surface-raised));
-  }
-  .health-icon {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 44px;
-    height: 44px;
-    border: 1px solid color-mix(in srgb, var(--health-color) 16%, transparent);
-    border-radius: 12px;
-    color: var(--health-color);
-    background: var(--surface-raised);
-  }
-  .health-copy {
-    min-width: 0;
-    flex: 1;
-  }
-  .health-copy h2 {
-    margin: 0;
-    color: var(--text);
-    font-size: 19px;
-    line-height: 1.4;
-    letter-spacing: -0.025em;
-    font-weight: 650;
-  }
-  .health-copy p {
-    margin: 5px 0 0;
-    color: var(--text-secondary);
-    font-size: 11px;
-    line-height: 1.6;
-  }
-  .health-status {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 9px;
-    border-radius: 6px;
-    color: var(--health-color);
-    background: var(--surface-raised);
-    font-size: 10px;
-  }
-  .health-status i,
   em i {
     width: 5px;
     height: 5px;
@@ -759,7 +523,7 @@
   .metric-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: 16px 0;
+    padding: 0;
     border-top: 1px solid var(--border);
   }
   .metric-grid article {
@@ -774,46 +538,6 @@
   .metric-grid article:last-child {
     border-right: 0;
   }
-  .metric-label {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--text-secondary);
-    font-size: 11px;
-  }
-  .metric-label small {
-    margin-left: 2px;
-    font-size: 9px;
-  }
-  .metric-grid article > small {
-    color: var(--text-muted);
-    font-size: 10px;
-    line-height: 1.5;
-  }
-  .metric-value {
-    display: flex;
-    align-items: baseline;
-    gap: 5px;
-    color: var(--text);
-    font-size: 27px;
-    line-height: 1.2;
-    letter-spacing: -0.045em;
-    font-weight: 620;
-    font-variant-numeric: tabular-nums;
-  }
-  .metric-value span {
-    color: var(--text-muted);
-    font-size: 12px;
-    letter-spacing: 0;
-    font-weight: 450;
-  }
-  .metric-value.text-value {
-    min-height: 33px;
-    align-items: center;
-    font-size: 22px;
-    letter-spacing: -0.025em;
-  }
-  .metric-value.neutral,
   [data-tone="neutral"]:is(strong, em) {
     color: var(--text-muted);
   }
@@ -822,74 +546,6 @@
   }
   [data-tone="success"]:is(strong, em) {
     color: var(--diagnostic-success);
-  }
-  .diagnostic-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    gap: 16px;
-    align-items: stretch;
-  }
-  .panel {
-    min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    background: var(--surface-raised);
-  }
-  .quality-card,
-  .path-card {
-    align-self: stretch;
-  }
-  .panel-heading {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 16px;
-    color: var(--text-muted);
-  }
-  .panel-heading h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    color: var(--text);
-    font-size: 14px;
-    line-height: 1.5;
-    font-weight: 650;
-  }
-  .panel-heading p {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin: 5px 0 0;
-    font-size: 10px;
-    line-height: 1.5;
-  }
-  .legend-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-  }
-  .peer-label {
-    display: inline-flex;
-    min-width: 0;
-    max-width: 52%;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 7px;
-    border-radius: 5px;
-    background: var(--surface-soft);
-    font-size: 10px;
-  }
-  .peer-label span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .peer-label :global(svg) {
-    flex-shrink: 0;
   }
   .chart-wrap {
     display: grid;
@@ -992,64 +648,6 @@
     font-size: 10px;
     font-weight: 450;
   }
-  .path-card {
-    display: flex;
-    flex-direction: column;
-  }
-  .path-list {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    justify-content: space-between;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .path-step {
-    position: relative;
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 11px;
-    min-height: 68px;
-    padding: 7px 0;
-  }
-  .path-step:not(:last-child)::after {
-    position: absolute;
-    top: calc(50% + 21px);
-    bottom: calc(-50% + 21px);
-    left: 17px;
-    border-left: 1px dashed var(--border-strong);
-    content: "";
-  }
-  .path-icon {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--accent);
-    background: var(--surface-soft);
-  }
-  .path-step > div {
-    display: grid;
-    min-width: 0;
-    gap: 4px;
-  }
-  .path-step strong {
-    color: var(--text);
-    font-size: 12px;
-    line-height: 1.5;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-  .path-step small {
-    color: var(--text-muted);
-    font-size: 10px;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-  }
   em {
     display: inline-flex;
     align-items: center;
@@ -1058,34 +656,12 @@
     font-style: normal;
     white-space: nowrap;
   }
-  .path-footer {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 10px;
-  }
-  .count {
-    display: inline-grid;
-    place-items: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 4px;
-    border-radius: 5px;
-    color: var(--text-secondary);
-    background: var(--surface-sunken);
-    font-size: 10px;
-    font-weight: 500;
-  }
   .portal-row {
     display: grid;
     grid-template-columns: 30px minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 10px;
-    padding: 12px 0;
+    padding: 6px 0;
     border-top: 1px solid var(--border);
   }
   .portal-icon {
@@ -1123,44 +699,6 @@
   .test-action:hover:enabled {
     border-color: var(--accent);
   }
-  .text-action {
-    min-height: 25px;
-    padding: 2px 0 2px 6px;
-    font-size: 10px;
-  }
-  .timeline-events {
-    max-height: 330px;
-    overflow: auto;
-  }
-  .timeline-row {
-    display: grid;
-    grid-template-columns: 6px 56px minmax(0, 1fr);
-    align-items: baseline;
-    gap: 9px;
-    padding: 12px 0;
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    line-height: 1.5;
-  }
-  .timeline-row > i {
-    width: 5px;
-    height: 5px;
-    align-self: start;
-    margin-top: 6px;
-    border-radius: 50%;
-    background: var(--border-strong);
-  }
-  .timeline-row > i.accent {
-    background: var(--accent);
-  }
-  .timeline-row time {
-    color: var(--text-muted);
-    font-size: 10px;
-    font-variant-numeric: tabular-nums;
-  }
-  .timeline-row > span {
-    overflow-wrap: anywhere;
-  }
   .empty-row {
     display: flex;
     min-height: 105px;
@@ -1173,63 +711,8 @@
     line-height: 1.6;
     text-align: center;
   }
-  .log-tools {
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: var(--surface-soft);
-  }
-  .log-tools summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px 14px;
-    color: var(--text-secondary);
-    font-size: 11px;
-    list-style: none;
-    cursor: pointer;
-  }
-  .log-tools summary::-webkit-details-marker {
-    display: none;
-  }
-  .log-tools summary > span {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .log-tools[open] summary > :global(svg),
   :global(.expanded) {
     transform: rotate(180deg);
-  }
-  .log-tools-content {
-    padding: 0 14px 14px;
-  }
-  .log-tools-content p {
-    margin: 0 0 12px;
-    color: var(--text-muted);
-    font-size: 11px;
-    line-height: 1.6;
-  }
-  .log-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .secondary-action {
-    border-color: var(--border-strong);
-    color: var(--text-secondary);
-    background: var(--surface);
-    font-size: 11px;
-  }
-  .secondary-action:hover,
-  .secondary-action.logging {
-    border-color: var(--accent);
-    color: var(--accent-strong);
-  }
-  .logging-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
   }
   .privacy-note {
     display: flex;
@@ -1254,23 +737,8 @@
     }
   }
   @container (max-width: 760px) {
-    .diagnostic-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .path-list {
-      gap: 0;
-    }
-    .path-step {
-      min-height: 64px;
-    }
-    .health-status {
-      display: none;
-    }
     .metric-grid article {
       padding-inline: 16px;
-    }
-    .metric-value {
-      font-size: 24px;
     }
   }
   @container (max-width: 510px) {
@@ -1281,26 +749,8 @@
     .metric-grid article:nth-child(2) {
       border-right: 0;
     }
-    .health-heading {
-      padding: 16px;
-      align-items: flex-start;
-    }
-    .health-copy h2 {
-      font-size: 17px;
-    }
-    .health-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-    }
-    .panel {
-      padding: 16px;
-    }
     .portal-row {
       gap: 7px;
-    }
-    .toolbar-actions {
-      margin-left: auto;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1309,6 +759,217 @@
     }
     :global(.spinning) {
       animation: none;
+    }
+  }
+
+  .page {
+    display: block;
+    width: min(100%, 1080px);
+    padding-bottom: 24px;
+  }
+  .diagnostic-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+  }
+  .diagnostic-section {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .diagnostic-section:first-of-type {
+    padding-top: 0;
+  }
+  .diagnostic-section header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 12px;
+  }
+  .diagnostic-section h2 {
+    margin: 0 0 12px;
+    font-size: 16px;
+  }
+  .diagnostic-section header h2 {
+    margin: 0;
+  }
+  .diagnostic-section h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .diagnostic-section header > span {
+    font-size: 12px;
+  }
+  .health-detail {
+    margin: 8px 0 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .check-row {
+    display: grid;
+    grid-template-columns: 22px 160px minmax(0, 1fr) 80px;
+    align-items: center;
+    gap: 10px;
+    min-height: 47px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .check-row strong {
+    font-weight: 500;
+  }
+  .check-row > span {
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+  }
+  .check-row em {
+    font-style: normal;
+    font-size: 12px;
+    text-align: right;
+  }
+  .edges {
+    margin-top: 12px;
+  }
+  .edges h3 {
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+  }
+  .portal-row {
+    min-height: 46px;
+    padding-inline: 0;
+  }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 18px;
+    border: 0;
+  }
+  .metric-grid > article {
+    display: grid;
+    gap: 10px;
+    padding: 0 20px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: none;
+  }
+  .metric-grid > article:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .metric-grid article > span {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .metric-grid strong {
+    font-size: 21px;
+    font-weight: 650;
+  }
+  .measurement-note {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin: 15px 0 4px;
+  }
+  .performance-details summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    list-style: none;
+  }
+  .logging-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 50px;
+  }
+  .logging-row > span {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    font-size: 13px;
+  }
+  .logging-row small {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .logging-switch {
+    width: 40px;
+    height: 23px;
+    border: 0;
+    padding: 3px;
+    border-radius: 99px;
+    background: var(--border-strong);
+  }
+  .logging-switch i {
+    display: block;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: white;
+  }
+  .logging-switch.enabled {
+    background: var(--accent);
+  }
+  .logging-switch.enabled i {
+    transform: translateX(17px);
+  }
+  .events-heading {
+    margin-top: 16px;
+  }
+  .events-heading h3 {
+    flex: 1;
+  }
+  .event-list {
+    overflow: auto;
+    max-height: 280px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .event-list > div {
+    display: grid;
+    grid-template-columns: 75px 110px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .event-list > div:last-child {
+    border-bottom: 0;
+  }
+  .event-list time {
+    color: var(--text-muted);
+  }
+  .event-list code {
+    overflow-wrap: anywhere;
+    font-size: 11px;
+  }
+  .event-list span {
+    overflow-wrap: anywhere;
+  }
+  .event-list > p {
+    padding: 12px;
+    color: var(--text-muted);
+  }
+  .privacy-note {
+    font-size: 11px;
+    margin-top: 15px;
+  }
+  @media (max-width: 980px) {
+    .diagnostic-toolbar {
+      margin-top: 0;
+    }
+    .check-row {
+      grid-template-columns: 20px 110px minmax(0, 1fr) 60px;
+    }
+    .logging-row > span {
+      flex-wrap: wrap;
+      gap: 4px;
     }
   }
 </style>
